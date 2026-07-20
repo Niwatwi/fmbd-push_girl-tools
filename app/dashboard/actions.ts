@@ -618,7 +618,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   }
 }
 
-// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (ค่าแรงรายวัน + คอมมิชชั่น) ส่งฝ่ายบัญชี
+// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (ค่าแรงรายวัน + คอมมิชชั่นสะสมตามรอบ Target ทุก 3 วัน)
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -637,7 +637,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
       console.error("Error fetching user_profiles:", userError);
     }
 
-    // 2. ดึงประวัติการลงเวลาทำงาน (Attendance Logs) ตามช่วงวันที่
+    // 2. ดึงประวัติการลงเวลาทำงาน (Attendance Logs)
     let attendanceQuery = supabase
       .from("pg_attendance_logs")
       .select("user_id, check_in_at, store_code, store_name");
@@ -657,46 +657,56 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
     const { data: attendanceLogs } = await attendanceQuery;
 
-    // 3. ดึงรายงานยอดขายประจำวัน - รองรับทั้ง pg_daily_reports และ pg_activity_reports
-    let salesReports: any[] = [];
+    // 🎯 3. ดึงรายงานกิจกรรมประจำวันจาก pg_daily_activity_reports (* เพื่อดึงคอลัมน์ทั้งหมด)
+    let dailyReportsQuery = supabase
+      .from("pg_daily_activity_reports")
+      .select("*")
+      .order("created_at", { ascending: true });
 
-    let salesQuery1 = supabase.from("pg_daily_reports").select("*");
     if (params?.startDate && params.startDate.trim() !== "") {
-      salesQuery1 = salesQuery1.gte("report_date", params.startDate);
+      dailyReportsQuery = dailyReportsQuery.gte(
+        "created_at",
+        `${params.startDate}T00:00:00+07:00`,
+      );
     }
     if (params?.endDate && params.endDate.trim() !== "") {
-      salesQuery1 = salesQuery1.lte("report_date", params.endDate);
-    }
-    const res1 = await salesQuery1;
-
-    if (res1.data && res1.data.length > 0) {
-      salesReports = res1.data;
-    } else {
-      let salesQuery2 = supabase.from("pg_activity_reports").select("*");
-      if (params?.startDate && params.startDate.trim() !== "") {
-        salesQuery2 = salesQuery2.gte(
-          "created_at",
-          `${params.startDate}T00:00:00+07:00`,
-        );
-      }
-      if (params?.endDate && params.endDate.trim() !== "") {
-        salesQuery2 = salesQuery2.lte(
-          "created_at",
-          `${params.endDate}T23:59:59+07:00`,
-        );
-      }
-      const res2 = await salesQuery2;
-      if (res2.data && res2.data.length > 0) {
-        salesReports = res2.data;
-      }
+      dailyReportsQuery = dailyReportsQuery.lte(
+        "created_at",
+        `${params.endDate}T23:59:59+07:00`,
+      );
     }
 
-    // 4. ประมวลผลรวบรวมรายได้แยกตามพนักงาน (User ID)
-    const salarySummaryMap = new Map<number, any>();
+    const { data: dailyReports } = await dailyReportsQuery;
+    const reportList: any[] = dailyReports || [];
 
-    (userProfiles || []).forEach((user) => {
+    // 🎯 4. ดึงยอดขายสินค้ารายชิ้นจาก pg_daily_report_products โดยอ้างอิง report_id
+    let reportProductsMap = new Map<number, any[]>();
+    if (reportList.length > 0) {
+      const reportIds = reportList.map((r: any) => r.id);
+      const { data: productsData, error: prodErr } = await supabase
+        .from("pg_daily_report_products")
+        .select("*")
+        .in("report_id", reportIds);
+
+      if (prodErr) {
+        console.error("Error fetching pg_daily_report_products:", prodErr);
+      }
+
+      (productsData || []).forEach((prod: any) => {
+        const rId = Number(prod.report_id);
+        if (!reportProductsMap.has(rId)) {
+          reportProductsMap.set(rId, []);
+        }
+        reportProductsMap.get(rId)?.push(prod);
+      });
+    }
+
+    // 5. จัดกลุ่มข้อมูลตามรายพนักงาน (User ID)
+    const userSummaryMap = new Map<number, any>();
+
+    (userProfiles || []).forEach((user: any) => {
       const uId = Number(user.id);
-      salarySummaryMap.set(uId, {
+      userSummaryMap.set(uId, {
         userId: uId,
         empId: user.employee_id || user.username || `PG-${uId}`,
         displayName: user.display_name || user.username || `PG-${uId}`,
@@ -704,24 +714,15 @@ export async function getAdminSalarySummaryReportAction(params?: {
         storeCode: "-",
         baseSalaryRate: user.base_salary ? Number(user.base_salary) : 700,
         workDaysCount: 0,
-        totalDailyWage: 0,
-        totalGreenPacks: 0,
-        totalBluePacks: 0,
-        totalOrangePacks: 0,
-        totalGreenSets: 0,
-        totalBlueSets: 0,
-        totalOrangeSets: 0,
-        totalSets: 0,
-        totalCommission: 0,
-        totalNetSalary: 0,
+        dailyReportsList: [],
       });
     });
 
-    // นับจำนวนวันทำงาน (Attendance)
-    (attendanceLogs || []).forEach((log) => {
+    // นับจำนวนวันทำงานจริงจาก Attendance Logs
+    (attendanceLogs || []).forEach((log: any) => {
       const uId = Number(log.user_id);
-      if (salarySummaryMap.has(uId)) {
-        const item = salarySummaryMap.get(uId);
+      if (userSummaryMap.has(uId)) {
+        const item = userSummaryMap.get(uId);
         item.workDaysCount += 1;
         if (log.store_name && item.storeName === "-")
           item.storeName = log.store_name;
@@ -730,94 +731,175 @@ export async function getAdminSalarySummaryReportAction(params?: {
       }
     });
 
-    // คำนวณยอดขาย & แมปคอลัมน์ทุกรูปแบบ
-    for (const report of salesReports) {
-      const uId = Number(report.user_id || report.userId);
-      if (salarySummaryMap.has(uId)) {
-        const item = salarySummaryMap.get(uId);
-
-        // ดึงจำนวนชิ้นโดยรองรับทุกชื่อคอลัมน์ใน DB
-        const gPacks = Number(
-          report.sales_qty_green90 ??
-            report.salesGreen ??
-            report.green_qty ??
-            report.greenQty ??
-            0,
-        );
-        const bPacks = Number(
-          report.sales_qty_blue90 ??
-            report.salesBlue ??
-            report.blue_qty ??
-            report.blueQty ??
-            0,
-        );
-        const oPacks = Number(
-          report.sales_qty_orange100 ??
-            report.salesOrange ??
-            report.orange_qty ??
-            report.orangeQty ??
-            0,
-        );
-
-        item.totalGreenPacks += gPacks;
-        item.totalBluePacks += bPacks;
-        item.totalOrangePacks += oPacks;
-
-        const storeCheck = String(
-          report.store_name || report.storeName || item.storeName || "",
-        ).toLowerCase();
-        const isBigC = storeCheck.includes("big") || storeCheck.includes("pg");
-
-        // คิดเป็นจำนวนชุดโปรโมชัน (ห้าง Big C คิดโปร 1 แถม 1 โดยหาร 2)
-        const gSets = isBigC ? Math.floor(gPacks / 2) : gPacks;
-        const bSets = isBigC ? Math.floor(bPacks / 2) : bPacks;
-        const oSets = isBigC ? Math.floor(oPacks / 2) : oPacks;
-
-        item.totalGreenSets += gSets;
-        item.totalBlueSets += bSets;
-        item.totalOrangeSets += oSets;
-
+    // แมปรายงานและสินค้าเข้ากับพนักงานแต่ละคน
+    reportList.forEach((report: any) => {
+      const uId = Number(report.user_id);
+      if (userSummaryMap.has(uId)) {
+        const item = userSummaryMap.get(uId);
         if (report.store_name && item.storeName === "-")
           item.storeName = report.store_name;
-      }
-    }
+        if (report.store_code && item.storeCode === "-")
+          item.storeCode = report.store_code;
 
-    // 5. คำนวณคอมมิชชั่นสะสมจริงผ่าน calculateBigCCommission
-    const resultList = await Promise.all(
-      Array.from(salarySummaryMap.values()).map(async (item) => {
-        item.totalDailyWage = item.workDaysCount * item.baseSalaryRate;
-        item.totalSets =
-          item.totalGreenSets + item.totalBlueSets + item.totalOrangeSets;
+        let prods = reportProductsMap.get(Number(report.id)) || [];
 
-        try {
-          // คำนวณ Incentive ตามเกณฑ์มาตรฐาน
-          const commRes = await calculateBigCCommission(
-            item.totalGreenSets,
-            item.totalBlueSets,
-            item.totalOrangeSets,
-          );
-          item.totalCommission =
-            commRes?.incentiveAmount ?? item.totalSets * 10;
-        } catch {
-          item.totalCommission = item.totalSets * 10;
+        // สำรองข้อมูลกรณีรายงานไม่มีใน pg_daily_report_products แต่มีในคอลัมน์ของ pg_daily_activity_reports
+        if (prods.length === 0) {
+          const g = Number(report.sales_qty_green90 || 0);
+          const b = Number(report.sales_qty_blue90 || 0);
+          const o = Number(report.sales_qty_orange100 || 0);
+          if (g > 0)
+            prods.push({
+              barcode: "8858678423681",
+              descriptions: "Baby Soft Green",
+              sales_qty: g,
+            });
+          if (b > 0)
+            prods.push({
+              barcode: "8858678423339",
+              descriptions: "Nourish Soft Blue",
+              sales_qty: b,
+            });
+          if (o > 0)
+            prods.push({
+              barcode: "orange100",
+              descriptions: "Orange 100",
+              sales_qty: o,
+            });
         }
 
-        item.totalNetSalary = item.totalDailyWage + item.totalCommission;
-        return item;
+        item.dailyReportsList.push({
+          ...report,
+          products: prods,
+        });
+      }
+    });
+
+    // 🎯 6. คำนวณยอดขายสะสม + คำนวณ Incentive ตามรอบ Target ทุก 3 วันที่เข้าปฏิบัติงาน
+    const resultList = await Promise.all(
+      Array.from(userSummaryMap.values()).map(async (item: any) => {
+        const totalDailyWage = item.workDaysCount * item.baseSalaryRate;
+
+        // เรียงลำดับรายงานการขายตามวันเวลา
+        const sortedReports = item.dailyReportsList.sort(
+          (a: any, b: any) =>
+            new Date(a.created_at || a.report_date).getTime() -
+            new Date(b.created_at || b.report_date).getTime(),
+        );
+
+        let totalGreenPacks = 0;
+        let totalBluePacks = 0;
+        let totalOrangePacks = 0;
+        let totalPacks = 0;
+        let totalSets = 0;
+        let totalCommission = 0;
+
+        // 💡 แบ่งรอบการเชียร์ขายเป็นบล็อกละ 3 วัน
+        const cycleChunkSize = 3;
+        for (let i = 0; i < sortedReports.length; i += cycleChunkSize) {
+          const chunk = sortedReports.slice(i, i + cycleChunkSize);
+
+          let cycleGreenPacks = 0;
+          let cycleBluePacks = 0;
+          let cycleOrangePacks = 0;
+
+          chunk.forEach((rep: any) => {
+            const prods = rep.products || [];
+            prods.forEach((p: any) => {
+              const qty = Number(p.sales_qty || 0);
+              const bc = String(p.barcode || "").trim();
+              const desc = String(p.descriptions || "").toLowerCase();
+
+              // ตรวจจำแนก SKU จาก Barcode หรือ Description
+              if (
+                bc === "8858678423681" ||
+                desc.includes("baby") ||
+                desc.includes("เขียว") ||
+                desc.includes("green")
+              ) {
+                cycleGreenPacks += qty;
+              } else if (
+                bc === "8858678423339" ||
+                desc.includes("nourish") ||
+                desc.includes("ฟ้า") ||
+                desc.includes("blue")
+              ) {
+                cycleBluePacks += qty;
+              } else {
+                cycleOrangePacks += qty;
+              }
+            });
+          });
+
+          // กรณี Big C (1 แถม 1 หยิบจาก Shelf ทั้งคู่): หาร 2 คิดเป็นจำนวนชุดโปรโมชัน
+          const isBigC =
+            item.storeName.toLowerCase().includes("big") ||
+            item.storeCode.toLowerCase().includes("big") ||
+            item.empId.toLowerCase().includes("pgbc");
+
+          const cycleGSets = isBigC
+            ? Math.floor(cycleGreenPacks / 2)
+            : cycleGreenPacks;
+          const cycleBSets = isBigC
+            ? Math.floor(cycleBluePacks / 2)
+            : cycleBluePacks;
+          const cycleOSets = isBigC
+            ? Math.floor(cycleOrangePacks / 2)
+            : cycleOrangePacks;
+          const cycleSetsTotal = cycleGSets + cycleBSets + cycleOSets;
+
+          // คำนวณ Incentive ประจำรอบ Target 3 วันนี้
+          let cycleComm = 0;
+          try {
+            const commRes = await calculateBigCCommission(
+              cycleGSets,
+              cycleBSets,
+              cycleOSets,
+              chunk.length,
+            );
+            cycleComm = commRes?.incentiveAmount ?? 0;
+          } catch {
+            cycleComm = 0;
+          }
+
+          // สะสมยอดรวมประจำเดือน
+          totalGreenPacks += cycleGreenPacks;
+          totalBluePacks += cycleBluePacks;
+          totalOrangePacks += cycleOrangePacks;
+          totalPacks += cycleGreenPacks + cycleBluePacks + cycleOrangePacks;
+          totalSets += cycleSetsTotal;
+          totalCommission += cycleComm;
+        }
+
+        return {
+          userId: item.userId,
+          empId: item.empId,
+          displayName: item.displayName,
+          storeName: item.storeName,
+          storeCode: item.storeCode,
+          baseSalaryRate: item.baseSalaryRate,
+          workDaysCount: item.workDaysCount,
+          totalDailyWage: totalDailyWage,
+          totalGreenPacks,
+          totalBluePacks,
+          totalOrangePacks,
+          totalPacks,
+          totalSets, // 👈 ยอดรวมชุดโปรโมชันสะสม
+          totalCommission, // 👈 ยอดคอมมิชชั่นรวมที่คำนวณจากรอบ Target 3 วัน
+          totalNetSalary: totalDailyWage + totalCommission, // 💰 รวมจ่ายสุทธิ
+        };
       }),
     );
 
-    // กรองเฉพาะคนที่มีวันทำงาน หรือมียอดขาย
+    // กรองแสดงเฉพาะพนักงานที่มีสถิติวันทำงานหรือยอดขาย
     const filteredResult = resultList.filter(
-      (item) =>
-        item.workDaysCount > 0 ||
-        item.totalSets > 0 ||
-        item.totalGreenPacks > 0,
+      (item: any) =>
+        item.workDaysCount > 0 || item.totalSets > 0 || item.totalPacks > 0,
     );
 
     return { success: true, data: filteredResult };
   } catch (error: any) {
-    console.error("Fetch salary summary error:", error);
+    console.error("Fetch salary summary report error:", error);
     return { success: false, data: [], message: error.message };
   }
 }
