@@ -36,7 +36,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   const [pgName, setPgName] = useState("");
   const [empCode, setEmpCode] = useState("");
   const [storeName, setStoreName] = useState("");
-  const [isBigC, setIsBigC] = useState(false); // 👈 Flag ระบุว่าเป็นสาขา Big C หรือไม่
+  const [isBigC, setIsBigC] = useState(false);
 
   // State เป้าหมายรวม และโบนัสสะสม
   const [monthlyTarget, setMonthlyTarget] = useState<number>(240); // เป้าหมายชิ้น/ห่อ
@@ -46,8 +46,8 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
 
   // ยอดขายสะสมของวันนี้
   const [todaySales, setTodaySales] = useState({
-    totalPacks: 0, // ยอดขายชิ้น/ห่อ (รวมของแถมหน้าร้าน)
-    totalSets: 0, // ยอดขายเซ็ท/ชุดโปรโมชัน
+    totalPacks: 0, // ยอดตัดสต๊อกชิ้น/ห่อจริง
+    totalSets: 0, // ยอดขายเซ็ท/ชุดโปรโมชันจริง
     totalRevenue: 0, // มูลค่ารวมบาทจริง
     greenQty: 0,
     blueQty: 0,
@@ -68,11 +68,14 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
         const currentStore = res.storeName || "";
         setStoreName(currentStore);
 
-        // ตรวจสอบว่าเป็นสาขาห้าง Big C หรือไม่
+        // 🎯 FIX Bug 1: ปรับแก้เงื่อนไขตรวจสอบ Big C ให้เป็น พิมพ์เล็ก ทั้งหมดเพื่อความแม่นยำ 100%
+        const storeLower = currentStore.toLowerCase();
         const checkIsBigC =
-          currentStore.toLowerCase().includes("Big C") ||
-          currentStore.toLowerCase().includes("BigC") ||
-          res.profile.company_tag === "PG";
+          storeLower.includes("big c") ||
+          storeLower.includes("bigc") ||
+          res.profile?.company_tag === "PG" ||
+          res.profile?.company_tag === "BIGC";
+
         setIsBigC(checkIsBigC);
 
         // ดึงเป้าหมายรวมชิ้น/ห่อจากตาราง store_targets
@@ -81,7 +84,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
         }
 
         if (res.todaySales) {
-          // ยอดคีย์เข้ามาหน้าร้าน (Pieces / Packs)
+          // ยอดคีย์ตัดสต๊อกหน้าชั้นวาง (Pieces / Packs)
           const gPacks = Number(res.todaySales.sales_qty_green90 || 0);
           const bPacks = Number(res.todaySales.sales_qty_blue90 || 0);
           const oPacks = Number(res.todaySales.sales_qty_orange100 || 0);
@@ -90,24 +93,28 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           const bPrice = Number(res.todaySales.price_our_blue90 || 142);
           const oPrice = Number(res.todaySales.price_our_orange100 || 100);
 
-          let gSets = gPacks;
-          let bSets = bPacks;
-          let oSets = oPacks;
-          let totalPacks = gPacks + bPacks + oPacks;
+          let gSets = 0;
+          let bSets = 0;
+          let oSets = 0;
+          let totalPacks = 0;
 
-          // 🎯 กรณี Big C: 1 แถม 1 หยิบจาก Shelf ทั้งคู่
-          // ยอดคีย์คือจำนวนชิ้นตัดสต๊อก $\rightarrow$ หาร 2 เพื่อหาจำนวนชุดโปรโมชันจริง
+          // 🎯 FIX Bug 2: แยกคำนวณชุดโปรโมชัน และยอดเงินหน้าร้านจริง
           if (checkIsBigC) {
+            // กรณี Big C: ซื้อ 1 แถม 1 หยิบ Shelf ทั้งคู่ (คีย์ 90 ชิ้น -> ได้ 45 ชุด)
             gSets = Math.floor(gPacks / 2);
             bSets = Math.floor(bPacks / 2);
             oSets = Math.floor(oPacks / 2);
+            totalPacks = gPacks + bPacks + oPacks; // สต๊อกตัดจริง (เช่น 140 ชิ้น)
           } else {
-            // กรณี Tops: คีย์ยอดสินค้าหลัก (1 แถม 1 รับของแถมพรีเมียมแยก)
-            totalPacks = (gSets + bSets + oSets) * 2; // คำนวณเป็นชิ้นรวม
+            // กรณี Tops: คีย์ยอดสินค้าหลัก (รับของแถมพรีเมียมต่างหาก)
+            gSets = gPacks;
+            bSets = bPacks;
+            oSets = oPacks;
+            totalPacks = (gSets + bSets + oSets) * 2; // คิดจำนวนชิ้นรวมพร้อมของแถม
           }
 
           const totalSets = gSets + bSets + oSets;
-          // คำนวณเงินจากจำนวนชุดโปรโมชันจริง x ราคาขายต่อชุด
+          // คำนวณยอดเงินจริง = จำนวนชุดโปรโมชัน x ราคาขายต่อชุด
           const totalRev = gSets * gPrice + bSets * bPrice + oSets * oPrice;
 
           setTodaySales({
@@ -121,7 +128,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
 
           setCurrentMonthlyProgress(totalPacks);
 
-          // 🎯 คำนวณ Commission โดยส่งจำนวน "ชุด/เซ็ท" จริงเข้าประมวลผล
+          // 🎯 คำนวณ Commission Incentive จาก "จำนวนชุดจริง"
           const comm = await calculateBigCCommission(gSets, bSets, oSets);
           setIncentiveBonus(comm.incentiveAmount);
 
@@ -200,7 +207,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           <button
             type="button"
             onClick={() => router.push(`/?userId=${userId}`)}
-            className="p-1 hover:bg-blue-800 rounded-lg transition"
+            className="p-1 hover:bg-blue-800 rounded-lg transition cursor-pointer"
           >
             <ArrowLeft size={20} />
           </button>
