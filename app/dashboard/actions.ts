@@ -617,3 +617,207 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
     return { success: false, data: [], message: error.message };
   }
 }
+
+// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (ค่าแรงรายวัน + คอมมิชชั่น) ส่งฝ่ายบัญชี
+export async function getAdminSalarySummaryReportAction(params?: {
+  startDate?: string;
+  endDate?: string;
+  storeCode?: string;
+}) {
+  const supabase = getClientInstance();
+  try {
+    // 1. ดึงข้อมูลพนักงานทั้งหมดจาก user_profiles
+    const { data: userProfiles, error: userError } = await supabase
+      .from("user_profiles")
+      .select(
+        "id, display_name, employee_id, username, base_salary, company_tag",
+      );
+
+    if (userError) {
+      console.error("Error fetching user_profiles:", userError);
+    }
+
+    // 2. ดึงประวัติการลงเวลาทำงาน (Attendance Logs) ตามช่วงวันที่
+    let attendanceQuery = supabase
+      .from("pg_attendance_logs")
+      .select("user_id, check_in_at, store_code, store_name");
+
+    if (params?.startDate && params.startDate.trim() !== "") {
+      attendanceQuery = attendanceQuery.gte(
+        "check_in_at",
+        `${params.startDate}T00:00:00+07:00`,
+      );
+    }
+    if (params?.endDate && params.endDate.trim() !== "") {
+      attendanceQuery = attendanceQuery.lte(
+        "check_in_at",
+        `${params.endDate}T23:59:59+07:00`,
+      );
+    }
+
+    const { data: attendanceLogs } = await attendanceQuery;
+
+    // 3. ดึงรายงานยอดขายประจำวัน - รองรับทั้ง pg_daily_reports และ pg_activity_reports
+    let salesReports: any[] = [];
+
+    let salesQuery1 = supabase.from("pg_daily_reports").select("*");
+    if (params?.startDate && params.startDate.trim() !== "") {
+      salesQuery1 = salesQuery1.gte("report_date", params.startDate);
+    }
+    if (params?.endDate && params.endDate.trim() !== "") {
+      salesQuery1 = salesQuery1.lte("report_date", params.endDate);
+    }
+    const res1 = await salesQuery1;
+
+    if (res1.data && res1.data.length > 0) {
+      salesReports = res1.data;
+    } else {
+      let salesQuery2 = supabase.from("pg_activity_reports").select("*");
+      if (params?.startDate && params.startDate.trim() !== "") {
+        salesQuery2 = salesQuery2.gte(
+          "created_at",
+          `${params.startDate}T00:00:00+07:00`,
+        );
+      }
+      if (params?.endDate && params.endDate.trim() !== "") {
+        salesQuery2 = salesQuery2.lte(
+          "created_at",
+          `${params.endDate}T23:59:59+07:00`,
+        );
+      }
+      const res2 = await salesQuery2;
+      if (res2.data && res2.data.length > 0) {
+        salesReports = res2.data;
+      }
+    }
+
+    // 4. ประมวลผลรวบรวมรายได้แยกตามพนักงาน (User ID)
+    const salarySummaryMap = new Map<number, any>();
+
+    (userProfiles || []).forEach((user) => {
+      const uId = Number(user.id);
+      salarySummaryMap.set(uId, {
+        userId: uId,
+        empId: user.employee_id || user.username || `PG-${uId}`,
+        displayName: user.display_name || user.username || `PG-${uId}`,
+        storeName: "-",
+        storeCode: "-",
+        baseSalaryRate: user.base_salary ? Number(user.base_salary) : 700,
+        workDaysCount: 0,
+        totalDailyWage: 0,
+        totalGreenPacks: 0,
+        totalBluePacks: 0,
+        totalOrangePacks: 0,
+        totalGreenSets: 0,
+        totalBlueSets: 0,
+        totalOrangeSets: 0,
+        totalSets: 0,
+        totalCommission: 0,
+        totalNetSalary: 0,
+      });
+    });
+
+    // นับจำนวนวันทำงาน (Attendance)
+    (attendanceLogs || []).forEach((log) => {
+      const uId = Number(log.user_id);
+      if (salarySummaryMap.has(uId)) {
+        const item = salarySummaryMap.get(uId);
+        item.workDaysCount += 1;
+        if (log.store_name && item.storeName === "-")
+          item.storeName = log.store_name;
+        if (log.store_code && item.storeCode === "-")
+          item.storeCode = log.store_code;
+      }
+    });
+
+    // คำนวณยอดขาย & แมปคอลัมน์ทุกรูปแบบ
+    for (const report of salesReports) {
+      const uId = Number(report.user_id || report.userId);
+      if (salarySummaryMap.has(uId)) {
+        const item = salarySummaryMap.get(uId);
+
+        // ดึงจำนวนชิ้นโดยรองรับทุกชื่อคอลัมน์ใน DB
+        const gPacks = Number(
+          report.sales_qty_green90 ??
+            report.salesGreen ??
+            report.green_qty ??
+            report.greenQty ??
+            0,
+        );
+        const bPacks = Number(
+          report.sales_qty_blue90 ??
+            report.salesBlue ??
+            report.blue_qty ??
+            report.blueQty ??
+            0,
+        );
+        const oPacks = Number(
+          report.sales_qty_orange100 ??
+            report.salesOrange ??
+            report.orange_qty ??
+            report.orangeQty ??
+            0,
+        );
+
+        item.totalGreenPacks += gPacks;
+        item.totalBluePacks += bPacks;
+        item.totalOrangePacks += oPacks;
+
+        const storeCheck = String(
+          report.store_name || report.storeName || item.storeName || "",
+        ).toLowerCase();
+        const isBigC = storeCheck.includes("big") || storeCheck.includes("pg");
+
+        // คิดเป็นจำนวนชุดโปรโมชัน (ห้าง Big C คิดโปร 1 แถม 1 โดยหาร 2)
+        const gSets = isBigC ? Math.floor(gPacks / 2) : gPacks;
+        const bSets = isBigC ? Math.floor(bPacks / 2) : bPacks;
+        const oSets = isBigC ? Math.floor(oPacks / 2) : oPacks;
+
+        item.totalGreenSets += gSets;
+        item.totalBlueSets += bSets;
+        item.totalOrangeSets += oSets;
+
+        if (report.store_name && item.storeName === "-")
+          item.storeName = report.store_name;
+      }
+    }
+
+    // 5. คำนวณคอมมิชชั่นสะสมจริงผ่าน calculateBigCCommission
+    const resultList = await Promise.all(
+      Array.from(salarySummaryMap.values()).map(async (item) => {
+        item.totalDailyWage = item.workDaysCount * item.baseSalaryRate;
+        item.totalSets =
+          item.totalGreenSets + item.totalBlueSets + item.totalOrangeSets;
+
+        try {
+          // คำนวณ Incentive ตามเกณฑ์มาตรฐาน
+          const commRes = await calculateBigCCommission(
+            item.totalGreenSets,
+            item.totalBlueSets,
+            item.totalOrangeSets,
+          );
+          item.totalCommission =
+            commRes?.incentiveAmount ?? item.totalSets * 10;
+        } catch {
+          item.totalCommission = item.totalSets * 10;
+        }
+
+        item.totalNetSalary = item.totalDailyWage + item.totalCommission;
+        return item;
+      }),
+    );
+
+    // กรองเฉพาะคนที่มีวันทำงาน หรือมียอดขาย
+    const filteredResult = resultList.filter(
+      (item) =>
+        item.workDaysCount > 0 ||
+        item.totalSets > 0 ||
+        item.totalGreenPacks > 0,
+    );
+
+    return { success: true, data: filteredResult };
+  } catch (error: any) {
+    console.error("Fetch salary summary error:", error);
+    return { success: false, data: [], message: error.message };
+  }
+}
