@@ -277,7 +277,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-12 select-none">
+    <div className="min-h-screen bg-green-200 text-slate-900 font-sans antialiased pb-12 select-none">
       <input
         type="file"
         accept="image/*"

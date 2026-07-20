@@ -4,7 +4,15 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// 🔑 ฟังก์ชันดึง Supabase Client แบบปลอดภัยชัวร์ 100%
+function getClientInstance() {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (serviceKey) {
+    return createClient(supabaseUrl, serviceKey);
+  }
+  return createClient(supabaseUrl, supabaseAnonKey);
+}
 
 export interface ActivityPhotoPayload {
   type: string;
@@ -34,7 +42,6 @@ export interface DbProductItem {
   segment: string | null;
 }
 
-// 🎯 อัปเดตอินเทอร์เฟซให้รองรับฟิลด์แคมเปญและของแถมจากหน้า Frontend
 export interface FullActivityReportInput {
   attendanceLogId: number;
   userId: number;
@@ -50,7 +57,6 @@ export interface FullActivityReportInput {
   activityPhotos: ActivityPhotoPayload[];
   products: ProductReportPayload[];
 
-  // ฟิลด์พิเศษสำหรับแคมเปญหลักประจำสาขา
   priceOurGreen90?: number;
   stockBeforeGreen90?: number;
   salesQtyGreen90?: number;
@@ -64,7 +70,6 @@ export interface FullActivityReportInput {
   salesQtyOrange100?: number;
   stockAfterOrange100?: number;
 
-  // ฟิลด์สำหรับบันทึกและตัดสต๊อกของแถมเครือ Tops
   giftOrangeBefore?: number;
   giftOrangeGiven?: number;
   giftOrangeAfter?: number;
@@ -78,7 +83,7 @@ async function uploadBase64File(
   base64Data: string,
   userId: number,
   prefix: string,
-  supabaseClient = supabase,
+  supabaseClient: any,
 ): Promise<string | null> {
   if (!base64Data || !base64Data.startsWith("data:")) return null;
   try {
@@ -95,7 +100,10 @@ async function uploadBase64File(
         upsert: true,
       });
 
-    if (error) throw error;
+    if (error) {
+      console.error(`Upload photo [${prefix}] error:`, error.message);
+      return null;
+    }
 
     const { data } = supabaseClient.storage
       .from("pg-attendance-photos")
@@ -103,13 +111,14 @@ async function uploadBase64File(
 
     return data.publicUrl;
   } catch (error) {
-    console.error("Upload base64 photo error:", error);
+    console.error("Upload base64 photo exception:", error);
     return null;
   }
 }
 
 // 1. ค้นหาบาร์โค้ดสินค้าในตารางหลัก
 export async function getProductByBarcode(barcode: string) {
+  const supabase = getClientInstance();
   const cleanBarcode = barcode.toString().trim();
   try {
     const { data, error } = await supabase
@@ -131,6 +140,7 @@ export async function getProductByBarcode(barcode: string) {
 
 // 2. ดึงสถานะการเช็คอินวันนี้
 export async function getTodayActiveAttendance(userId: number) {
+  const supabase = getClientInstance();
   try {
     const now = new Date();
     const ictDate = new Intl.DateTimeFormat("en-US", {
@@ -163,58 +173,50 @@ export async function getTodayActiveAttendance(userId: number) {
 export async function submitFullDailyActivityReportAction(
   payload: FullActivityReportInput,
 ) {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceKey) {
-    console.warn(
-      "⚠️ [Warning] ไม่พบ SUPABASE_SERVICE_ROLE_KEY ในระบบ สลับไปใช้ Anon Key แทนชั่วคราว",
-    );
-  }
-
-  const supabaseClient = serviceKey
-    ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey)
-    : supabase;
+  const supabaseClient = getClientInstance();
 
   try {
     // สเต็ปที่ 1: อัปโหลดรูปภาพรวมกิจกรรมทั้ง 6 ใบเข้า Storage
     const uploadedActivityPhotos = [];
-    for (const photo of payload.activityPhotos) {
-      if (photo.base64) {
-        const url = await uploadBase64File(
-          photo.base64,
-          payload.userId,
-          `act_${photo.type}`,
-          supabaseClient,
-        );
-        if (url) {
-          uploadedActivityPhotos.push({
-            type: photo.type,
-            label: photo.label,
-            url: url,
-          });
+    if (payload.activityPhotos && Array.isArray(payload.activityPhotos)) {
+      for (const photo of payload.activityPhotos) {
+        if (photo.base64) {
+          const url = await uploadBase64File(
+            photo.base64,
+            payload.userId,
+            `act_${photo.type}`,
+            supabaseClient,
+          );
+          if (url) {
+            uploadedActivityPhotos.push({
+              type: photo.type,
+              label: photo.label,
+              url: url,
+            });
+          }
         }
       }
     }
 
     // สเต็ปที่ 2: บันทึกข้อมูลรายงานภาพรวมลงตารางหลัก pg_daily_activity_reports
-    // 🔥 เพิ่มการแมตช์คอลัมน์ฝั่งฐานข้อมูลเข้ากับข้อมูลแคมเปญหลักและสต๊อกของแถมที่ส่งมาจาก Frontend
     const { data: report, error: reportError } = await supabaseClient
       .from("pg_daily_activity_reports")
       .insert({
         attendance_log_id: payload.attendanceLogId,
         user_id: payload.userId,
         store_code: payload.storeCode,
-        traffic_count: payload.trafficCount,
-        approach_count: payload.approachCount,
-        closed_sales_count: payload.closedSalesCount,
-        price_comp_cellox: payload.priceCompCellox,
-        price_comp_kleenex: payload.priceCompKleenex,
-        price_comp_paseo: payload.priceCompPaseo,
-        feedback_store: payload.feedbackStore,
-        competitor_promotion: payload.competitorPromotion,
+        traffic_count: payload.trafficCount || 0,
+        approach_count: payload.approachCount || 0,
+        closed_sales_count: payload.closedSalesCount || 0,
+        price_comp_cellox: payload.priceCompCellox || 0,
+        price_comp_kleenex: payload.priceCompKleenex || 0,
+        price_comp_paseo: payload.priceCompPaseo || 0,
+        feedback_store: payload.feedbackStore || "",
+        competitor_promotion: payload.competitorPromotion || "",
         activity_photos: uploadedActivityPhotos,
         report_date: new Date().toISOString().split("T")[0],
 
-        // 🟢 ข้อมูลบันทึกแคมเปญสินค้าแยกสี
+        // ข้อมูลบันทึกแคมเปญสินค้าแยกสี
         price_our_green90: payload.priceOurGreen90 || 0,
         stock_before_green90: payload.stockBeforeGreen90 || 0,
         sales_qty_green90: payload.salesQtyGreen90 || 0,
@@ -230,7 +232,7 @@ export async function submitFullDailyActivityReportAction(
         sales_qty_orange100: payload.salesQtyOrange100 || 0,
         stock_after_orange100: payload.stockAfterOrange100 || 0,
 
-        // 🟠 ข้อมูลคลังและยอดแจกของแถมเฉพาะสาขาเครือ Tops
+        // ข้อมูลคลังและยอดแจกของแถมเฉพาะสาขาเครือ Tops
         gift_orange_before: payload.giftOrangeBefore || 0,
         gift_orange_given: payload.giftOrangeGiven || 0,
         gift_orange_after: payload.giftOrangeAfter || 0,
@@ -241,53 +243,60 @@ export async function submitFullDailyActivityReportAction(
       .select()
       .single();
 
-    if (reportError) throw reportError;
+    if (reportError) {
+      console.error("Insert main report error:", reportError);
+      throw new Error(`บันทึกตารางหลักไม่สำเร็จ: ${reportError.message}`);
+    }
 
     // สเต็ปที่ 3: จัดการอัปโหลดรูปภาพรายตัวสินค้า 3 ใบ แล้วอัปเดตลงตารางย่อย pg_daily_report_products
-    for (const prod of payload.products) {
-      const imgProductUrl = prod.img_product_base64
-        ? await uploadBase64File(
-            prod.img_product_base64,
-            payload.userId,
-            `prod_${prod.barcode}_item`,
-            supabaseClient,
-          )
-        : null;
+    if (payload.products && Array.isArray(payload.products)) {
+      for (const prod of payload.products) {
+        const imgProductUrl = prod.img_product_base64
+          ? await uploadBase64File(
+              prod.img_product_base64,
+              payload.userId,
+              `prod_${prod.barcode}_item`,
+              supabaseClient,
+            )
+          : null;
 
-      const imgShelfUrl = prod.img_shelf_base64
-        ? await uploadBase64File(
-            prod.img_shelf_base64,
-            payload.userId,
-            `prod_${prod.barcode}_shelf`,
-            supabaseClient,
-          )
-        : null;
+        const imgShelfUrl = prod.img_shelf_base64
+          ? await uploadBase64File(
+              prod.img_shelf_base64,
+              payload.userId,
+              `prod_${prod.barcode}_shelf`,
+              supabaseClient,
+            )
+          : null;
 
-      const imgScannerUrl = prod.img_stock_scanner_base64
-        ? await uploadBase64File(
-            prod.img_stock_scanner_base64,
-            payload.userId,
-            `prod_${prod.barcode}_scanner`,
-            supabaseClient,
-          )
-        : null;
+        const imgScannerUrl = prod.img_stock_scanner_base64
+          ? await uploadBase64File(
+              prod.img_stock_scanner_base64,
+              payload.userId,
+              `prod_${prod.barcode}_scanner`,
+              supabaseClient,
+            )
+          : null;
 
-      const { error: prodInsertError } = await supabaseClient
-        .from("pg_daily_report_products")
-        .insert({
-          report_id: report.id,
-          barcode: prod.barcode,
-          descriptions: prod.descriptions,
-          price_our: prod.price_our,
-          stock_before: prod.stock_before,
-          sales_qty: prod.sales_qty,
-          stock_after: prod.stock_after,
-          img_product: imgProductUrl,
-          img_shelf: imgShelfUrl,
-          img_stock_scanner: imgScannerUrl,
-        });
+        const { error: prodInsertError } = await supabaseClient
+          .from("pg_daily_report_products")
+          .insert({
+            report_id: report.id,
+            barcode: prod.barcode,
+            descriptions: prod.descriptions,
+            price_our: prod.price_our || 0,
+            stock_before: prod.stock_before || 0,
+            sales_qty: prod.sales_qty || 0,
+            stock_after: prod.stock_after || 0,
+            img_product: imgProductUrl,
+            img_shelf: imgShelfUrl,
+            img_stock_scanner: imgScannerUrl,
+          });
 
-      if (prodInsertError) throw prodInsertError;
+        if (prodInsertError) {
+          console.error("Insert product report error:", prodInsertError);
+        }
+      }
     }
 
     return { success: true, reportId: report.id };
