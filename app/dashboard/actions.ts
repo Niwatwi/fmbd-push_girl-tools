@@ -363,15 +363,21 @@ export async function calculateBigCCommission(
   };
 }
 
-// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็ม + ดึงรูปภาพรวมจาก pg_daily_activity_reports และ pg_daily_report_products
+// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็ม + รูปภาพ สำหรับ Customer Portal (ดึงข้อมูลชื่อพนักงานจาก user_profiles)
 export async function getCustomerFullActivityReport() {
   const supabase = getClientInstance();
   try {
     const { data: stores } = await supabase.from("pg_stores").select("*");
     const { data: targets } = await supabase.from("store_targets").select("*");
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, display_name, employee_id");
+    
+    // 🎯 ดึงข้อมูลพนักงานจาก user_profiles
+    const { data: userProfiles, error: userError } = await supabase
+      .from("user_profiles")
+      .select("id, display_name, employee_id, username");
+
+    if (userError) {
+      console.error("Fetch user_profiles for Customer Portal error:", userError);
+    }
 
     const { data: reports, error } = await supabase
       .from("pg_daily_activity_reports")
@@ -386,7 +392,7 @@ export async function getCustomerFullActivityReport() {
       const { data: prodData } = await supabase
         .from("pg_daily_report_products")
         .select(
-          "report_id, barcode, descriptions, img_product, img_shelf, img_stock_scanner",
+          "report_id, barcode, descriptions, img_product, img_shelf, img_stock_scanner"
         )
         .in("report_id", reportIds);
       productItems = prodData || [];
@@ -396,12 +402,16 @@ export async function getCustomerFullActivityReport() {
       const storeCodeStr = String(r.store_code || "").trim();
 
       const masterStore = (stores || []).find(
-        (s) => String(s.store_code).trim() === storeCodeStr,
+        (s) => String(s.store_code).trim() === storeCodeStr
       );
       const targetObj = (targets || []).find(
-        (t) => String(t.store_code).trim() === storeCodeStr,
+        (t) => String(t.store_code).trim() === storeCodeStr
       );
-      const userObj = (profiles || []).find((p) => p.id === r.user_id);
+      
+      // 🎯 จับคู่พนักงานจาก user_profiles ด้วย user_id
+      const userObj = (userProfiles || []).find(
+        (p) => Number(p.id) === Number(r.user_id)
+      );
 
       const finalStoreName =
         masterStore?.store_name ||
@@ -422,7 +432,7 @@ export async function getCustomerFullActivityReport() {
       }
 
       const matchingProdItems = productItems.filter(
-        (p) => p.report_id === r.id,
+        (p) => p.report_id === r.id
       );
       const productPhotos: any[] = [];
 
@@ -470,8 +480,8 @@ export async function getCustomerFullActivityReport() {
       return {
         id: r.id,
         userId: r.user_id,
-        userName: userObj?.display_name || `PG-${r.user_id}`,
-        userEmpId: userObj?.employee_id || `PG-${r.user_id}`,
+        userName: userObj?.display_name || userObj?.username || `PG-${r.user_id}`, // 👈 ชื่อจริงจาก user_profiles
+        userEmpId: userObj?.employee_id || userObj?.username || `PG-${r.user_id}`, // 👈 รหัสพนักงานจริงจาก user_profiles
         storeCode: storeCodeStr,
         storeName: finalStoreName,
         reportDate: r.report_date,
