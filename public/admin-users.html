@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - จัดการพนักงาน | RVI Market Intelligence</title>
+    <link rel="shortcut icon" href="assets/rvp.png" type="image/x-icon">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="js/auth.js"></script>
+
+    <script>
+        const currentUserCode = localStorage.getItem('userCode');
+        const isLoggedIn = localStorage.getItem('isLoggedIn');
+
+        if (isLoggedIn !== 'true') {
+            window.location.href = 'login.html';
+        } else if (currentUserCode !== 'FMBD03' && currentUserCode !== 'admin' && currentUserCode !== 'admin_niwat') {
+            // 💡 เติมให้สิทธิ์สแกนผ่านสำหรับรหัสแอดมินกลางตัวใหม่ 'admin_niwat' ด้วยครับ
+            window.location.href = 'index.html';
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #f8fafc;
+            font-family: 'Kanit', sans-serif;
+        }
+
+        .admin-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+            background: #ffffff;
+        }
+
+        .btn-custom {
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+        .table-responsive {
+            border-radius: 12px;
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body>
+
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">
+                <img src="assets/rvp.png" alt="Logo" height="30" class="d-inline-block align-text-top me-2">
+                RVI Control Center (Admin Mode)
+            </span>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-light btn-sm rounded-pill px-3 shadow-sm" onclick="location.reload()"
+                    title="รีเฟรชหน้าจอ">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <a href="index.html" class="btn btn-outline-light btn-sm btn-custom"><i
+                        class="fas fa-home me-1"></i>กลับหน้าหลัก</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid px-4 mb-5">
+        <div class="row">
+            <div class="col-md-3 mb-4">
+                <div class="card admin-card p-4">
+                    <h5 class="fw-bold text-dark mb-3"><i
+                            class="fas fa-user-plus me-2 text-primary"></i>เพิ่มพนักงานใหม่</h5>
+                    <form id="addUserForm" onsubmit="handleAddUser(event)">
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">รหัสผู้ใช้งาน / รหัสพนักงาน (Username)</label>
+                            <input type="text" id="new_mer_code" class="form-control border-primary"
+                                placeholder="เช่น admin_niwat หรือ M01001" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold text-danger">ชื่อ-นามสกุล (Display Name)</label>
+                            <input type="text" id="new_surveyor_name" class="form-control border-danger"
+                                placeholder="ระบุชื่อ-นามสกุลพนักงาน" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">อีเมล (Email)</label>
+                            <input type="email" id="new_email" class="form-control" placeholder="user@riverpro.co.th">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">เบอร์โทรศัพท์ (Phone)</label>
+                            <input type="tel" id="new_tel" class="form-control" placeholder="065-xxx-xxxx">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">บทบาทสิทธิ์ (Company Tag)</label>
+                            <select id="new_role" class="form-select border-primary" required>
+                                <option value="SURVEYOR">SURVEYOR (พนักงานภาคสนาม/สำรวจ)</option>
+                                <option value="AUDITOR">AUDITOR (พนักงานตรวจสอบบัญชีร้าน)</option>
+                                <option value="ADMIN">ADMIN (ผู้ดูแลระบบส่วนกลาง)</option>
+                                <option value="CUSTOMER">CUSTOMER (ผู้บริหาร / คู่ค้า)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">รหัสผ่านสำหรับเข้าแอป</label>
+                            <div class="input-group">
+                                <input type="text" id="new_password" class="form-control" value="riverpro" required>
+                                <button class="btn btn-outline-secondary" type="button"
+                                    onclick="generateRandomPass()">สุ่ม</button>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 btn-custom mt-2">
+                            <i class="fas fa-save me-1"></i> บันทึกข้อมูลเข้าตารางกลาง
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="col-md-9 text-dark">
+                <div class="card admin-card p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold m-0"><i class="fas fa-users text-primary me-2"></i>รายชื่อพนักงานในระบบร่วม
+                        </h5>
+                        <button class="btn btn-light btn-sm" onclick="fetchUsers()"><i class="fas fa-sync-alt"></i>
+                            รีเฟรชข้อมูล</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <tbody id="userTableBody"></tbody>
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Username (รหัส)</th>
+                                    <th>ชื่อแสดงผล (Display Name)</th>
+                                    <th>สิทธิ์ระบบ (Tag)</th>
+                                    <th>เบอร์ติดต่อ</th>
+                                    <th>จัดการ</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const _supabase = supabase.createClient('https://ryqabfpzjmtujfhslovm.supabase.co', 'sb_publishable_RhkCtuGUUeaG9ScGoyS1vw_zCCDumnl');
+
+        document.addEventListener('DOMContentLoaded', fetchUsers);
+
+        // 1. ฟังก์ชันดึงรายชื่อพนักงานจากตารางกลางใหม่ user_profiles
+        async function fetchUsers() {
+            const { data, error } = await _supabase.from('user_profiles').select('*').order('username');
+            if (error) {
+                console.error("Fetch Error:", error.message);
+                return;
+            }
+
+            const tbody = document.getElementById('userTableBody');
+            tbody.innerHTML = '';
+
+            data.forEach(user => {
+                const tag = user.company_tag || 'SURVEYOR';
+                const badge = tag === 'ADMIN' ? 'bg-danger' : (tag === 'CUSTOMER' ? 'bg-success' : (tag === 'AUDITOR' ? 'bg-purple bg-gradient text-white' : 'bg-info'));
+
+                tbody.innerHTML += `
+                <tr>
+                    <td class="fw-bold text-primary">${user.username}</td>
+                    <td>
+                        <div class="fw-bold">${user.display_name || '-'}</div>
+                        <small class="text-muted">${user.email || ''}</small>
+                    </td>
+                    <td><span class="badge ${badge}">${tag}</span></td>
+                    <td><small>${user.phone || '-'}</small></td>
+                    <td>
+                        <button class="btn btn-warning btn-sm shadow-sm" onclick="resetPassword('${user.username}')" title="เปลี่ยนรหัสผ่าน"><i class="fas fa-key"></i></button>
+                        <button class="btn btn-danger btn-sm shadow-sm" onclick="deleteUser('${user.username}', '${user.display_name}')" title="ลบผู้ใช้"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>`;
+            });
+        }
+
+        function generateRandomPass() {
+            document.getElementById('new_password').value = 'rvp' + Math.floor(100000 + Math.random() * 900000);
+        }
+
+        // 2. ฟังก์ชันเพิ่มพนักงานใหม่ลงตารางกลาง user_profiles
+        async function handleAddUser(event) {
+            event.preventDefault();
+            const { error } = await _supabase.from('user_profiles').insert([{
+                username: document.getElementById('new_mer_code').value.trim(),
+                display_name: document.getElementById('new_surveyor_name').value.trim(),
+                email: document.getElementById('new_email').value.trim(),
+                phone: document.getElementById('new_tel').value.trim(),
+                password_text: document.getElementById('new_password').value.trim(),
+                company_tag: document.getElementById('new_role').value,
+                is_active: true
+            }]);
+
+            if (error) {
+                console.error(error);
+                Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: 'ข้อมูลซ้ำ หรือขัดข้องกรุณาเช็ค RLS Policy' });
+            } else {
+                Swal.fire({ icon: 'success', title: 'บันทึกเข้าเซิร์ฟเวอร์ร่วมสำเร็จ', timer: 1500, showConfirmButton: false });
+                document.getElementById('addUserForm').reset();
+                fetchUsers();
+            }
+        }
+
+        // 3. ฟังก์ชันแก้ไข/รีเซ็ตรหัสผ่านแบบด่วนผ่านปุ่มคีย์
+        async function resetPassword(username) {
+            const { value: newPassword } = await Swal.fire({
+                title: `เปลี่ยนรหัสผ่านของ ${username}`,
+                input: 'text',
+                inputLabel: 'ระบุรหัสผ่านรหัสใหม่',
+                inputValue: 'riverpro',
+                showCancelButton: true,
+                inputValidator: (value) => {
+                    if (!value) return 'กรุณากรอกรหัสผ่านใหม่ก่อนบันทึก!'
+                }
+            });
+
+            if (newPassword) {
+                const { error } = await _supabase
+                    .from('user_profiles')
+                    .update({ password_text: newPassword.trim() })
+                    .eq('username', username);
+
+                if (error) {
+                    Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: error.message });
+                } else {
+                    Swal.fire({ icon: 'success', title: 'อัปเดตรหัสผ่านใหม่เรียบร้อย', timer: 1500, showConfirmButton: false });
+                }
+            }
+        }
+
+        // 4. ฟังก์ชันลบผู้ใช้งานออกจากตารางกลาง
+        async function deleteUser(username, displayName) {
+            Swal.fire({
+                title: 'ยืนยันการลบผู้ใช้?',
+                text: `คุณต้องการลบคุณ ${displayName} (${username}) ออกจากตารางกลางใช่หรือไม่?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'ใช่, สั่งลบข้อมูล',
+                cancelButtonText: 'ยกเลิก'
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    const { error } = await _supabase
+                        .from('user_profiles')
+                        .delete()
+                        .eq('username', username);
+
+                    if (error) {
+                        Swal.fire({ icon: 'error', title: 'ลบล้มเหลว', text: error.message });
+                    } else {
+                        Swal.fire({ icon: 'success', title: 'ลบข้อมูลสำเร็จแล้ว', timer: 1500, showConfirmButton: false });
+                        fetchUsers();
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>
