@@ -17,7 +17,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
+        <div className="min-h-screen bg-indigo-700 flex items-center justify-center font-sans">
           <div className="text-center space-y-2">
             <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
             <p className="text-xs text-slate-500 font-bold">

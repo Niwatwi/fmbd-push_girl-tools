@@ -200,7 +200,7 @@ export default function CustomerReportPortal() {
     totalApproach > 0 ? Math.round((totalClosed / totalApproach) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans antialiased pb-12">
+    <div className="min-h-screen bg-blue-400 text-slate-800 font-sans antialiased pb-12">
       {/* 🛑 CSS PRINT STYLING FOR FULL-COLUMN PDF PRINT */}
       <style jsx global>{`
         @media print {
@@ -251,7 +251,7 @@ export default function CustomerReportPortal() {
       `}</style>
 
       {/* NAV BAR */}
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs no-print">
+      <nav className="bg-green-300 border-b border-slate-200 sticky top-0 z-40 shadow-xs no-print">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-blue-600 text-white p-2 rounded-xl">

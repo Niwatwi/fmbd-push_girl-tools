@@ -190,7 +190,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-slate-500">
+      <div className="min-h-screen bg-blue-800 flex items-center justify-center p-6 text-slate-500">
         <div className="text-center space-y-2">
           <RefreshCw size={24} className="animate-spin text-blue-600 mx-auto" />
           <p className="text-xs font-bold">กำลังโหลดข้อมูลแดชบอร์ดส่วนตัว...</p>
