@@ -1074,7 +1074,6 @@ export default function DailyReportPage() {
                             <input
                               type="file"
                               accept="image/*"
-                              capture="environment"
                               className="hidden"
                               onChange={(e) =>
                                 handleProductPhotoChange(
@@ -1108,7 +1107,6 @@ export default function DailyReportPage() {
                             <input
                               type="file"
                               accept="image/*"
-                              capture="environment"
                               className="hidden"
                               onChange={(e) =>
                                 handleProductPhotoChange(
@@ -1142,7 +1140,6 @@ export default function DailyReportPage() {
                             <input
                               type="file"
                               accept="image/*"
-                              capture="environment"
                               className="hidden"
                               onChange={(e) =>
                                 handleProductPhotoChange(
@@ -1300,7 +1297,6 @@ export default function DailyReportPage() {
                     <input
                       type="file"
                       accept={photo.accept}
-                      capture="environment"
                       className="hidden"
                       onChange={async (e) =>
                         handleActivityPhotoChange(
