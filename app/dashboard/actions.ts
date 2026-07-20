@@ -524,3 +524,96 @@ export async function getCustomerFullActivityReport() {
     return { success: false, data: [], message: error.message };
   }
 }
+
+// 10. 📅 ดึงรายงาน Time Attendance & Expense สำหรับส่งฝ่ายบัญชี
+export async function getAdminAttendanceExpenseReportAction(params?: {
+  startDate?: string;
+  endDate?: string;
+  storeCode?: string;
+}) {
+  const supabase = getClientInstance();
+  try {
+    // 🎯 1. ดึงข้อมูลพนักงานจากตาราง user_profiles
+    const { data: userProfiles, error: userError } = await supabase
+      .from("user_profiles")
+      .select(
+        "id, display_name, employee_id, username, base_salary, company_tag",
+      );
+
+    if (userError) {
+      console.error("Fetch user_profiles error:", userError);
+    }
+
+    // 🎯 2. ดึงข้อมูลการลงเวลาทำงาน
+    let query = supabase
+      .from("pg_attendance_logs")
+      .select("*")
+      .order("check_in_at", { ascending: false });
+
+    if (params?.startDate) {
+      query = query.gte("check_in_at", `${params.startDate}T00:00:00+07:00`);
+    }
+    if (params?.endDate) {
+      query = query.lte("check_in_at", `${params.endDate}T23:59:59+07:00`);
+    }
+    if (params?.storeCode && params.storeCode !== "ALL") {
+      query = query.eq("store_code", params.storeCode);
+    }
+
+    const { data: logs, error } = await query;
+    if (error) throw error;
+
+    // 🎯 3. Map ข้อมูลลงเวลาเข้ากับ user_profiles
+    const formattedLogs = (logs || []).map((log) => {
+      // ค้นหาพนักงานจาก user_profiles โดยจับคู่ id
+      const userObj = (userProfiles || []).find((p) => p.id === log.user_id);
+
+      // ดึงชื่อ และ รหัสพนักงาน จาก user_profiles
+      const empDisplayName =
+        userObj?.display_name || userObj?.username || `PG-${log.user_id}`;
+      const empCode =
+        userObj?.employee_id || userObj?.username || `PG-${log.user_id}`;
+
+      // คำนวณระยะเวลาทำงาน (ชั่วโมง)
+      let workedHours = 0;
+      if (log.check_in_at && log.check_out_at) {
+        const checkIn = new Date(log.check_in_at).getTime();
+        const checkOut = new Date(log.check_out_at).getTime();
+        const diffMs = checkOut - checkIn;
+        workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(1));
+      }
+
+      // ดึงค่าแรงรายวันจาก base_salary ใน user_profiles ( default 700 บาท)
+      const wageRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
+      const dailyWage = log.check_in_at ? wageRate : 0;
+
+      return {
+        id: log.id,
+        userId: log.user_id,
+        empId: empCode, // 👈 แสดงรหัสพนักงานจริง (เช่น PGBC01)
+        displayName: empDisplayName, // 👈 แสดงชื่อ-นามสกุลจริง (เช่น นางสาวสุนทรี สันทรนาถ)
+        storeCode: log.store_code || "-",
+        storeName: log.store_name || log.store_code || "-",
+        checkInAt: log.check_in_at
+          ? new Date(log.check_in_at).toLocaleString("th-TH")
+          : "-",
+        checkOutAt: log.check_out_at
+          ? new Date(log.check_out_at).toLocaleString("th-TH")
+          : "ยังไม่เลิกงาน",
+        checkInDateRaw: log.check_in_at ? log.check_in_at.split("T")[0] : "-",
+        workedHours: workedHours > 0 ? workedHours : "-",
+        checkInLat: log.check_in_lat || "-",
+        checkInLon: log.check_in_lon || "-",
+        checkInPhoto: log.check_in_photo || null,
+        checkOutPhoto: log.check_out_photo || null,
+        dailyWage: dailyWage,
+        totalExpense: dailyWage,
+      };
+    });
+
+    return { success: true, data: formattedLogs };
+  } catch (error: any) {
+    console.error("Fetch attendance expense report error:", error);
+    return { success: false, data: [], message: error.message };
+  }
+}
