@@ -25,6 +25,17 @@ import {
 } from "@/app/dashboard/actions";
 import { useRouter } from "next/navigation";
 
+// 🔍 Helper เช็คว่าเป็น BigC หรือไม่ (ลบเว้นวรรค + ตัวพิมพ์เล็ก)
+const checkIsBigC = (code: string = "", name: string = "") => {
+  const cleanCode = code.toLowerCase().replace(/\s+/g, "");
+  const cleanName = name.toLowerCase().replace(/\s+/g, "");
+  return (
+    cleanCode.includes("pgbc") ||
+    cleanCode.includes("bigc") ||
+    cleanName.includes("bigc")
+  );
+};
+
 export default function AdminTargetManagement() {
   const router = useRouter();
   const [targetsList, setTargetsList] = useState<any[]>([]);
@@ -33,35 +44,36 @@ export default function AdminTargetManagement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // States สำหรับตั้งเป้าหมายระดับร้านค้า (Store Target)
+  // States สำหรับร้านค้าและสัดส่วนเป้าหมาย SKU
   const [storeCode, setStoreCode] = useState("");
   const [storeName, setStoreName] = useState("");
-  const [targetSets, setTargetSets] = useState<number>(60); // เป้าหมายจำนวนชุด (default 60)
-  const [targetRevenue, setTargetRevenue] = useState<number>(8760); // เป้าหมายยอดขาย (บาท)
+
+  const [targetGreen, setTargetGreen] = useState<number>(30);
+  const [targetBlue, setTargetBlue] = useState<number>(30);
+  const [targetOrange, setTargetOrange] = useState<number>(0);
+
+  const PRICE_GREEN = 150;
+  const PRICE_BLUE = 142;
+  const PRICE_ORANGE = 100;
 
   const [isEditing, setIsEditing] = useState(false);
 
-  // 🔍 เช็คประเภทห้างจาก storeCode หรือ storeName
-  const isBigC =
-    storeCode.toLowerCase().includes("pgbc") ||
-    storeCode.toLowerCase().includes("bigc") ||
-    storeName.toLowerCase().includes("bigc");
+  // 🔍 เช็คประเภทห้าง
+  const isBigC = checkIsBigC(storeCode, storeName);
 
-  const isTops =
-    storeCode.toLowerCase().includes("pgto") ||
-    storeCode.toLowerCase().includes("tops") ||
-    storeName.toLowerCase().includes("tops");
+  // 🧮 คำนวณจำนวนชุดที่นับเข้า Target 60 ชุด ตาม Rule
+  const targetSetsCounted = isBigC
+    ? targetGreen + targetBlue
+    : targetGreen + targetBlue + targetOrange;
 
-  // คำนวณจำนวนชิ้นอัตโนมัติ (1 แถม 1 = 2 ชิ้นต่อชุด)
-  const totalPacksIncludeFree = targetSets * 2;
+  // 🧮 คำนวณมูลค่าเป้ารวม (บาท) อัตโนมัติจากราคาจริงของแต่ละ SKU
+  const totalCalculatedRevenue =
+    targetGreen * PRICE_GREEN +
+    targetBlue * PRICE_BLUE +
+    targetOrange * PRICE_ORANGE;
 
-  // คำนวณมูลค่าประมาณการตาม Rule เมื่อเปลี่ยนจำนวนชุด
-  const recalculateRevenue = (sets: number, isBigCStore: boolean) => {
-    // BigC: ราคาเฉลี่ย เขียว (150) + ฟ้า (142) / 2 = 146 บาท/ชุด
-    // Tops: ราคาเฉลี่ย เขียว (150) + ฟ้า (142) + ส้ม (100) / 3 = 130.67 บาท/ชุด
-    const avgPrice = isBigCStore ? 146 : 130.67;
-    return Math.round(sets * avgPrice);
-  };
+  // จำนวนชิ้นรวม (โปร 1 แถม 1 = 2 ชิ้น/ชุด)
+  const totalPacksIncludeFree = (targetGreen + targetBlue + targetOrange) * 2;
 
   const initPageData = async () => {
     setLoading(true);
@@ -77,52 +89,34 @@ export default function AdminTargetManagement() {
     initPageData();
   }, []);
 
-  // 🔄 เลือกสาขา -> คำนวณ Preset เป้าหมายอัตโนมัติ
+  // 🔄 เลือกสาขา -> โหลด Preset Target สัดส่วนตามประเภทห้าง
   const handleStoreChange = (selectedCode: string) => {
     setStoreCode(selectedCode);
     const foundStore = masterStores.find((s) => s.store_code === selectedCode);
     const name = foundStore ? foundStore.store_name : "";
     setStoreName(name);
 
-    const checkBigC =
-      selectedCode.toLowerCase().includes("pgbc") ||
-      selectedCode.toLowerCase().includes("bigc") ||
-      name.toLowerCase().includes("bigc");
-
-    setTargetSets(60);
-    setTargetRevenue(recalculateRevenue(60, checkBigC));
-  };
-
-  const handleSetsChange = (sets: number) => {
-    setTargetSets(sets);
-    setTargetRevenue(recalculateRevenue(sets, isBigC));
+    const isBigCStore = checkIsBigC(selectedCode, name);
+    if (isBigCStore) {
+      // BigC Standard: เขียว 30 + ฟ้า 30 = 60 ชุด (8,760 บาท)
+      setTargetGreen(30);
+      setTargetBlue(30);
+      setTargetOrange(0);
+    } else {
+      // Tops Standard: เขียว 20 + ฟ้า 20 + ส้ม 20 = 60 ชุด (7,840 บาท)
+      setTargetGreen(20);
+      setTargetBlue(20);
+      setTargetOrange(20);
+    }
   };
 
   const handleEditClick = (item: any) => {
     setIsEditing(true);
     setStoreCode(item.store_code);
     setStoreName(item.store_name);
-
-    const isBigCStore =
-      item.store_code?.toLowerCase().includes("pgbc") ||
-      item.store_code?.toLowerCase().includes("bigc") ||
-      item.store_name?.toLowerCase().includes("bigc");
-
-    const green = Number(item.target_green90 || 0);
-    const blue = Number(item.target_blue90 || 0);
-    const orange = Number(item.target_orange100 || 0);
-
-    const calculatedSets = isBigCStore
-      ? green + blue || (item.target_packs ? Number(item.target_packs) / 2 : 60)
-      : green + blue + orange ||
-        (item.target_packs ? Number(item.target_packs) / 2 : 60);
-
-    setTargetSets(calculatedSets);
-    setTargetRevenue(
-      Number(
-        item.target_revenue || recalculateRevenue(calculatedSets, isBigCStore),
-      ),
-    );
+    setTargetGreen(Number(item.target_green90 || 0));
+    setTargetBlue(Number(item.target_blue90 || 0));
+    setTargetOrange(Number(item.target_orange100 || 0));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -159,8 +153,9 @@ export default function AdminTargetManagement() {
     setIsEditing(false);
     setStoreCode("");
     setStoreName("");
-    setTargetSets(60);
-    setTargetRevenue(8760);
+    setTargetGreen(30);
+    setTargetBlue(30);
+    setTargetOrange(0);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -175,25 +170,15 @@ export default function AdminTargetManagement() {
     }
 
     setIsSubmitting(true);
-
-    // กระจายสัดส่วนลง SKU อัตโนมัติรองรับตาราง Database เดิม
-    const greenSplit = isBigC
-      ? Math.round(targetSets / 2)
-      : Math.round(targetSets / 3);
-    const blueSplit = isBigC
-      ? targetSets - greenSplit
-      : Math.round(targetSets / 3);
-    const orangeSplit = isBigC ? 0 : targetSets - greenSplit - blueSplit;
-
     const res = await saveStoreTargetAction({
       store_code: storeCode,
       store_name: storeName,
-      target_green90: greenSplit,
-      target_blue90: blueSplit,
-      target_orange100: orangeSplit,
-      price_green90: 150,
-      price_blue90: 142,
-      price_orange100: 100,
+      target_green90: targetGreen,
+      target_blue90: targetBlue,
+      target_orange100: targetOrange,
+      price_green90: PRICE_GREEN,
+      price_blue90: PRICE_BLUE,
+      price_orange100: PRICE_ORANGE,
     });
     setIsSubmitting(false);
 
@@ -231,7 +216,7 @@ export default function AdminTargetManagement() {
                 BACKEND MANAGEMENT
               </span>
               <span className="text-sm font-black text-slate-800 block -mt-0.5">
-                ระบบจัดการ Target ประจำสาขา (Store Target Management)
+                ระบบจัดการ Target ประจำสาขา (BigC / Tops Rules)
               </span>
             </div>
           </div>
@@ -319,7 +304,7 @@ export default function AdminTargetManagement() {
                         เกณฑ์ BigC Target:
                       </span>
                       <span>
-                        นับรวมเฉพาะ <b>สีเขียว + สีฟ้า</b> (เป้า 60 ชุด/วัน)
+                        นับรวมเฉพาะ <b>เขียว + ฟ้า = 60 ชุด/วัน</b>
                       </span>
                     </div>
                   </div>
@@ -334,7 +319,7 @@ export default function AdminTargetManagement() {
                         เกณฑ์ Tops Target:
                       </span>
                       <span>
-                        นับรวม <b>สีเขียว + สีฟ้า + สีส้ม</b> (เป้า 60 ชุด/วัน)
+                        นับรวม <b>เขียว + ฟ้า + ส้ม = 60 ชุด/วัน</b>
                       </span>
                     </div>
                   </div>
@@ -342,46 +327,77 @@ export default function AdminTargetManagement() {
               </div>
             )}
 
-            {/* กำหนดเป้าหมายระดับร้านค้า (Store Target Inputs) */}
+            {/* ส่วนปรับสัดส่วน SKU สินค้า */}
             <div className="space-y-3 pt-2 border-t border-slate-100">
               <span className="text-[11px] font-black text-slate-700 block">
-                🎯 กำหนดเป้าหมายรวมประจำสาขา (Store Target)
+                🎯 กำหนดสัดส่วนสินค้าประจำสาขา (จำนวนชุด/วัน)
               </span>
 
-              {/* จำนวนชุดเป้าหมาย */}
+              {/* สีเขียว 90 */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 block">
-                  เป้าหมายการขายประจำสาขา (จำนวนชุด)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={targetSets}
-                  onChange={(e) => handleSetsChange(Number(e.target.value))}
-                  className="w-full px-3 py-2 border rounded-xl text-xs font-mono font-black text-slate-800 bg-slate-50 focus:bg-white focus:outline-hidden focus:border-blue-500"
-                />
-              </div>
-
-              {/* เป้าหมายยอดขาย (บาท) */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 block">
-                  เป้าหมายมูลค่าขายรวม (บาท)
-                </label>
+                <div className="flex justify-between text-[10px] font-bold">
+                  <span className="text-emerald-700 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    สีเขียว 90 (ชุด)
+                  </span>
+                  <span className="text-slate-400">@ {PRICE_GREEN} ฿</span>
+                </div>
                 <input
                   type="number"
                   min="0"
-                  value={targetRevenue}
-                  onChange={(e) => setTargetRevenue(Number(e.target.value))}
-                  className="w-full px-3 py-2 border rounded-xl text-xs font-mono font-black text-emerald-600 bg-emerald-50/30 focus:bg-white focus:outline-hidden focus:border-emerald-500"
+                  value={targetGreen}
+                  onChange={(e) => setTargetGreen(Number(e.target.value))}
+                  className="w-full px-3 py-1.5 border rounded-xl text-xs font-mono font-bold text-slate-800 bg-emerald-50/30 focus:bg-white focus:outline-hidden focus:border-emerald-500"
+                />
+              </div>
+
+              {/* สีฟ้า 90 */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold">
+                  <span className="text-blue-700 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    สีฟ้า 90 (ชุด)
+                  </span>
+                  <span className="text-slate-400">@ {PRICE_BLUE} ฿</span>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  value={targetBlue}
+                  onChange={(e) => setTargetBlue(Number(e.target.value))}
+                  className="w-full px-3 py-1.5 border rounded-xl text-xs font-mono font-bold text-slate-800 bg-blue-50/30 focus:bg-white focus:outline-hidden focus:border-blue-500"
+                />
+              </div>
+
+              {/* สีส้ม 100 */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold">
+                  <span className="text-orange-700 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                    สีส้ม 100 (ชุด)
+                    {isBigC && (
+                      <span className="text-[9px] text-rose-500 font-normal">
+                        (ไม่นับใน Target)
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-slate-400">@ {PRICE_ORANGE} ฿</span>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  value={targetOrange}
+                  onChange={(e) => setTargetOrange(Number(e.target.value))}
+                  className="w-full px-3 py-1.5 border rounded-xl text-xs font-mono font-bold text-slate-800 bg-orange-50/30 focus:bg-white focus:outline-hidden focus:border-orange-500"
                 />
               </div>
             </div>
 
-            {/* กล่องสรุปผลคำนวณอัตโนมัติ */}
+            {/* กล่องสรุปผลคำนวณอัตโนมัติจากราคา SKU จริง */}
             <div className="bg-slate-900 text-white p-3.5 rounded-xl space-y-2 text-[11px]">
               <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
                 <div className="flex items-center gap-1 text-amber-400 font-bold">
-                  <Calculator size={13} /> สรุปยอดเป้าหมายสาขา
+                  <Calculator size={13} /> สรุปผลคำนวณอัตโนมัติ
                 </div>
                 {storeCode && (
                   <span
@@ -397,25 +413,29 @@ export default function AdminTargetManagement() {
               </div>
 
               <div className="flex justify-between font-bold">
-                <span className="text-slate-400">เป้าหมายยอดขาย:</span>
-                <span className="text-amber-300 font-mono text-xs">
-                  {targetSets.toLocaleString()} ชุด / วัน
+                <span className="text-slate-400">ยอดนับ Target 60 ชุด:</span>
+                <span
+                  className={`font-mono text-xs font-black ${
+                    targetSetsCounted >= 60
+                      ? "text-emerald-400"
+                      : "text-amber-400"
+                  }`}
+                >
+                  {targetSetsCounted.toLocaleString()} / 60 ชุด
                 </span>
               </div>
 
               <div className="flex justify-between font-bold">
-                <span className="text-slate-400">
-                  คิดเป็นจำนวนชิ้น (1 แถม 1):
-                </span>
+                <span className="text-slate-400">รวมชิ้น (คิด 1 แถม 1):</span>
                 <span className="text-white font-mono">
                   {totalPacksIncludeFree.toLocaleString()} ชิ้น
                 </span>
               </div>
 
-              <div className="flex justify-between font-bold">
-                <span className="text-slate-400">รวมเป้าหมายมูลค่าขาย:</span>
+              <div className="flex justify-between font-bold pt-1 border-t border-slate-800/60">
+                <span className="text-slate-300">เป้าหมายมูลค่าขายรวม:</span>
                 <span className="text-emerald-400 font-mono font-black text-xs">
-                  {targetRevenue.toLocaleString()} ฿
+                  {totalCalculatedRevenue.toLocaleString()} ฿
                 </span>
               </div>
             </div>
@@ -449,8 +469,7 @@ export default function AdminTargetManagement() {
                 รายการเป้าหมายแต่ละร้านค้าในระบบปัจจุบัน
               </h3>
               <p className="text-[11px] text-slate-400 font-bold">
-                สรุปเป้าหมายระดับสาขา (Store Target) พร้อมจำนวนชิ้นโปรโมชัน 1
-                แถม 1
+                คำนวณมูลค่ารวม (บาท) จากราคาสินค้าแต่ละ SKU โดยตรง
               </p>
             </div>
 
@@ -497,37 +516,35 @@ export default function AdminTargetManagement() {
                   <tr>
                     <th className="p-3 font-bold">สาขา / รหัส</th>
                     <th className="p-3 font-bold text-center">ประเภทเกณฑ์</th>
-                    <th className="p-3 font-bold text-center">
-                      เป้าหมาย (ชุด)
-                    </th>
-                    <th className="p-3 font-bold text-center">
-                      เป้าหมาย (ชิ้น)
-                    </th>
+                    <th className="p-3 font-bold text-center">ยอดนับ Target</th>
+                    <th className="p-3 font-bold text-center">รวมชิ้น (แถม)</th>
                     <th className="p-3 font-bold text-right">เป้ารวม (บาท)</th>
                     <th className="p-3 font-bold text-center">การจัดการ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {filteredTargets.map((item) => {
-                    const isRowBigC =
-                      item.store_code?.toLowerCase().includes("pgbc") ||
-                      item.store_code?.toLowerCase().includes("bigc") ||
-                      item.store_name?.toLowerCase().includes("bigc");
+                    const isRowBigC = checkIsBigC(
+                      item.store_code,
+                      item.store_name,
+                    );
 
                     const greenVal = Number(item.target_green90 || 0);
                     const blueVal = Number(item.target_blue90 || 0);
                     const orangeVal = Number(item.target_orange100 || 0);
 
-                    // คำนวณจำนวนชุดเป้าหมายรวม
+                    // ยอดนับ Target ตาม Rule เกณฑ์ห้าง
                     const rowTargetSets = isRowBigC
-                      ? greenVal + blueVal ||
-                        (item.target_packs ? Number(item.target_packs) / 2 : 60)
-                      : greenVal + blueVal + orangeVal ||
-                        (item.target_packs
-                          ? Number(item.target_packs) / 2
-                          : 60);
+                      ? greenVal + blueVal
+                      : greenVal + blueVal + orangeVal;
 
-                    const rowTargetPacks = rowTargetSets * 2;
+                    const rowTotalPacks = (greenVal + blueVal + orangeVal) * 2;
+
+                    // คำนวณมูลค่าขายรวมตามราคาแต่ละ SKU
+                    const rowCalculatedRevenue =
+                      greenVal * PRICE_GREEN +
+                      blueVal * PRICE_BLUE +
+                      orangeVal * PRICE_ORANGE;
 
                     return (
                       <tr
@@ -559,10 +576,10 @@ export default function AdminTargetManagement() {
                           </span>
                         </td>
                         <td className="p-3 text-center font-mono font-bold text-amber-600">
-                          {rowTargetPacks.toLocaleString()} ชิ้น
+                          {rowTotalPacks.toLocaleString()} ชิ้น
                         </td>
                         <td className="p-3 text-right font-mono font-black text-emerald-600">
-                          {Number(item.target_revenue || 0).toLocaleString()} ฿
+                          {rowCalculatedRevenue.toLocaleString()} ฿
                         </td>
                         <td className="p-3 text-center">
                           <div className="flex items-center justify-center gap-1">
