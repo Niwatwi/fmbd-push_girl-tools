@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Target,
   Store,
@@ -14,6 +15,7 @@ import {
   Trash2,
   Search,
   Calculator,
+  ArrowLeft,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import {
@@ -187,12 +189,23 @@ export default function AdminTargetManagement() {
               </span>
             </div>
           </div>
-          <button
-            onClick={() => router.push("/customer-portal")}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-xl transition cursor-pointer"
-          >
-            <LayoutDashboard size={14} /> กลับหน้าดูรีพอร์ตรวม
-          </button>
+
+          <div className="flex items-center gap-2">
+            {/* ⬅️ ปุ่มกลับหน้าหลัก ADMIN */}
+            <Link
+              href="/admin"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition cursor-pointer"
+            >
+              <ArrowLeft size={14} /> หน้าหลัก Admin
+            </Link>
+
+            <button
+              onClick={() => router.push("/customer-portal")}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+            >
+              <LayoutDashboard size={14} /> ดูรีพอร์ตรวม
+            </button>
+          </div>
         </div>
       </nav>
 

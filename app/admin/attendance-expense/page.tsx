@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Calendar,
   Clock,
@@ -14,6 +15,7 @@ import {
   Building2,
   MapPin,
   ExternalLink,
+  ArrowLeft,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { getAdminAttendanceExpenseReportAction } from "@/app/dashboard/actions";
@@ -191,6 +193,14 @@ export default function AdminAttendanceExpensePage() {
           </div>
 
           <div className="flex items-center gap-2 no-print">
+            {/* ⬅️ ปุ่มกลับหน้าหลัก ADMIN */}
+            <Link
+              href="/admin"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition cursor-pointer shadow-xs"
+            >
+              <ArrowLeft size={14} /> หน้าหลัก Admin
+            </Link>
+
             <button
               onClick={exportToExcel}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs"
