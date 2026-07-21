@@ -77,7 +77,17 @@ export async function getCustomerSalesVsTargetReport() {
         (sum, r) => sum + Number(r.sales_qty_orange100 || 0),
         0,
       );
-      const totalActualPacks = actualGreen + actualBlue + actualOrange;
+
+      // 🎯 เช็คเงื่อนไข BigC vs Tops
+      const isBigC =
+        target.store_code.toLowerCase().includes("pgbc") ||
+        target.store_code.toLowerCase().includes("bigc") ||
+        (target.store_name || "").toLowerCase().includes("bigc");
+
+      // BigC = นับเฉพาะ เขียว + ฟ้า | Tops = นับ เขียว + ฟ้า + ส้ม
+      const totalActualPacks = isBigC
+        ? actualGreen + actualBlue
+        : actualGreen + actualBlue + actualOrange;
 
       return {
         storeCode: target.store_code,
@@ -118,7 +128,7 @@ export async function getStoreTargets() {
   }
 }
 
-// 4. บันทึกหรืออัปเดตข้อมูลเป้าหมายสาขาแบบแยกราย SKU
+// 4. บันทึกหรืออัปเดตข้อมูลเป้าหมายสาขาแบบแยกราย SKU (พร้อม BigC / Tops Logic)
 export async function saveStoreTargetAction(payload: {
   store_code: string;
   store_name: string;
@@ -139,8 +149,15 @@ export async function saveStoreTargetAction(payload: {
     const priceBlue = Number(payload.price_blue90 || 142);
     const priceOrange = Number(payload.price_orange100 || 100);
 
-    const totalSets = green + blue + orange;
-    const totalPacks = totalSets * 2;
+    // 🎯 ตรวจสอบประเภทสาขา
+    const isBigC =
+      payload.store_code.toLowerCase().includes("pgbc") ||
+      payload.store_code.toLowerCase().includes("bigc") ||
+      payload.store_name.toLowerCase().includes("bigc");
+
+    // BigC = นับ Target เฉพาะ เขียว + ฟ้า | Tops = นับ เขียว + ฟ้า + ส้ม
+    const targetSetsCounted = isBigC ? green + blue : green + blue + orange;
+    const totalPacks = targetSetsCounted * 2; // โปร 1 แถม 1 = 2 ชิ้น
 
     const totalRevenue =
       green * priceGreen + blue * priceBlue + orange * priceOrange;
@@ -295,7 +312,7 @@ export async function deleteStoreTargetAction(storeCode: string) {
   }
 }
 
-// 8. คำนวณ Commission ประจำสัปดาห์ (สำหรับพนักงาน PC Big C)
+// 8. คำนวณ Commission ประจำสัปดาห์ (แยก BigC vs Tops)
 export interface CommissionResult {
   totalSetsSold: number;
   totalPacksSold: number;
@@ -312,12 +329,23 @@ export async function calculateBigCCommission(
   blueQty: number = 0,
   orangeQty: number = 0,
   workingDays: number = 3,
+  storeCodeOrName: string = "", // 👈 รับพารามิเตอร์สาขาเพื่อเช็ค Logic BigC / Tops
 ): Promise<CommissionResult> {
-  const totalSetsSold = Number(greenQty) + Number(blueQty) + Number(orangeQty);
-  const totalPacksSold = totalSetsSold * 2;
+  const isBigC =
+    storeCodeOrName.toLowerCase().includes("pgbc") ||
+    storeCodeOrName.toLowerCase().includes("bigc") ||
+    storeCodeOrName.toLowerCase().includes("big");
 
-  const target80Sets = 45 * workingDays;
-  const target100Sets = 60 * workingDays;
+  // 🎯 BigC = นับเฉพาะ เขียว + ฟ้า | Tops = นับ เขียว + ฟ้า + ส้ม
+  const totalSetsSold = isBigC
+    ? Number(greenQty) + Number(blueQty)
+    : Number(greenQty) + Number(blueQty) + Number(orangeQty);
+
+  const totalPacksSold =
+    (Number(greenQty) + Number(blueQty) + Number(orangeQty)) * 2;
+
+  const target80Sets = 45 * workingDays; // เกณฑ์ 80% (45 ชุด/วัน)
+  const target100Sets = 60 * workingDays; // เกณฑ์ 100% (60 ชุด/วัน)
 
   const baseSalary = workingDays * 700;
   let incentiveAmount = 0;
@@ -369,14 +397,16 @@ export async function getCustomerFullActivityReport() {
   try {
     const { data: stores } = await supabase.from("pg_stores").select("*");
     const { data: targets } = await supabase.from("store_targets").select("*");
-    
-    // 🎯 ดึงข้อมูลพนักงานจาก user_profiles
+
     const { data: userProfiles, error: userError } = await supabase
       .from("user_profiles")
       .select("id, display_name, employee_id, username");
 
     if (userError) {
-      console.error("Fetch user_profiles for Customer Portal error:", userError);
+      console.error(
+        "Fetch user_profiles for Customer Portal error:",
+        userError,
+      );
     }
 
     const { data: reports, error } = await supabase
@@ -392,7 +422,7 @@ export async function getCustomerFullActivityReport() {
       const { data: prodData } = await supabase
         .from("pg_daily_report_products")
         .select(
-          "report_id, barcode, descriptions, img_product, img_shelf, img_stock_scanner"
+          "report_id, barcode, descriptions, img_product, img_shelf, img_stock_scanner",
         )
         .in("report_id", reportIds);
       productItems = prodData || [];
@@ -402,15 +432,14 @@ export async function getCustomerFullActivityReport() {
       const storeCodeStr = String(r.store_code || "").trim();
 
       const masterStore = (stores || []).find(
-        (s) => String(s.store_code).trim() === storeCodeStr
+        (s) => String(s.store_code).trim() === storeCodeStr,
       );
       const targetObj = (targets || []).find(
-        (t) => String(t.store_code).trim() === storeCodeStr
+        (t) => String(t.store_code).trim() === storeCodeStr,
       );
-      
-      // 🎯 จับคู่พนักงานจาก user_profiles ด้วย user_id
+
       const userObj = (userProfiles || []).find(
-        (p) => Number(p.id) === Number(r.user_id)
+        (p) => Number(p.id) === Number(r.user_id),
       );
 
       const finalStoreName =
@@ -432,7 +461,7 @@ export async function getCustomerFullActivityReport() {
       }
 
       const matchingProdItems = productItems.filter(
-        (p) => p.report_id === r.id
+        (p) => p.report_id === r.id,
       );
       const productPhotos: any[] = [];
 
@@ -480,8 +509,10 @@ export async function getCustomerFullActivityReport() {
       return {
         id: r.id,
         userId: r.user_id,
-        userName: userObj?.display_name || userObj?.username || `PG-${r.user_id}`, // 👈 ชื่อจริงจาก user_profiles
-        userEmpId: userObj?.employee_id || userObj?.username || `PG-${r.user_id}`, // 👈 รหัสพนักงานจริงจาก user_profiles
+        userName:
+          userObj?.display_name || userObj?.username || `PG-${r.user_id}`,
+        userEmpId:
+          userObj?.employee_id || userObj?.username || `PG-${r.user_id}`,
         storeCode: storeCodeStr,
         storeName: finalStoreName,
         reportDate: r.report_date,
@@ -543,7 +574,6 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
 }) {
   const supabase = getClientInstance();
   try {
-    // 🎯 1. ดึงข้อมูลพนักงานจากตาราง user_profiles
     const { data: userProfiles, error: userError } = await supabase
       .from("user_profiles")
       .select(
@@ -554,7 +584,6 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
       console.error("Fetch user_profiles error:", userError);
     }
 
-    // 🎯 2. ดึงข้อมูลการลงเวลาทำงาน
     let query = supabase
       .from("pg_attendance_logs")
       .select("*")
@@ -573,18 +602,14 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
     const { data: logs, error } = await query;
     if (error) throw error;
 
-    // 🎯 3. Map ข้อมูลลงเวลาเข้ากับ user_profiles
     const formattedLogs = (logs || []).map((log) => {
-      // ค้นหาพนักงานจาก user_profiles โดยจับคู่ id
       const userObj = (userProfiles || []).find((p) => p.id === log.user_id);
 
-      // ดึงชื่อ และ รหัสพนักงาน จาก user_profiles
       const empDisplayName =
         userObj?.display_name || userObj?.username || `PG-${log.user_id}`;
       const empCode =
         userObj?.employee_id || userObj?.username || `PG-${log.user_id}`;
 
-      // คำนวณระยะเวลาทำงาน (ชั่วโมง)
       let workedHours = 0;
       if (log.check_in_at && log.check_out_at) {
         const checkIn = new Date(log.check_in_at).getTime();
@@ -593,15 +618,14 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
         workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(1));
       }
 
-      // ดึงค่าแรงรายวันจาก base_salary ใน user_profiles ( default 700 บาท)
       const wageRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
       const dailyWage = log.check_in_at ? wageRate : 0;
 
       return {
         id: log.id,
         userId: log.user_id,
-        empId: empCode, // 👈 แสดงรหัสพนักงานจริง (เช่น PGBC01)
-        displayName: empDisplayName, // 👈 แสดงชื่อ-นามสกุลจริง (เช่น นางสาวสุนทรี สันทรนาถ)
+        empId: empCode,
+        displayName: empDisplayName,
         storeCode: log.store_code || "-",
         storeName: log.store_name || log.store_code || "-",
         checkInAt: log.check_in_at
@@ -628,7 +652,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   }
 }
 
-// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (ค่าแรงรายวัน + คอมมิชชั่นสะสมตามรอบ Target ทุก 3 วัน)
+// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (คำนวณ Incentive แยกตามเงื่อนไข BigC vs Tops)
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -636,7 +660,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
 }) {
   const supabase = getClientInstance();
   try {
-    // 1. ดึงข้อมูลพนักงานทั้งหมดจาก user_profiles
     const { data: userProfiles, error: userError } = await supabase
       .from("user_profiles")
       .select(
@@ -647,7 +670,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       console.error("Error fetching user_profiles:", userError);
     }
 
-    // 2. ดึงประวัติการลงเวลาทำงาน (Attendance Logs)
     let attendanceQuery = supabase
       .from("pg_attendance_logs")
       .select("user_id, check_in_at, store_code, store_name");
@@ -667,7 +689,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
     const { data: attendanceLogs } = await attendanceQuery;
 
-    // 🎯 3. ดึงรายงานกิจกรรมประจำวันจาก pg_daily_activity_reports (* เพื่อดึงคอลัมน์ทั้งหมด)
     let dailyReportsQuery = supabase
       .from("pg_daily_activity_reports")
       .select("*")
@@ -689,7 +710,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
     const { data: dailyReports } = await dailyReportsQuery;
     const reportList: any[] = dailyReports || [];
 
-    // 🎯 4. ดึงยอดขายสินค้ารายชิ้นจาก pg_daily_report_products โดยอ้างอิง report_id
     let reportProductsMap = new Map<number, any[]>();
     if (reportList.length > 0) {
       const reportIds = reportList.map((r: any) => r.id);
@@ -711,7 +731,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       });
     }
 
-    // 5. จัดกลุ่มข้อมูลตามรายพนักงาน (User ID)
     const userSummaryMap = new Map<number, any>();
 
     (userProfiles || []).forEach((user: any) => {
@@ -728,7 +747,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       });
     });
 
-    // นับจำนวนวันทำงานจริงจาก Attendance Logs
     (attendanceLogs || []).forEach((log: any) => {
       const uId = Number(log.user_id);
       if (userSummaryMap.has(uId)) {
@@ -741,7 +759,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       }
     });
 
-    // แมปรายงานและสินค้าเข้ากับพนักงานแต่ละคน
     reportList.forEach((report: any) => {
       const uId = Number(report.user_id);
       if (userSummaryMap.has(uId)) {
@@ -753,7 +770,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
         let prods = reportProductsMap.get(Number(report.id)) || [];
 
-        // สำรองข้อมูลกรณีรายงานไม่มีใน pg_daily_report_products แต่มีในคอลัมน์ของ pg_daily_activity_reports
         if (prods.length === 0) {
           const g = Number(report.sales_qty_green90 || 0);
           const b = Number(report.sales_qty_blue90 || 0);
@@ -785,12 +801,11 @@ export async function getAdminSalarySummaryReportAction(params?: {
       }
     });
 
-    // 🎯 6. คำนวณยอดขายสะสม + คำนวณ Incentive ตามรอบ Target ทุก 3 วันที่เข้าปฏิบัติงาน
+    // 🎯 คำนวณ Incentive ตามรอบ Target ทุก 3 วัน
     const resultList = await Promise.all(
       Array.from(userSummaryMap.values()).map(async (item: any) => {
         const totalDailyWage = item.workDaysCount * item.baseSalaryRate;
 
-        // เรียงลำดับรายงานการขายตามวันเวลา
         const sortedReports = item.dailyReportsList.sort(
           (a: any, b: any) =>
             new Date(a.created_at || a.report_date).getTime() -
@@ -804,7 +819,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
         let totalSets = 0;
         let totalCommission = 0;
 
-        // 💡 แบ่งรอบการเชียร์ขายเป็นบล็อกละ 3 วัน
         const cycleChunkSize = 3;
         for (let i = 0; i < sortedReports.length; i += cycleChunkSize) {
           const chunk = sortedReports.slice(i, i + cycleChunkSize);
@@ -820,7 +834,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
               const bc = String(p.barcode || "").trim();
               const desc = String(p.descriptions || "").toLowerCase();
 
-              // ตรวจจำแนก SKU จาก Barcode หรือ Description
               if (
                 bc === "8858678423681" ||
                 desc.includes("baby") ||
@@ -841,7 +854,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
             });
           });
 
-          // กรณี Big C (1 แถม 1 หยิบจาก Shelf ทั้งคู่): หาร 2 คิดเป็นจำนวนชุดโปรโมชัน
+          // เช็คว่าเป็น BigC หรือไม่
           const isBigC =
             item.storeName.toLowerCase().includes("big") ||
             item.storeCode.toLowerCase().includes("big") ||
@@ -856,9 +869,12 @@ export async function getAdminSalarySummaryReportAction(params?: {
           const cycleOSets = isBigC
             ? Math.floor(cycleOrangePacks / 2)
             : cycleOrangePacks;
-          const cycleSetsTotal = cycleGSets + cycleBSets + cycleOSets;
 
-          // คำนวณ Incentive ประจำรอบ Target 3 วันนี้
+          // BigC = ยอดชุดนับ Target คือ เขียว + ฟ้า | Tops = เขียว + ฟ้า + ส้ม
+          const cycleSetsTotal = isBigC
+            ? cycleGSets + cycleBSets
+            : cycleGSets + cycleBSets + cycleOSets;
+
           let cycleComm = 0;
           try {
             const commRes = await calculateBigCCommission(
@@ -866,13 +882,13 @@ export async function getAdminSalarySummaryReportAction(params?: {
               cycleBSets,
               cycleOSets,
               chunk.length,
+              item.storeCode || item.storeName || item.empId, // 👈 ส่งสาขาเข้าฟังชันคำนวณ Target
             );
             cycleComm = commRes?.incentiveAmount ?? 0;
           } catch {
             cycleComm = 0;
           }
 
-          // สะสมยอดรวมประจำเดือน
           totalGreenPacks += cycleGreenPacks;
           totalBluePacks += cycleBluePacks;
           totalOrangePacks += cycleOrangePacks;
@@ -894,14 +910,13 @@ export async function getAdminSalarySummaryReportAction(params?: {
           totalBluePacks,
           totalOrangePacks,
           totalPacks,
-          totalSets, // 👈 ยอดรวมชุดโปรโมชันสะสม
-          totalCommission, // 👈 ยอดคอมมิชชั่นรวมที่คำนวณจากรอบ Target 3 วัน
-          totalNetSalary: totalDailyWage + totalCommission, // 💰 รวมจ่ายสุทธิ
+          totalSets,
+          totalCommission,
+          totalNetSalary: totalDailyWage + totalCommission,
         };
       }),
     );
 
-    // กรองแสดงเฉพาะพนักงานที่มีสถิติวันทำงานหรือยอดขาย
     const filteredResult = resultList.filter(
       (item: any) =>
         item.workDaysCount > 0 || item.totalSets > 0 || item.totalPacks > 0,
