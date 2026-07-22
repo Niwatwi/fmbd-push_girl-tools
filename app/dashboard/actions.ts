@@ -18,25 +18,6 @@ function getClientInstance() {
   return createClient(supabaseUrl, serviceKey);
 }
 
-// 🇹🇭 Helper Function: แปลง Timestamp เป็นเวลาไทย (Asia/Bangkok UTC+7)
-export function formatThaiDateTime(dateStr: string | null | undefined) {
-  if (!dateStr) return "-";
-  try {
-    return new Date(dateStr).toLocaleString("th-TH", {
-      timeZone: "Asia/Bangkok",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-  } catch (e) {
-    return dateStr;
-  }
-}
-
 // 🔍 Helper เช็คว่าสาขาเป็น BigC หรือไม่ (ตัดช่องว่าง + ตัวพิมพ์เล็ก)
 function checkIsBigC(code: string = "", name: string = "") {
   const cleanCode = (code || "").toLowerCase().replace(/\s+/g, "");
@@ -935,5 +916,24 @@ export async function getAdminSalarySummaryReportAction(params?: {
   } catch (error: any) {
     console.error("Fetch salary summary report error:", error);
     return { success: false, data: [], message: error.message };
+  }
+}
+
+// 🇹🇭 Helper Function: แปลง Timestamp เป็นเวลาไทย (Asia/Bangkok UTC+7)
+export async function formatThaiDateTime(dateStr: string | null | undefined) {
+  if (!dateStr) return "-";
+  try {
+    return new Date(dateStr).toLocaleString("th-TH", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  } catch (e) {
+    return dateStr;
   }
 }
