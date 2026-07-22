@@ -18,6 +18,36 @@ function getClientInstance() {
   return createClient(supabaseUrl, serviceKey);
 }
 
+// 🇹🇭 Helper Function: แปลง Timestamp เป็นเวลาไทย (Asia/Bangkok UTC+7)
+export function formatThaiDateTime(dateStr: string | null | undefined) {
+  if (!dateStr) return "-";
+  try {
+    return new Date(dateStr).toLocaleString("th-TH", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  } catch (e) {
+    return dateStr;
+  }
+}
+
+// 🔍 Helper เช็คว่าสาขาเป็น BigC หรือไม่ (ตัดช่องว่าง + ตัวพิมพ์เล็ก)
+function checkIsBigC(code: string = "", name: string = "") {
+  const cleanCode = (code || "").toLowerCase().replace(/\s+/g, "");
+  const cleanName = (name || "").toLowerCase().replace(/\s+/g, "");
+  return (
+    cleanCode.includes("pgbc") ||
+    cleanCode.includes("bigc") ||
+    cleanName.includes("bigc")
+  );
+}
+
 // 1. 📅 ดึงข้อมูล Time Attendance สำหรับส่งฝ่ายบัญชีทำค่าใช้จ่าย
 export async function getAttendanceReportForAccounting() {
   const supabase = getClientInstance();
@@ -46,7 +76,7 @@ export async function getAttendanceReportForAccounting() {
   }
 }
 
-// 2. 📊 ดึงยอดขายสะสมเปรียบเทียบกับเป้าหมาย (Target) แยกตามสาขา (ฝั่ง Customer Portal)
+// 2. 📊 ดึงยอดขายสะสมเปรียบเทียบกับเป้าหมาย (Target) แยกตามสาขา
 export async function getCustomerSalesVsTargetReport() {
   const supabase = getClientInstance();
   try {
@@ -78,11 +108,7 @@ export async function getCustomerSalesVsTargetReport() {
         0,
       );
 
-      // 🎯 เช็คเงื่อนไข BigC vs Tops
-      const isBigC =
-        target.store_code.toLowerCase().includes("pgbc") ||
-        target.store_code.toLowerCase().includes("bigc") ||
-        (target.store_name || "").toLowerCase().includes("bigc");
+      const isBigC = checkIsBigC(target.store_code, target.store_name);
 
       // BigC = นับเฉพาะ เขียว + ฟ้า | Tops = นับ เขียว + ฟ้า + ส้ม
       const totalActualPacks = isBigC
@@ -111,7 +137,7 @@ export async function getCustomerSalesVsTargetReport() {
   }
 }
 
-// 3. ดึงรายชื่อสาขาและเป้าหมายทั้งหมดขึ้นมาแสดงในฟอร์มหลังบ้าน
+// 3. ดึงรายชื่อสาขาและเป้าหมายทั้งหมด
 export async function getStoreTargets() {
   const supabase = getClientInstance();
   try {
@@ -128,7 +154,7 @@ export async function getStoreTargets() {
   }
 }
 
-// 4. บันทึกหรืออัปเดตข้อมูลเป้าหมายสาขาแบบแยกราย SKU (พร้อม BigC / Tops Logic)
+// 4. บันทึกหรืออัปเดตข้อมูลเป้าหมายสาขาแบบแยกราย SKU
 export async function saveStoreTargetAction(payload: {
   store_code: string;
   store_name: string;
@@ -149,15 +175,10 @@ export async function saveStoreTargetAction(payload: {
     const priceBlue = Number(payload.price_blue90 || 142);
     const priceOrange = Number(payload.price_orange100 || 100);
 
-    // 🎯 ตรวจสอบประเภทสาขา
-    const isBigC =
-      payload.store_code.toLowerCase().includes("pgbc") ||
-      payload.store_code.toLowerCase().includes("bigc") ||
-      payload.store_name.toLowerCase().includes("bigc");
+    const isBigC = checkIsBigC(payload.store_code, payload.store_name);
 
-    // BigC = นับ Target เฉพาะ เขียว + ฟ้า | Tops = นับ เขียว + ฟ้า + ส้ม
     const targetSetsCounted = isBigC ? green + blue : green + blue + orange;
-    const totalPacks = targetSetsCounted * 2; // โปร 1 แถม 1 = 2 ชิ้น
+    const totalPacks = targetSetsCounted * 2;
 
     const totalRevenue =
       green * priceGreen + blue * priceBlue + orange * priceOrange;
@@ -212,7 +233,7 @@ export async function getAvailableStores() {
   }
 }
 
-// 🎯 6. ดึงโปรไฟล์พนักงาน + สถานที่ Check-in + ยอดขายจริงวันนี้ ตาม userId
+// 6. ดึงโปรไฟล์พนักงาน + สถานที่ Check-in + ยอดขายจริงวันนี้
 export async function getUserDashboardDataAction(userId: number) {
   const supabase = getClientInstance();
   try {
@@ -312,7 +333,7 @@ export async function deleteStoreTargetAction(storeCode: string) {
   }
 }
 
-// 8. คำนวณ Commission ประจำสัปดาห์ (แยก BigC vs Tops)
+// 8. คำนวณ Commission ประจำสัปดาห์
 export interface CommissionResult {
   totalSetsSold: number;
   totalPacksSold: number;
@@ -329,14 +350,10 @@ export async function calculateBigCCommission(
   blueQty: number = 0,
   orangeQty: number = 0,
   workingDays: number = 3,
-  storeCodeOrName: string = "", // 👈 รับพารามิเตอร์สาขาเพื่อเช็ค Logic BigC / Tops
+  storeCodeOrName: string = "",
 ): Promise<CommissionResult> {
-  const isBigC =
-    storeCodeOrName.toLowerCase().includes("pgbc") ||
-    storeCodeOrName.toLowerCase().includes("bigc") ||
-    storeCodeOrName.toLowerCase().includes("big");
+  const isBigC = checkIsBigC(storeCodeOrName, storeCodeOrName);
 
-  // 🎯 BigC = นับเฉพาะ เขียว + ฟ้า | Tops = นับ เขียว + ฟ้า + ส้ม
   const totalSetsSold = isBigC
     ? Number(greenQty) + Number(blueQty)
     : Number(greenQty) + Number(blueQty) + Number(orangeQty);
@@ -344,8 +361,8 @@ export async function calculateBigCCommission(
   const totalPacksSold =
     (Number(greenQty) + Number(blueQty) + Number(orangeQty)) * 2;
 
-  const target80Sets = 45 * workingDays; // เกณฑ์ 80% (45 ชุด/วัน)
-  const target100Sets = 60 * workingDays; // เกณฑ์ 100% (60 ชุด/วัน)
+  const target80Sets = 45 * workingDays;
+  const target100Sets = 60 * workingDays;
 
   const baseSalary = workingDays * 700;
   let incentiveAmount = 0;
@@ -391,7 +408,7 @@ export async function calculateBigCCommission(
   };
 }
 
-// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็ม + รูปภาพ สำหรับ Customer Portal (ดึงข้อมูลชื่อพนักงานจาก user_profiles)
+// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็ม + รูปภาพ
 export async function getCustomerFullActivityReport() {
   const supabase = getClientInstance();
   try {
@@ -566,7 +583,7 @@ export async function getCustomerFullActivityReport() {
   }
 }
 
-// 10. 📅 ดึงรายงาน Time Attendance & Expense สำหรับส่งฝ่ายบัญชี
+// 10. 📅 ดึงรายงาน Time Attendance & Expense (พร้อมแปลงเวลาเป็น UTC+7 ประเทศไทย)
 export async function getAdminAttendanceExpenseReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -628,11 +645,9 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
         displayName: empDisplayName,
         storeCode: log.store_code || "-",
         storeName: log.store_name || log.store_code || "-",
-        checkInAt: log.check_in_at
-          ? new Date(log.check_in_at).toLocaleString("th-TH")
-          : "-",
+        checkInAt: formatThaiDateTime(log.check_in_at),
         checkOutAt: log.check_out_at
-          ? new Date(log.check_out_at).toLocaleString("th-TH")
+          ? formatThaiDateTime(log.check_out_at)
           : "ยังไม่เลิกงาน",
         checkInDateRaw: log.check_in_at ? log.check_in_at.split("T")[0] : "-",
         workedHours: workedHours > 0 ? workedHours : "-",
@@ -652,7 +667,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   }
 }
 
-// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (คำนวณ Incentive แยกตามเงื่อนไข BigC vs Tops)
+// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -801,7 +816,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       }
     });
 
-    // 🎯 คำนวณ Incentive ตามรอบ Target ทุก 3 วัน
     const resultList = await Promise.all(
       Array.from(userSummaryMap.values()).map(async (item: any) => {
         const totalDailyWage = item.workDaysCount * item.baseSalaryRate;
@@ -854,11 +868,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
             });
           });
 
-          // เช็คว่าเป็น BigC หรือไม่
-          const isBigC =
-            item.storeName.toLowerCase().includes("big") ||
-            item.storeCode.toLowerCase().includes("big") ||
-            item.empId.toLowerCase().includes("pgbc");
+          const isBigC = checkIsBigC(item.storeCode, item.storeName);
 
           const cycleGSets = isBigC
             ? Math.floor(cycleGreenPacks / 2)
@@ -870,7 +880,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
             ? Math.floor(cycleOrangePacks / 2)
             : cycleOrangePacks;
 
-          // BigC = ยอดชุดนับ Target คือ เขียว + ฟ้า | Tops = เขียว + ฟ้า + ส้ม
           const cycleSetsTotal = isBigC
             ? cycleGSets + cycleBSets
             : cycleGSets + cycleBSets + cycleOSets;
@@ -882,7 +891,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
               cycleBSets,
               cycleOSets,
               chunk.length,
-              item.storeCode || item.storeName || item.empId, // 👈 ส่งสาขาเข้าฟังชันคำนวณ Target
+              item.storeCode || item.storeName || item.empId,
             );
             cycleComm = commRes?.incentiveAmount ?? 0;
           } catch {
