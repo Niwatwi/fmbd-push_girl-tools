@@ -8,8 +8,8 @@ import {
   Target,
   ArrowRight,
   Shield,
-  Building2,
   ExternalLink,
+  ArrowLeft,
 } from "lucide-react";
 
 export default function AdminHubPage() {
@@ -42,7 +42,7 @@ export default function AdminHubPage() {
       title: "จัดการเป้าหมายการขายประจำสาขา",
       subtitle: "Store Target Management",
       description:
-        "กำหนดเป้าหมายยอดขาย (Target Packs / Revenue) และราคาขายจำแนกราย SKU ประจำแต่ละจุดปฏิบัติงาน",
+        "กำหนดเป้าหมายยอดขายประจำจุดปฏิบัติงาน คำนวณตามเกณฑ์ห้าง BigC (เขียว+ฟ้า 60 ชุด) และ Tops (เขียว+ฟ้า+ส้ม 60 ชุด)",
       href: "/admin/targets",
       icon: Target,
       badge: "เป้าหมายการขาย",
@@ -53,10 +53,10 @@ export default function AdminHubPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-blue-500 text-slate-800 font-sans antialiased p-6 md:p-10">
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans antialiased p-6 md:p-10">
       <div className="max-w-6xl mx-auto space-y-8">
         {/* 🛡️ HEADER BAR */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="p-3.5 bg-slate-900 text-white rounded-2xl shadow-xs">
               <Shield size={28} />
@@ -66,7 +66,7 @@ export default function AdminHubPage() {
                 <h1 className="text-xl font-black text-slate-800 tracking-tight">
                   ระบบผู้ดูแลระบบ (Admin Management Hub)
                 </h1>
-                <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-slate-100 text-slate-600 rounded-full border border-slate-200 uppercase">
+                <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-rose-50 text-rose-700 rounded-full border border-rose-200 uppercase">
                   Push Girl Tools
                 </span>
               </div>
@@ -76,6 +76,15 @@ export default function AdminHubPage() {
               </p>
             </div>
           </div>
+
+          {/* ปุ่มสลับกลับไปหน้า fmbd-admin-tools หลัก */}
+          <a
+            href="https://fmbd-admin-tools.vercel.app"
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold border border-slate-200 transition cursor-pointer shrink-0"
+          >
+            <ArrowLeft size={16} />
+            <span>กลับ FMBD Admin Tools</span>
+          </a>
         </div>
 
         {/* 📌 MODULE CARDS GRID */}
@@ -130,15 +139,17 @@ export default function AdminHubPage() {
         </div>
 
         {/* 🔗 EXTERNAL LINKING NOTICE */}
-        <div className="bg-slate-100/80 p-4 rounded-2xl border border-slate-200 text-center flex items-center justify-center gap-2">
+        <div className="bg-white/80 p-4 rounded-2xl border border-slate-200 text-center flex items-center justify-center gap-2 shadow-2xs">
           <ExternalLink size={15} className="text-slate-500" />
           <p className="text-xs font-medium text-slate-600">
-            URL สำหรับนำไปฝังในโปรเจกต์{" "}
-            <code className="bg-white px-2 py-0.5 rounded border border-slate-200 font-mono font-bold text-slate-800">
+            URL สำหรับนำไปเชื่อมโยงกับโปรเจกต์{" "}
+            <code className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-mono font-bold text-slate-800">
               fmbd-admin-tools
             </code>{" "}
             คือ:{" "}
-            <span className="font-mono font-bold text-blue-600">/admin</span>
+            <span className="font-mono font-bold text-blue-600">
+              https://fmbd-push-girl-tools.vercel.app/admin
+            </span>
           </p>
         </div>
       </div>
