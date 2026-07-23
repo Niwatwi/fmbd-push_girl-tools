@@ -10,6 +10,7 @@ import {
   Shield,
   ExternalLink,
   ArrowLeft,
+  LayoutDashboard,
 } from "lucide-react";
 
 export default function AdminHubPage() {
@@ -50,13 +51,25 @@ export default function AdminHubPage() {
       iconBg: "bg-amber-600 text-white",
       hoverBorder: "hover:border-amber-400 hover:shadow-md",
     },
+    {
+      title: "Customer Portal & Activity Overview",
+      subtitle: "Customer Sales & Field Report",
+      description:
+        "ดูสรุปภาพรวมยอดขายจริงเปรียบเทียบเป้าหมาย รายงานกิจกรรมและรูปถ่ายการปฏิบัติงานประจำวันของพนักงาน PG",
+      href: "/customer-portal",
+      icon: LayoutDashboard,
+      badge: "แดชบอร์ดรีพอร์ต",
+      badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
+      iconBg: "bg-purple-600 text-white",
+      hoverBorder: "hover:border-purple-400 hover:shadow-md",
+    },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans antialiased p-6 md:p-10">
+    <div className="min-h-screen bg-orange-300 text-slate-800 font-sans antialiased p-6 md:p-10">
       <div className="max-w-6xl mx-auto space-y-8">
         {/* 🛡️ HEADER BAR */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="bg-green-300 p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="p-3.5 bg-slate-900 text-white rounded-2xl shadow-xs">
               <Shield size={28} />
@@ -77,18 +90,29 @@ export default function AdminHubPage() {
             </div>
           </div>
 
-          {/* ปุ่มสลับกลับไปหน้า fmbd-admin-tools หลัก */}
-          <a
-            href="https://fmbd-admin-tools.vercel.app"
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold border border-slate-200 transition cursor-pointer shrink-0"
-          >
-            <ArrowLeft size={16} />
-            <span>กลับ FMBD Admin Tools</span>
-          </a>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* ปุ่มเข้าสู่ Customer Portal */}
+            <Link
+              href="/customer-portal"
+              className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl text-xs font-bold transition cursor-pointer shadow-xs"
+            >
+              <LayoutDashboard size={16} />
+              <span>Customer Portal</span>
+            </Link>
+
+            {/* ปุ่มสลับกลับไปหน้า fmbd-admin-tools หลัก */}
+            <a
+              href="https://fmbd-admin-tools.vercel.app"
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold border border-slate-200 transition cursor-pointer"
+            >
+              <ArrowLeft size={16} />
+              <span>กลับ Admin Tools</span>
+            </a>
+          </div>
         </div>
 
-        {/* 📌 MODULE CARDS GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* 📌 MODULE CARDS GRID (2x2 Grid) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {adminModules.map((item) => {
             const IconComponent = item.icon;
             return (
