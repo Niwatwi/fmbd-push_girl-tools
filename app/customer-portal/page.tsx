@@ -94,9 +94,7 @@ export default function CustomerReportPortal() {
     });
   };
 
-  // -------------------------------------------------------------
-  // 📥 Export to Excel: เพิ่มคอลัมน์ URL รูปภาพกิจกรรมทั้งหมด
-  // -------------------------------------------------------------
+  // 📥 Export to Excel
   const exportToExcel = () => {
     if (!filteredData || filteredData.length === 0) return;
 
@@ -128,15 +126,18 @@ export default function CustomerReportPortal() {
       "Stock หลังเลิก (เขียว 90)",
       "Stock หลังเลิก (ฟ้า 90)",
       "Stock หลังเลิก (ส้ม 100)",
+      "ของแถมก่อนเริ่ม (เขียว 40)",
+      "ของแถมก่อนเริ่ม (ส้ม 100)",
+      "จำนวนแถม (เขียว 40)",
+      "จำนวนแถม (ส้ม 100)",
       "ของแถมคงเหลือ (เขียว 40)",
       "ของแถมคงเหลือ (ส้ม 100)",
       "Feedback หน้าร้าน",
       "โปรโมชันคู่แข่ง",
-      "URL รูปภาพกิจกรรมทั้งหมด", // 👈 คอลัมน์ URL รูปภาพ
+      "URL รูปภาพกิจกรรมทั้งหมด",
     ];
 
     const csvRows = filteredData.map((row, idx) => {
-      // ดึง URL รูปภาพทั้งหมดคั่นด้วย |
       const photoUrls =
         row.activityPhotos && row.activityPhotos.length > 0
           ? row.activityPhotos.map((p: any) => p.url).join(" | ")
@@ -170,11 +171,15 @@ export default function CustomerReportPortal() {
         row.stockAfterGreen,
         row.stockAfterBlue,
         row.stockAfterOrange,
-        row.giftOrangeAfter,
-        row.giftNourishAfter,
+        row.giftNourishBefore || 0,
+        row.giftOrangeBefore || 0,
+        row.giftNourishGiven || 0,
+        row.giftOrangeGiven || 0,
+        row.giftNourishAfter || 0,
+        row.giftOrangeAfter || 0,
         `"${(row.feedback || "").replace(/"/g, '""')}"`,
         `"${(row.competitorPromo || "").replace(/"/g, '""')}"`,
-        `"${photoUrls.replace(/"/g, '""')}"`, // 👈 URL รูปภาพแยกคอลัมน์
+        `"${photoUrls.replace(/"/g, '""')}"`,
       ];
     });
 
@@ -205,7 +210,7 @@ export default function CustomerReportPortal() {
       <style jsx global>{`
         @media print {
           @page {
-            size: A4 landscape; /* ตั้งค่ากระดาษ A4 แนวนอนอัตโนมัติ */
+            size: A4 landscape;
             margin: 5mm;
           }
           nav,
@@ -228,12 +233,12 @@ export default function CustomerReportPortal() {
             box-shadow: none !important;
           }
           .overflow-x-auto {
-            overflow: visible !important; /* ยกเลิกการซ่อน scrollbar ตอนสั่งปริ้นท์ */
+            overflow: visible !important;
           }
           table {
             width: 100% !important;
             table-layout: auto !important;
-            font-size: 7.5px !important; /* ปรับขนาดฟอนต์ตารางให้กระชับพอดี A4 แนวนอน */
+            font-size: 7.5px !important;
           }
           th,
           td {
@@ -597,12 +602,27 @@ export default function CustomerReportPortal() {
                   >
                     Stock หลังเลิก (P)
                   </th>
+
+                  {/* 🎁 ส่วนของแถมแบ่ง 3 กลุ่มย่อย (ก่อนเริ่ม, จำนวนแถม, คงเหลือ) */}
                   <th
                     colSpan={2}
                     className="p-2 border border-slate-200 text-center bg-orange-50/50"
                   >
+                    ของแถมก่อนเริ่ม
+                  </th>
+                  <th
+                    colSpan={2}
+                    className="p-2 border border-slate-200 text-center bg-amber-100/60 text-amber-900"
+                  >
+                    จำนวนแจกแถม
+                  </th>
+                  <th
+                    colSpan={2}
+                    className="p-2 border border-slate-200 text-center bg-orange-100/50"
+                  >
                     ของแถมคงเหลือ
                   </th>
+
                   <th
                     rowSpan={2}
                     className="p-2 border border-slate-200 min-w-[120px]"
@@ -685,6 +705,23 @@ export default function CustomerReportPortal() {
                     ส้ม 100
                   </th>
 
+                  {/* ของแถมก่อนเริ่ม */}
+                  <th className="p-1.5 border border-slate-200 text-center">
+                    เขียว 40
+                  </th>
+                  <th className="p-1.5 border border-slate-200 text-center">
+                    ส้ม 100
+                  </th>
+
+                  {/* จำนวนแจกแถม */}
+                  <th className="p-1.5 border border-slate-200 text-center">
+                    เขียว 40
+                  </th>
+                  <th className="p-1.5 border border-slate-200 text-center">
+                    ส้ม 100
+                  </th>
+
+                  {/* ของแถมคงเหลือ */}
                   <th className="p-1.5 border border-slate-200 text-center">
                     เขียว 40
                   </th>
@@ -736,14 +773,14 @@ export default function CustomerReportPortal() {
                     </td>
 
                     {/* Competitor Prices */}
-                    <td className="p-2 border border-slate-200 text-center font-mono text-rose-600">
-                      {row.compCellox || "-"}
+                    <td className="p-2 border border-slate-200 text-center font-mono text-rose-600 font-bold">
+                      {row.compCellox > 0 ? `${row.compCellox}฿` : "-"}
                     </td>
-                    <td className="p-2 border border-slate-200 text-center font-mono text-rose-600">
-                      {row.compKleenex || "-"}
+                    <td className="p-2 border border-slate-200 text-center font-mono text-rose-600 font-bold">
+                      {row.compKleenex > 0 ? `${row.compKleenex}฿` : "-"}
                     </td>
-                    <td className="p-2 border border-slate-200 text-center font-mono text-rose-600">
-                      {row.compPaseo || "-"}
+                    <td className="p-2 border border-slate-200 text-center font-mono text-rose-600 font-bold">
+                      {row.compPaseo > 0 ? `${row.compPaseo}฿` : "-"}
                     </td>
 
                     {/* Stock Before */}
@@ -779,12 +816,28 @@ export default function CustomerReportPortal() {
                       {row.stockAfterOrange}
                     </td>
 
-                    {/* Gifts Stock Left */}
-                    <td className="p-2 border border-slate-200 text-center font-mono text-amber-600 font-bold">
-                      {row.giftOrangeAfter}
+                    {/* Gifts Stock Before (ก่อนเริ่ม) */}
+                    <td className="p-2 border border-slate-200 text-center font-mono text-slate-500">
+                      {row.giftNourishBefore || 0}
                     </td>
-                    <td className="p-2 border border-slate-200 text-center font-mono text-amber-600 font-bold">
-                      {row.giftNourishAfter}
+                    <td className="p-2 border border-slate-200 text-center font-mono text-slate-500">
+                      {row.giftOrangeBefore || 0}
+                    </td>
+
+                    {/* Gifts Given (จำนวนแจกแถม) */}
+                    <td className="p-2 border border-slate-200 text-center font-mono text-amber-600 font-bold bg-amber-50/30">
+                      {row.giftNourishGiven || 0}
+                    </td>
+                    <td className="p-2 border border-slate-200 text-center font-mono text-amber-600 font-bold bg-amber-50/30">
+                      {row.giftOrangeGiven || 0}
+                    </td>
+
+                    {/* Gifts Stock After (ของแถมคงเหลือ) */}
+                    <td className="p-2 border border-slate-200 text-center font-mono text-emerald-600 font-bold">
+                      {row.giftNourishAfter || 0}
+                    </td>
+                    <td className="p-2 border border-slate-200 text-center font-mono text-emerald-600 font-bold">
+                      {row.giftOrangeAfter || 0}
                     </td>
 
                     {/* Qualitative */}
