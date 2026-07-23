@@ -18,6 +18,25 @@ function getClientInstance() {
   return createClient(supabaseUrl, serviceKey);
 }
 
+// 🇹🇭 Helper Function: แปลง Timestamp เป็นเวลาไทย (Asia/Bangkok UTC+7)
+export async function formatThaiDateTime(dateStr: string | null | undefined) {
+  if (!dateStr) return "-";
+  try {
+    return new Date(dateStr).toLocaleString("th-TH", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  } catch (e) {
+    return dateStr;
+  }
+}
+
 // 🔍 Helper เช็คว่าสาขาเป็น BigC หรือไม่ (ตัดช่องว่าง + ตัวพิมพ์เล็ก)
 function checkIsBigC(code: string = "", name: string = "") {
   const cleanCode = (code || "").toLowerCase().replace(/\s+/g, "");
@@ -43,8 +62,8 @@ export async function getAttendanceReportForAccounting() {
         store_name,
         check_in_at,
         check_out_at,
-        check_in_lat,
-        check_in_lon
+        check_in_latitude,
+        check_in_longitude
       `,
       )
       .order("check_in_at", { ascending: false });
@@ -91,10 +110,11 @@ export async function getCustomerSalesVsTargetReport() {
 
       const isBigC = checkIsBigC(target.store_code, target.store_name);
 
-      // BigC = นับเฉพาะ เขียว + ฟ้า | Tops = นับ เขียว + ฟ้า + ส้ม
+      // BigC: เขียว x2 + ฟ้า x2
+      // Tops: เขียว x1 (แถม FOC) + ฟ้า x1 (แถม FOC) + ส้ม x2 (แถมสินค้าปกติหน้าร้าน)
       const totalActualPacks = isBigC
-        ? actualGreen + actualBlue
-        : actualGreen + actualBlue + actualOrange;
+        ? (actualGreen + actualBlue) * 2
+        : actualGreen + actualBlue + actualOrange * 2;
 
       return {
         storeCode: target.store_code,
@@ -232,13 +252,12 @@ export async function getUserDashboardDataAction(userId: number) {
       day: "2-digit",
     }).format(now);
     const [month, day, year] = ictDate.split("/");
-    const startOfToday = `${year}-${month}-${day}T00:00:00+07:00`;
 
     const { data: attendance } = await supabase
       .from("pg_attendance_logs")
       .select("store_code, store_name")
       .eq("user_id", userId)
-      .gte("check_in_at", startOfToday)
+      .gte("check_in_at", `${year}-${month}-${day}T00:00:00+07:00`)
       .order("check_in_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -327,20 +346,22 @@ export interface CommissionResult {
 }
 
 export async function calculateBigCCommission(
-  greenQty: number = 0,
-  blueQty: number = 0,
-  orangeQty: number = 0,
+  greenSets: number = 0,
+  blueSets: number = 0,
+  orangeSets: number = 0,
   workingDays: number = 3,
   storeCodeOrName: string = "",
 ): Promise<CommissionResult> {
   const isBigC = checkIsBigC(storeCodeOrName, storeCodeOrName);
 
   const totalSetsSold = isBigC
-    ? Number(greenQty) + Number(blueQty)
-    : Number(greenQty) + Number(blueQty) + Number(orangeQty);
+    ? Number(greenSets) + Number(blueSets)
+    : Number(greenSets) + Number(blueSets) + Number(orangeSets);
 
-  const totalPacksSold =
-    (Number(greenQty) + Number(blueQty) + Number(orangeQty)) * 2;
+  // คำนวณจำนวนแพ็คที่ออกจากสต๊อกจริง
+  const totalPacksSold = isBigC
+    ? (Number(greenSets) + Number(blueSets)) * 2
+    : Number(greenSets) + Number(blueSets) + Number(orangeSets) * 2;
 
   const target80Sets = 45 * workingDays;
   const target100Sets = 60 * workingDays;
@@ -389,7 +410,7 @@ export async function calculateBigCCommission(
   };
 }
 
-// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็ม + รูปภาพ
+// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็ม + คำนวณตัดสต๊อกตามเงื่อนไข Tops (ส้ม 100 ตัด x2 หน้าร้าน)
 export async function getCustomerFullActivityReport() {
   const supabase = getClientInstance();
   try {
@@ -445,6 +466,8 @@ export async function getCustomerFullActivityReport() {
         targetObj?.store_name ||
         `สาขา ${storeCodeStr}`;
 
+      const isBigC = checkIsBigC(storeCodeStr, finalStoreName);
+
       let parsedActivityPhotos: any[] = [];
       if (r.activity_photos) {
         if (typeof r.activity_photos === "string") {
@@ -493,7 +516,80 @@ export async function getCustomerFullActivityReport() {
       const greenPacks = Number(r.sales_qty_green90 || 0);
       const bluePacks = Number(r.sales_qty_blue90 || 0);
       const orangePacks = Number(r.sales_qty_orange100 || 0);
-      const totalActualPacks = greenPacks + bluePacks + orangePacks;
+
+      const stockBeforeGreenVal = Number(r.stock_before_green90 || 0);
+      const stockBeforeBlueVal = Number(r.stock_before_blue90 || 0);
+      const stockBeforeOrangeVal = Number(r.stock_before_orange100 || 0);
+
+      // สต๊อก FOC เริ่มต้นของ Tops
+      const INITIAL_FOC_ORANGE_100 = 480;
+      const INITIAL_FOC_GREEN_40 = 60;
+
+      const giftOrangeGiven = Number(r.gift_orange_given || 0);
+      const giftNourishGiven = Number(r.gift_nourish_given || 0);
+
+      let stockAfterGreen = 0;
+      let stockAfterBlue = 0;
+      let stockAfterOrange = 0;
+      let totalActualPacks = 0;
+
+      let giftOrangeBefore = 0;
+      let giftOrangeAfter = 0;
+
+      let giftNourishBefore = 0;
+      let giftNourishAfter = 0;
+
+      if (isBigC) {
+        // 🟢 BigC: ซื้อ 1 แถม 1 หน้าร้าน (เขียว, ฟ้า ตัด x2)
+        const physicalGreen = greenPacks * 2;
+        const physicalBlue = bluePacks * 2;
+
+        stockAfterGreen =
+          stockBeforeGreenVal > 0
+            ? Math.max(0, stockBeforeGreenVal - physicalGreen)
+            : Number(r.stock_after_green90 || 0);
+
+        stockAfterBlue =
+          stockBeforeBlueVal > 0
+            ? Math.max(0, stockBeforeBlueVal - physicalBlue)
+            : Number(r.stock_after_blue90 || 0);
+
+        stockAfterOrange = 0;
+        totalActualPacks = physicalGreen + physicalBlue;
+      } else {
+        // 🔴 Tops:
+        // - เขียว 90 & ฟ้า 90 แถม FOC -> ตัดสต๊อกเชลฟ์ 1:1
+        // - ส้ม 100 แถมสินค้าขายปกติสีส้ม 100 -> ตัดสต๊อกเชลฟ์ 1:2 (orangePacks * 2)
+        const physicalOrange = orangePacks * 2;
+
+        stockAfterGreen =
+          stockBeforeGreenVal > 0
+            ? Math.max(0, stockBeforeGreenVal - greenPacks)
+            : Number(r.stock_after_green90 || 0);
+
+        stockAfterBlue =
+          stockBeforeBlueVal > 0
+            ? Math.max(0, stockBeforeBlueVal - bluePacks)
+            : Number(r.stock_after_blue90 || 0);
+
+        stockAfterOrange =
+          stockBeforeOrangeVal > 0
+            ? Math.max(0, stockBeforeOrangeVal - physicalOrange)
+            : Number(r.stock_after_orange100 || 0);
+
+        totalActualPacks = greenPacks + bluePacks + physicalOrange;
+
+        // ของแถม FOC
+        giftOrangeBefore = Number(
+          r.gift_orange_before || INITIAL_FOC_ORANGE_100,
+        );
+        giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
+
+        giftNourishBefore = Number(
+          r.gift_nourish_before || INITIAL_FOC_GREEN_40,
+        );
+        giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
+      }
 
       const traffic = Number(r.traffic_count || 0);
       const approach = Number(r.approach_count || 0);
@@ -525,31 +621,32 @@ export async function getCustomerFullActivityReport() {
         priceGreen: Number(r.price_our_green90 || 150),
         priceBlue: Number(r.price_our_blue90 || 142),
         priceOrange: Number(r.price_our_orange100 || 100),
+
         compCellox: Number(r.price_comp_cellox || 0),
         compKleenex: Number(r.price_comp_kleenex || 0),
         compPaseo: Number(r.price_comp_paseo || 0),
 
-        stockBeforeGreen: Number(r.stock_before_green90 || 0),
+        stockBeforeGreen: stockBeforeGreenVal,
         salesGreen: greenPacks,
-        stockAfterGreen: Number(r.stock_after_green90 || 0),
+        stockAfterGreen,
 
-        stockBeforeBlue: Number(r.stock_before_blue90 || 0),
+        stockBeforeBlue: stockBeforeBlueVal,
         salesBlue: bluePacks,
-        stockAfterBlue: Number(r.stock_after_blue90 || 0),
+        stockAfterBlue,
 
-        stockBeforeOrange: Number(r.stock_before_orange100 || 0),
+        stockBeforeOrange: stockBeforeOrangeVal,
         salesOrange: orangePacks,
-        stockAfterOrange: Number(r.stock_after_orange100 || 0),
+        stockAfterOrange,
 
         actualPacksTotal: totalActualPacks,
 
-        giftOrangeBefore: Number(r.gift_orange_before || 0),
-        giftOrangeGiven: Number(r.gift_orange_given || 0),
-        giftOrangeAfter: Number(r.gift_orange_after || 0),
+        giftOrangeBefore,
+        giftOrangeGiven,
+        giftOrangeAfter,
 
-        giftNourishBefore: Number(r.gift_nourish_before || 0),
-        giftNourishGiven: Number(r.gift_nourish_given || 0),
-        giftNourishAfter: Number(r.gift_nourish_after || 0),
+        giftNourishBefore,
+        giftNourishGiven,
+        giftNourishAfter,
 
         feedback: r.feedback_store || "",
         competitorPromo: r.competitor_promotion || "",
@@ -564,7 +661,7 @@ export async function getCustomerFullActivityReport() {
   }
 }
 
-// 10. 📅 ดึงรายงาน Time Attendance & Expense (ปรับชื่อคอลัมน์ GPS และรูปภาพให้ตรงตารางจริง)
+// 10. 📅 ดึงรายงาน Time Attendance & Expense
 export async function getAdminAttendanceExpenseReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -619,7 +716,6 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
       const wageRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
       const dailyWage = log.check_in_at ? wageRate : 0;
 
-      // 🎯 ดึงพิกัด lat/lon และ รูปภาพ จากชื่อคอลัมน์จริงในตาราง Supabase
       const lat = log.check_in_latitude || log.check_in_lat || null;
       const lon = log.check_in_longitude || log.check_in_lon || null;
       const checkInImg = log.check_in_image_url || log.check_in_photo || null;
@@ -639,13 +735,10 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
           : "ยังไม่เลิกงาน",
         checkInDateRaw: log.check_in_at ? log.check_in_at.split("T")[0] : "-",
         workedHours: workedHours > 0 ? workedHours : "-",
-
-        // 🎯 กำหนดฟิลด์ให้หน้ารายงานดึงไปแสดงผลพิกัดและรูปถ่าย
         checkInLat: lat,
         checkInLon: lon,
         checkInPhoto: checkInImg,
         checkOutPhoto: checkOutImg,
-
         dailyWage: dailyWage,
         totalExpense: dailyWage,
       };
@@ -861,19 +954,11 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
           const isBigC = checkIsBigC(item.storeCode, item.storeName);
 
-          const cycleGSets = isBigC
-            ? Math.floor(cycleGreenPacks / 2)
-            : cycleGreenPacks;
-          const cycleBSets = isBigC
-            ? Math.floor(cycleBluePacks / 2)
-            : cycleBluePacks;
-          const cycleOSets = isBigC
-            ? Math.floor(cycleOrangePacks / 2)
-            : cycleOrangePacks;
+          const cycleGSets = cycleGreenPacks;
+          const cycleBSets = cycleBluePacks;
+          const cycleOSets = isBigC ? 0 : cycleOrangePacks;
 
-          const cycleSetsTotal = isBigC
-            ? cycleGSets + cycleBSets
-            : cycleGSets + cycleBSets + cycleOSets;
+          const cycleSetsTotal = cycleGSets + cycleBSets + cycleOSets;
 
           let cycleComm = 0;
           try {
@@ -892,7 +977,11 @@ export async function getAdminSalarySummaryReportAction(params?: {
           totalGreenPacks += cycleGreenPacks;
           totalBluePacks += cycleBluePacks;
           totalOrangePacks += cycleOrangePacks;
-          totalPacks += cycleGreenPacks + cycleBluePacks + cycleOrangePacks;
+
+          totalPacks += isBigC
+            ? (cycleGreenPacks + cycleBluePacks) * 2
+            : cycleGreenPacks + cycleBluePacks + cycleOrangePacks * 2;
+
           totalSets += cycleSetsTotal;
           totalCommission += cycleComm;
         }
@@ -926,24 +1015,5 @@ export async function getAdminSalarySummaryReportAction(params?: {
   } catch (error: any) {
     console.error("Fetch salary summary report error:", error);
     return { success: false, data: [], message: error.message };
-  }
-}
-
-// 🇹🇭 Helper Function: แปลง Timestamp เป็นเวลาไทย (Asia/Bangkok UTC+7)
-export async function formatThaiDateTime(dateStr: string | null | undefined) {
-  if (!dateStr) return "-";
-  try {
-    return new Date(dateStr).toLocaleString("th-TH", {
-      timeZone: "Asia/Bangkok",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-  } catch (e) {
-    return dateStr;
   }
 }
