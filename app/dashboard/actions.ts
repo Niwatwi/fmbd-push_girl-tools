@@ -564,7 +564,7 @@ export async function getCustomerFullActivityReport() {
   }
 }
 
-// 10. 📅 ดึงรายงาน Time Attendance & Expense (พร้อมแปลงเวลาเป็น UTC+7 ประเทศไทย)
+// 10. 📅 ดึงรายงาน Time Attendance & Expense (ปรับชื่อคอลัมน์ GPS และรูปภาพให้ตรงตารางจริง)
 export async function getAdminAttendanceExpenseReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -619,6 +619,13 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
       const wageRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
       const dailyWage = log.check_in_at ? wageRate : 0;
 
+      // 🎯 ดึงพิกัด lat/lon และ รูปภาพ จากชื่อคอลัมน์จริงในตาราง Supabase
+      const lat = log.check_in_latitude || log.check_in_lat || null;
+      const lon = log.check_in_longitude || log.check_in_lon || null;
+      const checkInImg = log.check_in_image_url || log.check_in_photo || null;
+      const checkOutImg =
+        log.check_out_image_url || log.check_out_photo || null;
+
       return {
         id: log.id,
         userId: log.user_id,
@@ -632,10 +639,13 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
           : "ยังไม่เลิกงาน",
         checkInDateRaw: log.check_in_at ? log.check_in_at.split("T")[0] : "-",
         workedHours: workedHours > 0 ? workedHours : "-",
-        checkInLat: log.check_in_lat || "-",
-        checkInLon: log.check_in_lon || "-",
-        checkInPhoto: log.check_in_photo || null,
-        checkOutPhoto: log.check_out_photo || null,
+
+        // 🎯 กำหนดฟิลด์ให้หน้ารายงานดึงไปแสดงผลพิกัดและรูปถ่าย
+        checkInLat: lat,
+        checkInLon: lon,
+        checkInPhoto: checkInImg,
+        checkOutPhoto: checkOutImg,
+
         dailyWage: dailyWage,
         totalExpense: dailyWage,
       };
