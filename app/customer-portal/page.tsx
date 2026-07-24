@@ -517,7 +517,7 @@ export default function CustomerReportPortal() {
 
       <div>
         {/* NAV BAR - RESPONSIVE FIX FOR MOBILE */}
-        <nav className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs no-print">
+        <nav className="bg-blue-400 border-b border-slate-200 sticky top-0 z-40 shadow-xs no-print">
           <div className="max-w-[98%] sm:max-w-[96%] mx-auto px-2 sm:px-4 min-h-[60px] py-2 flex items-center justify-between gap-2">
             {/* 🏢 โลโก้บริษัท + ชื่อบริษัท */}
             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -534,8 +534,8 @@ export default function CustomerReportPortal() {
                 <span className="text-xs sm:text-sm font-black text-slate-800 block leading-tight truncate">
                   Riverpro Intertrade Co., Ltd
                 </span>
-                <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 hidden sm:block tracking-wider uppercase">
-                  CUSTOMER MARKETING PORTAL
+                <span className="text-[9px] sm:text-[10px] font-bold text-red-600 hidden sm:block tracking-wider uppercase">
+                  CUSTOMER MARKETING PORTAL PUSH GIRL PROJECTS
                 </span>
               </div>
             </div>
@@ -1245,7 +1245,7 @@ export default function CustomerReportPortal() {
       </div>
 
       {/* 🦶 FOOTER BAR */}
-      <footer className="bg-white border-t border-slate-200 mt-12 py-6 no-print text-slate-600">
+      <footer className="bg-blue-400 border-t border-slate-200 mt-12 py-6 no-print text-slate-600">
         <div className="max-w-[98%] sm:max-w-[96%] mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <img
@@ -1259,15 +1259,21 @@ export default function CustomerReportPortal() {
             />
             <div>
               <p className="font-black text-xs text-slate-800">
-                Riverpro Intertrade Co., Ltd
+                FBMBD CONTROLLER
+                </p>
+              <p className="text-[10px] text-red-400 font-medium">
+                Niwat Wiyasing
               </p>
-              <p className="text-[10px] text-slate-400 font-medium">
+              <p className="text-[10px] text-red-400 font-medium">
+                Niwat_wiy@riverpro.co.th
+              </p>
+              <p className="text-[10px] text-red-400 font-medium">
                 ระบบรายงานกิจกรรมพนักงาน PG หน้าร้าน & การตลาด
               </p>
             </div>
           </div>
 
-          <div className="text-[11px] text-slate-500 text-center sm:text-right font-medium">
+          <div className="text-[11px] text-red-400 text-center sm:text-right font-medium">
             © {new Date().getFullYear()} Riverpro Intertrade Co., Ltd. All
             Rights Reserved.
           </div>
