@@ -854,7 +854,7 @@ export default function CustomerReportPortal() {
             <div className="p-4 border-b border-slate-100 flex justify-between items-center">
               <div>
                 <h3 className="text-xs font-black text-slate-800">
-                  ตารางรายงานกิจกรรม PG ประจำสาขา (ตามแบบฟอร์มที่ลูกค้า Request)
+                  ตารางรายงานกิจกรรม PG ประจำสาขารายวัน (Full Report)
                 </h3>
                 <p className="text-[10px] text-slate-400 font-bold">
                   รวมรายละเอียด Target, สต๊อกสินค้า, สต๊อกของแถม
@@ -1260,7 +1260,7 @@ export default function CustomerReportPortal() {
             <div>
               <p className="font-black text-xs text-slate-800">
                 FBMBD CONTROLLER
-                </p>
+              </p>
               <p className="text-[10px] text-red-400 font-medium">
                 Niwat Wiyasing
               </p>
