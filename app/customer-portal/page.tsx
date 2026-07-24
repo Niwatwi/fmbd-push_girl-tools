@@ -516,53 +516,59 @@ export default function CustomerReportPortal() {
       `}</style>
 
       <div>
-        {/* NAV BAR */}
-        <nav className="bg-blue-400 border-b border-slate-800 sticky top-0 z-40 shadow-xs no-print">
-          <div className="max-w-[96%] mx-auto px-4 h-16 flex items-center justify-between">
+        {/* NAV BAR - RESPONSIVE FIX FOR MOBILE */}
+        <nav className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs no-print">
+          <div className="max-w-[98%] sm:max-w-[96%] mx-auto px-2 sm:px-4 min-h-[60px] py-2 flex items-center justify-between gap-2">
             {/* 🏢 โลโก้บริษัท + ชื่อบริษัท */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               <img
                 src="/rvp.png"
                 alt="Riverpro Intertrade Logo"
-                className="h-9 w-auto object-contain"
+                className="h-7 sm:h-9 w-auto object-contain flex-shrink-0"
                 onError={(e: any) => {
                   e.target.onerror = null;
                   e.target.style.display = "none";
                 }}
               />
-              <div className="text-left border-l border-slate-200 pl-3">
-                <span className="text-sm font-black text-slate-800 block leading-tight">
+              <div className="text-left border-l border-slate-200 pl-2 sm:pl-3 min-w-0">
+                <span className="text-xs sm:text-sm font-black text-slate-800 block leading-tight truncate">
                   Riverpro Intertrade Co., Ltd
                 </span>
-                <span className="text-[10px] font-bold text-red-600 block tracking-wider uppercase">
-                  CUSTOMER MARKETING PORTAL RVI PUSH GIRL PROJECT
+                <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 hidden sm:block tracking-wider uppercase">
+                  CUSTOMER MARKETING PORTAL
                 </span>
               </div>
             </div>
 
             {/* ⏰ นาฬิกาปัจจุบัน + ปุ่มจัดการ */}
-            <div className="flex items-center gap-4">
-              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-mono text-xs font-bold shadow-xs">
+            <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+              <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-mono text-xs font-bold shadow-xs">
                 <Clock size={14} className="text-blue-600 animate-pulse" />
                 <span>{currentTime || "กำลังโหลดเวลา..."}</span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 <button
                   onClick={exportToExcel}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] sm:text-xs rounded-xl transition shadow-xs cursor-pointer whitespace-nowrap"
                 >
-                  <Download size={14} /> Export Excel
+                  <Download size={13} className="sm:w-3.5 sm:h-3.5" />
+                  <span>
+                    <span className="hidden sm:inline">Export </span>Excel
+                  </span>
                 </button>
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3.5 sm:py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-[11px] sm:text-xs rounded-xl transition shadow-xs cursor-pointer whitespace-nowrap"
                 >
-                  <Printer size={14} /> ปริ้นท์ / PDF
+                  <Printer size={13} className="sm:w-3.5 sm:h-3.5" />
+                  <span>
+                    PDF<span className="hidden sm:inline"> / ปริ้นท์</span>
+                  </span>
                 </button>
                 <button
                   onClick={loadPortalData}
-                  className={`p-2 rounded-xl border border-red-600 hover:bg-slate-50 transition cursor-pointer ${
+                  className={`p-1.5 sm:p-2 rounded-xl border border-slate-200 hover:bg-slate-50 transition cursor-pointer ${
                     loading ? "animate-spin" : ""
                   }`}
                   title="รีเฟรชข้อมูล"
@@ -574,22 +580,22 @@ export default function CustomerReportPortal() {
           </div>
         </nav>
 
-        <main className="max-w-[96%] mx-auto px-2 py-6 space-y-6">
-          {/* 🔍 FILTER BAR - ปรับเพิ่ม Account & วันที่ */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4 no-print text-left">
+        <main className="max-w-[98%] sm:max-w-[96%] mx-auto px-1 sm:px-2 py-4 sm:py-6 space-y-4 sm:space-y-6">
+          {/* 🔍 FILTER BAR */}
+          <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 no-print text-left">
             <div className="flex items-center gap-2 text-slate-700 text-xs font-black">
               <Filter size={16} className="text-blue-600" /> ตัวกรองข้อมูลสถิติ:
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
               {/* Account Filter */}
-              <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1 text-xs">
                 <Layers size={14} className="text-slate-400" />
                 <span className="font-bold text-slate-500">Account:</span>
                 <select
                   value={selectedAccount}
                   onChange={(e) => setSelectedAccount(e.target.value)}
-                  className="px-3 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs cursor-pointer text-slate-700"
+                  className="px-2.5 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs cursor-pointer text-slate-700"
                 >
                   <option value="ALL">-- ทุก Account --</option>
                   {accountOptions.map((acc) => (
@@ -601,12 +607,12 @@ export default function CustomerReportPortal() {
               </div>
 
               {/* สาขา Filter */}
-              <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1 text-xs">
                 <span className="font-bold text-slate-500">สาขา:</span>
                 <select
                   value={selectedStore}
                   onChange={(e) => setSelectedStore(e.target.value)}
-                  className="px-3 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs cursor-pointer text-slate-700 max-w-[200px]"
+                  className="px-2.5 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs cursor-pointer text-slate-700 max-w-[160px] sm:max-w-[200px] truncate"
                 >
                   <option value="ALL">-- ทุกสาขา --</option>
                   {storeOptions.map(([code, name]) => (
@@ -618,12 +624,12 @@ export default function CustomerReportPortal() {
               </div>
 
               {/* พนักงาน Filter */}
-              <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1 text-xs">
                 <span className="font-bold text-slate-500">พนักงาน:</span>
                 <select
                   value={selectedUser}
                   onChange={(e) => setSelectedUser(e.target.value)}
-                  className="px-3 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs cursor-pointer text-slate-700 max-w-[180px]"
+                  className="px-2.5 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs cursor-pointer text-slate-700 max-w-[150px] sm:max-w-[180px] truncate"
                 >
                   <option value="ALL">-- พนักงานทุกคน --</option>
                   {userOptions.map(([id, name]) => (
@@ -635,28 +641,28 @@ export default function CustomerReportPortal() {
               </div>
 
               {/* Date Range Filter */}
-              <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1 text-xs">
                 <Calendar size={14} className="text-slate-400" />
                 <span className="font-bold text-slate-500">วันที่:</span>
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="px-2.5 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs text-slate-700"
+                  className="px-2 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs text-slate-700"
                 />
                 <span className="text-slate-400">ถึง</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="px-2.5 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs text-slate-700"
+                  className="px-2 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs text-slate-700"
                 />
               </div>
             </div>
           </div>
 
           {/* 📈 KPI CARDS SUMMARY */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-left">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
               <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                 <ShoppingBag size={20} />
@@ -714,14 +720,14 @@ export default function CustomerReportPortal() {
             </div>
           </div>
 
-          {/* 📊 3 CHARTS SECTION - ปรับ Custom Tooltip เมื่อ Hover */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
+          {/* 📊 3 CHARTS SECTION */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b pb-2 mb-3">
                 <BarChart3 size={16} className="text-blue-600" />
                 1. สถิตียอดขายแยกรายสินค้า (เขียว / ฟ้า / ส้ม)
               </h3>
-              <div className="h-64 w-full">
+              <div className="h-60 sm:h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={filteredData}
@@ -748,12 +754,12 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b pb-2 mb-3">
                 <TrendingUp size={16} className="text-emerald-600" />
                 2. สถิติ Funnel (Traffic vs Approach vs Closed Sales)
               </h3>
-              <div className="h-64 w-full">
+              <div className="h-60 sm:h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={filteredData}
@@ -792,12 +798,12 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b pb-2 mb-3">
                 <Tag size={16} className="text-purple-600" />
                 3. สถิติเปรียบเทียบราคาสินค้าหน้าร้านกับคู่แข่ง (บาท)
               </h3>
-              <div className="h-64 w-full">
+              <div className="h-60 sm:h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={filteredData}
@@ -848,7 +854,7 @@ export default function CustomerReportPortal() {
             <div className="p-4 border-b border-slate-100 flex justify-between items-center">
               <div>
                 <h3 className="text-xs font-black text-slate-800">
-                  ตารางรายงานกิจกรรม PG ประจำสาขา
+                  ตารางรายงานกิจกรรม PG ประจำสาขา (ตามแบบฟอร์มที่ลูกค้า Request)
                 </h3>
                 <p className="text-[10px] text-slate-400 font-bold">
                   รวมรายละเอียด Target, สต๊อกสินค้า, สต๊อกของแถม
@@ -1240,7 +1246,7 @@ export default function CustomerReportPortal() {
 
       {/* 🦶 FOOTER BAR */}
       <footer className="bg-white border-t border-slate-200 mt-12 py-6 no-print text-slate-600">
-        <div className="max-w-[96%] mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="max-w-[98%] sm:max-w-[96%] mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <img
               src="/rvp.png"
@@ -1253,11 +1259,7 @@ export default function CustomerReportPortal() {
             />
             <div>
               <p className="font-black text-xs text-slate-800">
-                FMBD CONTROLLER
-                <br />
-                <small className="text-[10px] text-slate-500 font-normal">
-                  Niwat_wiy@riverpro.co.th
-                </small>
+                Riverpro Intertrade Co., Ltd
               </p>
               <p className="text-[10px] text-slate-400 font-medium">
                 ระบบรายงานกิจกรรมพนักงาน PG หน้าร้าน & การตลาด

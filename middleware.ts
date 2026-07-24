@@ -1,24 +1,30 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
-export function middleware(request: NextRequest) {
-  const session = request.cookies.get("user_session");
-  const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-  // 1. ถ้าไม่มีคุกกี้ และพยายามเข้าหน้าแรก/หน้าทำงาน -> ดีดไปหน้า /login
-  if (!session && !isLoginPage) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  // 🔓 1. ข้ามการตรวจสอบสิทธิ์สำหรับหน้า /customer-portal (เข้าชมได้ฟรีโดยไม่ต้องล็อกอิน)
+  if (pathname.startsWith("/customer-portal")) {
+    return NextResponse.next();
   }
 
-  // 2. ถ้าล็อกอินอยู่แล้ว แต่จะพยายามกดเข้าหน้าล็อกอินอีก -> ดีดกลับไปหน้าแรก /
-  if (session && isLoginPage) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
+  // -------------------------------------------------------------
+  // 🔒 2. โค้ดสำหรับตรวจสอบการ Login / Session เดิมของคุณ (ถ้ามี)
+  // -------------------------------------------------------------
 
   return NextResponse.next();
 }
 
-// กำหนดให้มิดเดิลแวร์ตรวจเช็คทุกหน้า ยกเว้นไฟล์ static หรือโลโก้ภาพ
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|rvp.png).*)"],
+  matcher: [
+    /*
+     * ยกเว้นการทำงานของ Middleware กับ:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - ไฟล์รูปภาพใน public (png, jpg, svg, ฯลฯ)
+     * - customer-portal (หน้าพอร์ตัลลูกค้า)
+     */
+    "/((?!_next/static|_next/image|favicon.ico|customer-portal|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };
