@@ -764,7 +764,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   }
 }
 
-// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG
+// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (คำนวณค่าแรงรายวันตามเกณฑ์ชั่วโมงทำงานจริง)
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -784,7 +784,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
     let attendanceQuery = supabase
       .from("pg_attendance_logs")
-      .select("user_id, check_in_at, store_code, store_name");
+      .select("user_id, check_in_at, check_out_at, store_code, store_name");
 
     if (params?.startDate && params.startDate.trim() !== "") {
       attendanceQuery = attendanceQuery.gte(
@@ -855,6 +855,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
         storeCode: "-",
         baseSalaryRate: user.base_salary ? Number(user.base_salary) : 700,
         workDaysCount: 0,
+        totalDailyWage: 0, // ยอดรวมค่าแรงที่คำนวณจากชั่วโมงทำงานจริง
         dailyReportsList: [],
       });
     });
@@ -868,6 +869,23 @@ export async function getAdminSalarySummaryReportAction(params?: {
           item.storeName = log.store_name;
         if (log.store_code && item.storeCode === "-")
           item.storeCode = log.store_code;
+
+        // ⏱️ คำนวณชั่วโมงทำงานของกะนี้
+        let workedHours = 0;
+        if (log.check_in_at && log.check_out_at) {
+          const checkIn = new Date(log.check_in_at).getTime();
+          const checkOut = new Date(log.check_out_at).getTime();
+          workedHours = Number(
+            ((checkOut - checkIn) / (1000 * 60 * 60)).toFixed(1),
+          );
+        }
+
+        // 🎯 คำนวณค่าแรงประจำกะตามเกณฑ์ใหม่ (>=9 ชม. = 700฿, 1-8.9 ชม. = 350฿, <1 ชม. = 0฿)
+        const wageForShift = calculateDailyWage(
+          workedHours,
+          item.baseSalaryRate,
+        );
+        item.totalDailyWage += wageForShift;
       }
     });
 
@@ -915,7 +933,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
     const resultList = await Promise.all(
       Array.from(userSummaryMap.values()).map(async (item: any) => {
-        const totalDailyWage = item.workDaysCount * item.baseSalaryRate;
+        // ใช้ยอดรวมค่าแรงที่คำนวณตามชั่วโมงทำงานจริง
+        const totalDailyWage = item.totalDailyWage;
 
         const sortedReports = item.dailyReportsList.sort(
           (a: any, b: any) =>
