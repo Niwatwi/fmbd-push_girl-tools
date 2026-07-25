@@ -1030,3 +1030,39 @@ export async function getAdminSalarySummaryReportAction(params?: {
     return { success: false, data: [], message: error.message };
   }
 }
+
+// 12. 🛠️ ฟังก์ชันสำหรับ Admin แก้ไขเวลา Check-in / Check-out และสาขา
+export async function updateAdminAttendanceLogAction(payload: {
+  id: number;
+  checkInAt?: string;
+  checkOutAt?: string;
+  storeCode?: string;
+  storeName?: string;
+}) {
+  const supabase = getClientInstance();
+  try {
+    const updateData: any = {};
+    if (payload.checkInAt !== undefined)
+      updateData.check_in_at = payload.checkInAt;
+    if (payload.checkOutAt !== undefined)
+      updateData.check_out_at = payload.checkOutAt;
+    if (payload.storeCode !== undefined)
+      updateData.store_code = payload.storeCode;
+    if (payload.storeName !== undefined)
+      updateData.store_name = payload.storeName;
+
+    const { error } = await supabase
+      .from("pg_attendance_logs")
+      .update(updateData)
+      .eq("id", payload.id);
+
+    if (error) throw error;
+    return { success: true, message: "อัปเดตข้อมูลเวลาทำงานเรียบร้อยแล้ว" };
+  } catch (error: any) {
+    console.error("Update attendance log error:", error);
+    return {
+      success: false,
+      message: error.message || "ไม่สามารถแก้ไขข้อมูลได้",
+    };
+  }
+}
