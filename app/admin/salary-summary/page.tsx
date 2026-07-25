@@ -123,7 +123,7 @@ export default function AdminSalarySummaryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans antialiased p-6">
+    <div className="min-h-screen bg-blue-800 text-slate-800 font-sans antialiased p-6">
       <style jsx global>{`
         @media print {
           @page {

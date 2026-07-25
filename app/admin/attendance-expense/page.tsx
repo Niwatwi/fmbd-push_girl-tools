@@ -107,7 +107,7 @@ export default function AdminAttendanceExpensePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans antialiased p-4 md:p-8">
+    <div className="min-h-screen bg-blue-800 text-slate-800 font-sans antialiased p-4 md:p-8">
       {/* 🛑 CSS สำหรับปรับแต่งการสั่งพิมพ์ PDF (Hide Navigation, Show Images) */}
       <style jsx global>{`
         @media print {
