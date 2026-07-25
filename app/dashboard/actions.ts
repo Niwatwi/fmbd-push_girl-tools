@@ -661,7 +661,18 @@ export async function getCustomerFullActivityReport() {
   }
 }
 
-// 10. 📅 ดึงรายงาน Time Attendance & Expense
+// 🇹🇭 Helper Function: คำนวณค่าแรงรายวันตามจำนวนชั่วโมงทำงานจริง
+function calculateDailyWage(hours: number, baseRate: number = 700): number {
+  if (hours >= 9) {
+    return baseRate; // 9 ชม. ขึ้นไป = 700 บาท
+  } else if (hours >= 1) {
+    return baseRate / 2; // 1 ชม. ถึง 8.9 ชม. = 350 บาท
+  } else {
+    return 0; // น้อยกว่า 1 ชม. = 0 บาท
+  }
+}
+
+// 10. 📅 ดึงรายงาน Time Attendance & Expense (ปรับปรุงการคิดค่าแรงตามชั่วโมงทำงาน)
 export async function getAdminAttendanceExpenseReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -714,7 +725,9 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
       }
 
       const wageRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
-      const dailyWage = log.check_in_at ? wageRate : 0;
+
+      // 🎯 คำนวณค่าแรงรายวันตามเกณฑ์ชั่วโมงทำงานจริง
+      const dailyWage = calculateDailyWage(workedHours, wageRate);
 
       const lat = log.check_in_latitude || log.check_in_lat || null;
       const lon = log.check_in_longitude || log.check_in_lon || null;
@@ -734,7 +747,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
           ? formatThaiDateTime(log.check_out_at)
           : "ยังไม่เลิกงาน",
         checkInDateRaw: log.check_in_at ? log.check_in_at.split("T")[0] : "-",
-        workedHours: workedHours > 0 ? workedHours : "-",
+        workedHours: workedHours > 0 ? workedHours : 0,
         checkInLat: lat,
         checkInLon: lon,
         checkInPhoto: checkInImg,
