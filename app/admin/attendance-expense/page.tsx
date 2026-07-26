@@ -5,14 +5,10 @@ import {
   Clock,
   Calendar,
   Search,
-  Download,
   Printer,
   RefreshCw,
   MapPin,
-  Image as ImageIcon,
   Edit3,
-  CheckCircle2,
-  AlertCircle,
   ArrowLeft,
   DollarSign,
   Users,
@@ -70,13 +66,11 @@ export default function AdminAttendanceExpensePage() {
 
   // ✏️ ฟังก์ชันเปิด Modal แก้ไขข้อมูล Check-In / Check-Out
   const handleEditLog = (log: any) => {
-    // แปลง Format เป็น YYYY-MM-DDTHH:mm สำหรับใส่ใน input datetime-local
     const formatForInput = (dateStr: string) => {
       if (!dateStr || dateStr === "ยังไม่เลิกงาน" || dateStr === "-") return "";
       try {
         const d = new Date(dateStr);
         if (isNaN(d.getTime())) return "";
-        // ปรับเป็นเวลาไทย UTC+7
         const tzOffset = 7 * 60 * 60 * 1000;
         const localDate = new Date(d.getTime() + tzOffset);
         return localDate.toISOString().slice(0, 16);
@@ -92,17 +86,17 @@ export default function AdminAttendanceExpensePage() {
     Swal.fire({
       title: `✏️ แก้ไขบันทึกเวลา: ${log.displayName}`,
       html: `
-        <div className="text-left space-y-3 text-xs text-slate-700">
+        <div class="text-left space-y-3 text-xs text-slate-700">
           <div>
-            <label className="font-bold block mb-1">ชื่อสาขา / รหัสสาขา:</label>
+            <label class="font-bold block mb-1">ชื่อสาขา / รหัสสาขา:</label>
             <input id="swal-store-name" class="swal2-input !mt-0 !w-full !text-xs" value="${log.storeName}" placeholder="ชื่อสาขา" />
           </div>
-          <div className="mt-2">
-            <label className="font-bold block mb-1">เวลา Check-IN (เข้างาน):</label>
+          <div class="mt-2">
+            <label class="font-bold block mb-1">เวลา Check-IN (เข้างาน):</label>
             <input id="swal-check-in" type="datetime-local" class="swal2-input !mt-0 !w-full !text-xs" value="${initialIn}" />
           </div>
-          <div className="mt-2">
-            <label className="font-bold block mb-1">เวลา Check-OUT (ออกงาน):</label>
+          <div class="mt-2">
+            <label class="font-bold block mb-1">เวลา Check-OUT (ออกงาน):</label>
             <input id="swal-check-out" type="datetime-local" class="swal2-input !mt-0 !w-full !text-xs" placeholder="ปล่อยว่างหากยังไม่เลิกงาน" />
           </div>
         </div>
@@ -164,7 +158,7 @@ export default function AdminAttendanceExpensePage() {
   };
 
   // 🗺️ ดูพิกัดแผนที่
-  const handleViewMap = (lat: number, lon: number, name: string) => {
+  const handleViewMap = (lat: number, lon: number) => {
     if (!lat || !lon) {
       Swal.fire("ไม่พบพิกัด", "รายการนี้ไม่มีการบันทึกพิกัด GPS", "warning");
       return;
@@ -172,12 +166,9 @@ export default function AdminAttendanceExpensePage() {
     window.open(`https://www.google.com/maps?q=${lat},${lon}`, "_blank");
   };
 
-  // 🖼️ ดูรูปถ่ายเข้า/ออกงาน
+  // 🖼️ ดูรูปถ่ายเข้า/ออกงานใหญ่
   const handleViewPhoto = (url: string, title: string) => {
-    if (!url) {
-      Swal.fire("ไม่พบรูปภาพ", "รายการนี้ไม่มีรูปถ่ายบันทึกไว้", "warning");
-      return;
-    }
+    if (!url) return;
     Swal.fire({
       title: title,
       imageUrl: url,
@@ -201,6 +192,54 @@ export default function AdminAttendanceExpensePage() {
 
   return (
     <div className="min-h-screen bg-blue-800 text-slate-800 font-sans antialiased pb-12">
+      {/* 🛑 STYLING สำหรับการพิมพ์ PDF */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4 landscape;
+            margin: 5mm;
+          }
+          header,
+          .no-print,
+          th:last-child,
+          td:last-child {
+            display: none !important;
+          }
+          body {
+            background-color: #ffffff !important;
+            font-size: 8px !important;
+            color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          main {
+            max-width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+          .shadow-xs,
+          .shadow-sm,
+          .shadow-md {
+            box-shadow: none !important;
+          }
+          table {
+            width: 100% !important;
+            font-size: 8px !important;
+          }
+          th,
+          td {
+            padding: 3px 4px !important;
+          }
+          img {
+            display: inline-block !important;
+            width: 32px !important;
+            height: 32px !important;
+            object-fit: cover !important;
+            border-radius: 4px !important;
+          }
+        }
+      `}</style>
+
       {/* HEADER BAR */}
       <header className="bg-blue-900 text-white shadow-md border-b border-blue-800">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -228,13 +267,13 @@ export default function AdminAttendanceExpensePage() {
             </a>
             <button
               onClick={() => window.print()}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition cursor-pointer"
             >
               <Printer size={14} /> ปริ้นท์ PDF
             </button>
             <button
               onClick={loadAttendanceData}
-              className={`p-2 bg-blue-800 hover:bg-blue-700 rounded-xl transition ${
+              className={`p-2 bg-blue-800 hover:bg-blue-700 rounded-xl transition cursor-pointer ${
                 loading ? "animate-spin" : ""
               }`}
             >
@@ -296,7 +335,7 @@ export default function AdminAttendanceExpensePage() {
         </div>
 
         {/* SEARCH & FILTER BAR */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4 no-print">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
             <Calendar size={16} className="text-blue-600" /> ตัวกรองข้อมูล:
           </div>
@@ -359,9 +398,11 @@ export default function AdminAttendanceExpensePage() {
                   <th className="p-3">เวลา CHECK-OUT</th>
                   <th className="p-3 text-center">ชั่วโมงทำงาน</th>
                   <th className="p-3 text-center">ค่าแรงรายวัน</th>
-                  <th className="p-3 text-center">พิกัด GPS</th>
-                  <th className="p-3 text-center">รูปถ่ายเข้า-ออก</th>
-                  <th className="p-3 text-center">จัดการ</th>
+                  <th className="p-3 text-center no-print">พิกัด GPS</th>
+                  <th className="p-3 text-center min-w-[100px]">
+                    รูปถ่ายเข้า-ออก
+                  </th>
+                  <th className="p-3 text-center no-print">จัดการ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -404,46 +445,56 @@ export default function AdminAttendanceExpensePage() {
                       <td className="p-3 text-center font-mono font-bold text-emerald-600">
                         {log.dailyWage} ฿
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center no-print">
                         <button
                           onClick={() =>
-                            handleViewMap(
-                              log.checkInLat,
-                              log.checkInLon,
-                              log.storeName,
-                            )
+                            handleViewMap(log.checkInLat, log.checkInLon)
                           }
                           className="px-2.5 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg font-bold text-[10px] inline-flex items-center gap-1 cursor-pointer"
                         >
                           <MapPin size={12} /> แผนที่
                         </button>
                       </td>
+
+                      {/* 🖼️ รูปถ่าย Thumbnail เข้า-ออกงาน */}
                       <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {log.checkInPhoto && (
-                            <button
+                        <div className="flex items-center justify-center gap-1.5">
+                          {log.checkInPhoto ? (
+                            <img
+                              src={log.checkInPhoto}
+                              alt="รูปเข้า"
                               onClick={() =>
                                 handleViewPhoto(log.checkInPhoto, "รูปเข้างาน")
                               }
-                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold cursor-pointer"
-                            >
-                              รูปเข้า
-                            </button>
+                              className="w-9 h-9 object-cover rounded-lg border border-emerald-300 shadow-xs cursor-pointer hover:scale-105 transition"
+                              title="คลิกเพื่อดูรูปเข้างาน"
+                            />
+                          ) : (
+                            <span className="text-slate-300 text-[10px] font-mono">
+                              -
+                            </span>
                           )}
-                          {log.checkOutPhoto && (
-                            <button
+
+                          {log.checkOutPhoto ? (
+                            <img
+                              src={log.checkOutPhoto}
+                              alt="รูปออก"
                               onClick={() =>
                                 handleViewPhoto(log.checkOutPhoto, "รูปเลิกงาน")
                               }
-                              className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-[10px] font-bold cursor-pointer"
-                            >
-                              รูปออก
-                            </button>
+                              className="w-9 h-9 object-cover rounded-lg border border-blue-300 shadow-xs cursor-pointer hover:scale-105 transition"
+                              title="คลิกเพื่อดูรูปเลิกงาน"
+                            />
+                          ) : (
+                            <span className="text-slate-300 text-[10px] font-mono">
+                              -
+                            </span>
                           )}
                         </div>
                       </td>
+
                       {/* ✏️ ปุ่มกดแก้ไขข้อมูลสำหรับ Admin */}
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center no-print">
                         <button
                           onClick={() => handleEditLog(log)}
                           className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg font-bold text-[10px] inline-flex items-center gap-1 cursor-pointer transition shadow-xs"
