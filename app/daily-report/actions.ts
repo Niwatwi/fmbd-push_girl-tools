@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// 🔑 ฟังก์ชันดึง Supabase Client แบบปลอดภัยชัวร์ 100%
+// 🔑 ฟังก์ชันดึง Supabase Client แบบปลอดภัย
 function getClientInstance() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (serviceKey) {
@@ -169,14 +169,68 @@ export async function getTodayActiveAttendance(userId: number) {
   }
 }
 
-// 3. บันทึกข้อมูลรายงานกิจกรรมฉบับเต็มลงระบบหลังบ้าน
+// 3. 🎁 ดึงยอดยกมาของแถมเริ่มต้นของสาขา (Auto Carryover จากรายงานล่าสุด)
+export async function getStoreInitialGiftsAction(storeCode: string) {
+  const supabase = getClientInstance();
+  const cleanStoreCode = (storeCode || "").trim();
+
+  try {
+    // ดึงรายงานย้อนหลังล่าสุดของสาขานี้
+    const { data: latestReport, error } = await supabase
+      .from("pg_daily_activity_reports")
+      .select("gift_nourish_after, gift_orange_after")
+      .eq("store_code", cleanStoreCode)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    // ถ้ารายงานก่อนหน้ามีข้อมูล ให้ยกยอดคงเหลือวันก่อนหน้ามาเป็นยอดก่อนเริ่มของวันนี้
+    if (latestReport) {
+      return {
+        success: true,
+        giftNourishBefore: Number(latestReport.gift_nourish_after ?? 60),
+        giftOrangeBefore: Number(latestReport.gift_orange_after ?? 480),
+        isCarryOver: true,
+      };
+    }
+
+    // ถ้ายังไม่เคยมีรายงานของสาขานี้ ให้ใช้ค่าเริ่มต้นมาตรฐานจาก Admin
+    return {
+      success: true,
+      giftNourishBefore: 60, // ค่าเริ่มต้น เขียว 40
+      giftOrangeBefore: 480, // ค่าเริ่มต้น ส้ม 100
+      isCarryOver: false,
+    };
+  } catch (error: any) {
+    console.error("Get initial gifts error:", error);
+    return {
+      success: false,
+      giftNourishBefore: 60,
+      giftOrangeBefore: 480,
+      message: error.message,
+    };
+  }
+}
+
+// 4. บันทึกข้อมูลรายงานกิจกรรมฉบับเต็มลงระบบหลังบ้าน
 export async function submitFullDailyActivityReportAction(
   payload: FullActivityReportInput,
 ) {
   const supabaseClient = getClientInstance();
 
   try {
-    // สเต็ปที่ 1: อัปโหลดรูปภาพรวมกิจกรรมทั้ง 6 ใบเข้า Storage
+    // 🧮 คำนวณตัดสต๊อกของแถมอัตโนมัติบน Server เพื่อป้องกันการคำนวณผิดพลาด
+    const giftNourishBefore = Number(payload.giftNourishBefore || 0);
+    const giftNourishGiven = Number(payload.giftNourishGiven || 0);
+    const giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
+
+    const giftOrangeBefore = Number(payload.giftOrangeBefore || 0);
+    const giftOrangeGiven = Number(payload.giftOrangeGiven || 0);
+    const giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
+
+    // สเต็ปที่ 1: อัปโหลดรูปภาพรวมกิจกรรมเข้า Storage
     const uploadedActivityPhotos = [];
     if (payload.activityPhotos && Array.isArray(payload.activityPhotos)) {
       for (const photo of payload.activityPhotos) {
@@ -232,13 +286,13 @@ export async function submitFullDailyActivityReportAction(
         sales_qty_orange100: payload.salesQtyOrange100 || 0,
         stock_after_orange100: payload.stockAfterOrange100 || 0,
 
-        // ข้อมูลคลังและยอดแจกของแถมเฉพาะสาขาเครือ Tops
-        gift_orange_before: payload.giftOrangeBefore || 0,
-        gift_orange_given: payload.giftOrangeGiven || 0,
-        gift_orange_after: payload.giftOrangeAfter || 0,
-        gift_nourish_before: payload.giftNourishBefore || 0,
-        gift_nourish_given: payload.giftNourishGiven || 0,
-        gift_nourish_after: payload.giftNourishAfter || 0,
+        // 🎁 ข้อมูลคลังและยอดแจกของแถมคำนวณอัตโนมัติ
+        gift_orange_before: giftOrangeBefore,
+        gift_orange_given: giftOrangeGiven,
+        gift_orange_after: giftOrangeAfter,
+        gift_nourish_before: giftNourishBefore,
+        gift_nourish_given: giftNourishGiven,
+        gift_nourish_after: giftNourishAfter,
       })
       .select()
       .single();
@@ -248,7 +302,7 @@ export async function submitFullDailyActivityReportAction(
       throw new Error(`บันทึกตารางหลักไม่สำเร็จ: ${reportError.message}`);
     }
 
-    // สเต็ปที่ 3: จัดการอัปโหลดรูปภาพรายตัวสินค้า 3 ใบ แล้วอัปเดตลงตารางย่อย pg_daily_report_products
+    // สเต็ปที่ 3: จัดการอัปโหลดรูปภาพรายตัวสินค้า และอัปเดตลงตาราง pg_daily_report_products
     if (payload.products && Array.isArray(payload.products)) {
       for (const prod of payload.products) {
         const imgProductUrl = prod.img_product_base64

@@ -27,6 +27,7 @@ import {
   getTodayActiveAttendance,
   submitFullDailyActivityReportAction,
   getProductByBarcode,
+  getStoreInitialGiftsAction, // 🎁 เพิ่ม Action ดึงยอดยกมาของแถม
 } from "./actions";
 
 interface ProductFormState {
@@ -77,9 +78,9 @@ export default function DailyReportPage() {
   const [approach, setApproach] = useState("");
   const [closedSales, setClosedSales] = useState("");
 
-  // สถานะการบันทึกคลังของแถมสำหรับห้าง Tops แยกต่างหาก
-  const [giftOrangeBefore, setGiftOrangeBefore] = useState("");
-  const [giftNourishBefore, setGiftNourishBefore] = useState("");
+  // สถานะการบันทึกคลังของแถมสำหรับห้าง Tops (เซ็ตค่าไว้อัตโนมัติจากการยกยอดวันก่อนหน้า/ADMIN)
+  const [giftOrangeBefore, setGiftOrangeBefore] = useState("480");
+  const [giftNourishBefore, setGiftNourishBefore] = useState("60");
   const [giftNourishGiven, setGiftNourishGiven] = useState("");
 
   // 2. ฟอร์มราคาคู่แข่ง
@@ -137,7 +138,7 @@ export default function DailyReportPage() {
   const [feedback, setFeedback] = useState("");
   const [compPromo, setCompPromo] = useState("");
 
-  // 🏪 [แก้ไขจุดบั๊กภาษาไทย] ตรวจสอบชื่อห้างแบบยืดหยุ่นสูง เพื่อป้องกันปัญหาสระซ้อน/วรรณยุกต์เพี้ยน
+  // 🏪 ตรวจสอบชื่อห้าง
   const storeName = attendanceLog?.store_name || "";
   const isTops =
     storeName.toLowerCase().includes("top") ||
@@ -148,15 +149,14 @@ export default function DailyReportPage() {
     storeName.includes("บิ๊ก") ||
     storeName.includes("บิ๊กซี");
 
-  // 🔍 เปลี่ยนชุด useEffect เป็นระบบซูเปอร์สแกนหาตัวตนผู้ใช้จริงตัวนี้ครับ
+  // 🔍 ตรวจสอบและโหลดข้อมูลสถานะการลงเวลาทำงาน + ดึงยอดยกมาของแถมสำหรับ Tops
   useEffect(() => {
     const fetchAttendanceStatus = async () => {
       setLoading(true);
 
-      let currentUserId = 101; // ค่าเริ่มต้นกรณีฉุกเฉินจริงๆ
-      let foundName = "นางสาวพิชญา สระทองลี"; // ชื่อแสดงผลเริ่มต้น
+      let currentUserId = 101;
+      let foundName = "นางสาวพิชญา สระทองลี";
 
-      // 🔗 ขั้นตอนที่ 1: ช่องทางที่ชัวร์ที่สุด ดักจับพารามิเตอร์ผ่าน URL (?userId=xxx หรือ ?id=xxx)
       if (typeof window !== "undefined") {
         const urlParams = new URLSearchParams(window.location.search);
         const urlId =
@@ -165,14 +165,9 @@ export default function DailyReportPage() {
           urlParams.get("user_id");
         if (urlId && !isNaN(Number(urlId))) {
           currentUserId = Number(urlId);
-          console.log(
-            "🔗 https://play.google.com/store/apps/details?id=com.gamma.scan&hl=en เจอ User ID จาก Parameter:",
-            currentUserId,
-          );
         }
       }
 
-      // 🛰️ ขั้นตอนที่ 2: สแกนแบบละเอียดทั้ง localStorage และ sessionStorage พร้อมกัน
       if (currentUserId === 101 && typeof window !== "undefined") {
         const storageTargets = [
           { name: "localStorage", instance: localStorage },
@@ -190,7 +185,6 @@ export default function DailyReportPage() {
 
               const lowerKey = key.toLowerCase();
 
-              // กรณีที่ 2.1: เก็บเป็นค่าตัวเลขตรงๆ ไม่ได้แปลงเป็น JSON (เช่น key="userId", value="105")
               if (
                 (lowerKey.includes("user") ||
                   lowerKey.includes("profile") ||
@@ -198,28 +192,17 @@ export default function DailyReportPage() {
                 !isNaN(Number(item))
               ) {
                 currentUserId = Number(item);
-                console.log(
-                  `🎯 [Plain Scanner] เจอ ID ใน ${target.name} คีย์ [${key}]:`,
-                  currentUserId,
-                );
                 break;
               }
 
-              // กรณีที่ 2.2: เก็บในรูปแบบออบเจกต์ JSON (เช็คทั้ง Root ID และ Nest ID แบบ Supabase)
               if (item.startsWith("{") || item.startsWith("[")) {
                 const parsed = JSON.parse(item);
                 if (parsed) {
-                  // เช็คโครงสร้างปกติ { id: 105, display_name: "..." }
                   if (parsed.id && !isNaN(Number(parsed.id))) {
                     currentUserId = Number(parsed.id);
                     if (parsed.display_name) foundName = parsed.display_name;
-                    console.log(
-                      `🎯 [JSON Scanner] เจอ ID ใน คีย์ [${key}]:`,
-                      currentUserId,
-                    );
                     break;
                   }
-                  // เช็คโครงสร้างซ้อนแบบ Supabase Auth Token { user: { id: 105 } }
                   if (
                     parsed.user &&
                     parsed.user.id &&
@@ -229,13 +212,8 @@ export default function DailyReportPage() {
                     if (parsed.user.user_metadata?.display_name) {
                       foundName = parsed.user.user_metadata.display_name;
                     }
-                    console.log(
-                      `🎯 [Supabase Scanner] เจอ ID ใน Token คีย์ [${key}]:`,
-                      currentUserId,
-                    );
                     break;
                   }
-                  // เช็คคีย์ userId แฝง { userId: 105 }
                   if (parsed.userId && !isNaN(Number(parsed.userId))) {
                     currentUserId = Number(parsed.userId);
                     break;
@@ -246,20 +224,26 @@ export default function DailyReportPage() {
           } catch (e) {
             console.error(`Error scanning ${target.name}:`, e);
           }
-          if (currentUserId !== 101) break; // ถ้าเจอแล้วให้หยุดลูปทันที
+          if (currentUserId !== 101) break;
         }
       }
 
-      // บันทึกสถานะผู้ใช้จริงเข้าสู่ State เพื่อส่งต่อไปยัง API ตอนกดเซฟฟอร์ม
       setUser({ id: currentUserId, display_name: foundName });
 
-      // 📡 นำ ID ที่แกะได้จริงไปดึงประวัติการ Check-in ในระบบหลังบ้าน Supabase
       const res = await getTodayActiveAttendance(currentUserId);
 
       if (res.success && res.log) {
         setAttendanceLog(res.log);
+
+        // 🎁 ดึงยอดยกมาจากวันก่อนหน้า หรือ ยอดเริ่มต้นจาก Admin
+        if (res.log.store_code) {
+          const giftRes = await getStoreInitialGiftsAction(res.log.store_code);
+          if (giftRes.success) {
+            setGiftNourishBefore(giftRes.giftNourishBefore.toString());
+            setGiftOrangeBefore(giftRes.giftOrangeBefore.toString());
+          }
+        }
       } else {
-        // แจ้งเตือนปฏิเสธสิทธิ์พร้อมบอกประวัติ ID ที่ตรวจพบ
         Swal.fire({
           title: "ปฏิเสธการเข้าถึง",
           text: `กรุณาลงเวลาทำงาน Check-in ที่หน้าหลักเพื่อเปิดใช้งานระบบส่งรายงานกิจกรรมค่ะ (Debug ID: ${currentUserId})`,
@@ -346,7 +330,6 @@ export default function DailyReportPage() {
     }
   };
 
-  // 📸 ระบบย่อและบีบอัดรูปภาพอัตโนมัติก่อนแปลงเป็น Base64 เพื่อป้องกัน Server Action แตก
   const processFileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -356,12 +339,11 @@ export default function DailyReportPage() {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement("canvas");
-          const MAX_WIDTH = 1024; // จำกัดความกว้างสูงสุดที่ 1024px
-          const MAX_HEIGHT = 1024; // จำกัดความสูงสูงสุดที่ 1024px
+          const MAX_WIDTH = 1024;
+          const MAX_HEIGHT = 1024;
           let width = img.width;
           let height = img.height;
 
-          // คำนวณสัดส่วนรูปภาพ (Aspect Ratio) เพื่อไม่ให้รูปเบี้ยว
           if (width > height) {
             if (width > MAX_WIDTH) {
               height *= MAX_WIDTH / width;
@@ -380,7 +362,6 @@ export default function DailyReportPage() {
           const ctx = canvas.getContext("2d");
           ctx?.drawImage(img, 0, 0, width, height);
 
-          // 🌟 บีบอัดไฟล์เป็นฟอร์แมต JPEG คุณภาพ 0.7 (ช่วยลดขนาดไฟล์ลงได้ถึง 85-90%)
           const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
           resolve(compressedBase64);
         };
@@ -484,7 +465,7 @@ export default function DailyReportPage() {
     );
   };
 
-  // คำนวณยอดแถมสีส้มอัตโนมัติ (1:1 จากยอดขายเขียว, ฟ้า, ส้ม) เพื่อใช้ตัดสต๊อกของแถมฝั่ง Tops
+  // 🧮 คำนวณยอดแถมสีส้มอัตโนมัติ (1:1 จากยอดขายเขียว, ฟ้า, ส้ม)
   const salesQtyGreen =
     Number(
       productsForm.find((p) => p.barcode === "8858678423339")?.sales_qty,
@@ -620,7 +601,7 @@ export default function DailyReportPage() {
               )
             : 0,
 
-          // นำส่งข้อมูลตัดยอดคลังของแถมของ Tops เข้า API หลังบ้าน
+          // 🎁 ตัดยอดของแถมส่งเข้า Server
           giftOrangeBefore: isTops ? Number(giftOrangeBefore) || 0 : 0,
           giftOrangeGiven: isTops ? autoOrangeGiftGiven : 0,
           giftOrangeAfter: isTops ? giftOrangeAfter : 0,
@@ -717,10 +698,14 @@ export default function DailyReportPage() {
           </div>
         </div>
 
-        {/* 🏪 การ์ดแสดงเงื่อนไขโปรโมชันประจำสาขา (Dynamic Promo Guide) */}
+        {/* 🏪 การ์ดแสดงเงื่อนไขโปรโมชันประจำสาขา */}
         {(isBigC || isTops) && (
           <div
-            className={`p-4 rounded-xl border text-left text-xs ${isBigC ? "bg-lime-50 border-lime-200" : "bg-orange-50 border-orange-200"}`}
+            className={`p-4 rounded-xl border text-left text-xs ${
+              isBigC
+                ? "bg-lime-50 border-lime-200"
+                : "bg-orange-50 border-orange-200"
+            }`}
           >
             <div className="flex items-center gap-1.5 font-black text-slate-800 border-b border-black/5 pb-2 mb-2">
               <Tag
@@ -1173,17 +1158,18 @@ export default function DailyReportPage() {
             </div>
           </div>
 
-          {/* 🎁 3. ระบบบันทึกและตัดยอดของแถมประจำวัน (เปิดการแสดงผลเฉพาะเครือห้าง Tops เท่านั้น) */}
+          {/* 🎁 3. ระบบบันทึกและตัดยอดของแถมประจำวัน (เปิดการแสดงผลเฉพาะ Tops เท่านั้น) */}
           {isTops && (
             <div className="bg-white p-4 rounded-xl border border-orange-300 shadow-xs space-y-3 bg-gradient-to-br from-white to-orange-50/10">
-              <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-orange-100 pb-2 text-left">
-                <Package size={14} className="text-orange-600" /> 3.
-                บันทึกและตัดยอดคลังของแถมประจำวัน (เฉพาะ Tops)
+              <h4 className="text-xs font-black text-slate-800 flex items-center justify-between border-b border-orange-100 pb-2 text-left">
+                <span className="flex items-center gap-1.5">
+                  <Package size={14} className="text-orange-600" /> 3.
+                  บันทึกและตัดยอดคลังของแถมประจำวัน (เฉพาะ Tops)
+                </span>
+                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                  ✓ ยกยอดจากวันก่อนหน้า
+                </span>
               </h4>
-              <p className="text-[9px] text-slate-400 font-bold -mt-1 text-left leading-normal">
-                * ของแถมส่งเข้าแยกต่างหากจากบริษัท
-                พนักงานเชียร์ต้องนับยอดสต๊อกเช้าเพื่อนำมาหักลบยอดแจกสรุปสต๊อกเหลือเย็นค่ะ
-              </p>
 
               <div className="space-y-3">
                 {/* 1. สต๊อกของแถมสีส้ม 100 แผ่น (ตัดยอด 1:1 อัตโนมัติ) */}
@@ -1199,14 +1185,13 @@ export default function DailyReportPage() {
                   <div className="grid grid-cols-3 gap-2">
                     <div>
                       <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        สต๊อกแถมเช้า
+                        สต๊อกแถมเช้า (Auto)
                       </label>
                       <input
                         type="number"
-                        placeholder="0"
                         value={giftOrangeBefore}
                         onChange={(e) => setGiftOrangeBefore(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-orange-500"
+                        className="w-full bg-slate-100 border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-orange-500"
                         required
                       />
                     </div>
@@ -1220,7 +1205,7 @@ export default function DailyReportPage() {
                     </div>
                     <div>
                       <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        คงเหลือเย็น
+                        คงเหลือเย็น (ยกยอด)
                       </label>
                       <div className="w-full bg-orange-50 border border-orange-200 rounded-lg p-1 text-[11px] font-black text-center text-orange-700">
                         {giftOrangeAfter}
@@ -1243,14 +1228,13 @@ export default function DailyReportPage() {
                   <div className="grid grid-cols-3 gap-2">
                     <div>
                       <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        สต๊อกแถมเช้า
+                        สต๊อกแถมเช้า (Auto)
                       </label>
                       <input
                         type="number"
-                        placeholder="0"
                         value={giftNourishBefore}
                         onChange={(e) => setGiftNourishBefore(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-orange-500"
+                        className="w-full bg-slate-100 border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-orange-500"
                         required
                       />
                     </div>
@@ -1269,7 +1253,7 @@ export default function DailyReportPage() {
                     </div>
                     <div>
                       <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        คงเหลือเย็น
+                        คงเหลือเย็น (ยกยอด)
                       </label>
                       <div className="w-full bg-orange-50 border border-orange-200 rounded-lg p-1 text-[11px] font-black text-center text-orange-700">
                         {giftNourishAfter}

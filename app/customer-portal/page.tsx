@@ -390,9 +390,39 @@ export default function CustomerReportPortal() {
     const csvRows = filteredData.map((row, idx) => {
       const photos = categorizePhotos(row.activityPhotos);
       const accountName = getAccountName(row.storeName, row.storeCode);
+      const isBigC = accountName === "BigC";
 
       const joinUrls = (list: any[]) =>
         list.length > 0 ? list.map((p) => p.url).join(" | ") : "";
+
+      // 🧮 คำนวณ Stock หลังเลิกสำหรับการ Export
+      const stockAfterGreen =
+        row.stockAfterGreen !== undefined && row.stockAfterGreen !== null
+          ? Number(row.stockAfterGreen)
+          : Math.max(
+              0,
+              Number(row.stockBeforeGreen || 0) -
+                Number(row.salesGreen || 0) * (isBigC ? 2 : 1),
+            );
+
+      const stockAfterBlue =
+        row.stockAfterBlue !== undefined && row.stockAfterBlue !== null
+          ? Number(row.stockAfterBlue)
+          : Math.max(
+              0,
+              Number(row.stockBeforeBlue || 0) -
+                Number(row.salesBlue || 0) * (isBigC ? 2 : 1),
+            );
+
+      const stockAfterOrange = isBigC
+        ? 0
+        : row.stockAfterOrange !== undefined && row.stockAfterOrange !== null
+          ? Number(row.stockAfterOrange)
+          : Math.max(
+              0,
+              Number(row.stockBeforeOrange || 0) -
+                Number(row.salesOrange || 0) * 2,
+            );
 
       return [
         idx + 1,
@@ -420,9 +450,9 @@ export default function CustomerReportPortal() {
         row.salesBlue,
         row.salesOrange,
         row.actualPacksTotal,
-        row.stockAfterGreen,
-        row.stockAfterBlue,
-        row.stockAfterOrange,
+        stockAfterGreen,
+        stockAfterBlue,
+        stockAfterOrange,
         row.giftNourishBefore || 0,
         row.giftOrangeBefore || 0,
         row.giftNourishGiven || 0,
@@ -1089,6 +1119,46 @@ export default function CustomerReportPortal() {
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {filteredData.map((row, idx) => {
                     const photos = categorizePhotos(row.activityPhotos);
+                    const accountName = getAccountName(
+                      row.storeName,
+                      row.storeCode,
+                    );
+                    const isBigC = accountName === "BigC";
+
+                    // 🧮 คำนวณ STOCK หลังเลิก (P) ให้ตรงตามเงื่อนไขสาขาอย่างแม่นยำ
+                    const stockAfterGreen =
+                      row.stockAfterGreen !== undefined &&
+                      row.stockAfterGreen !== null &&
+                      row.stockAfterGreen !== ""
+                        ? Number(row.stockAfterGreen)
+                        : Math.max(
+                            0,
+                            Number(row.stockBeforeGreen || 0) -
+                              Number(row.salesGreen || 0) * (isBigC ? 2 : 1),
+                          );
+
+                    const stockAfterBlue =
+                      row.stockAfterBlue !== undefined &&
+                      row.stockAfterBlue !== null &&
+                      row.stockAfterBlue !== ""
+                        ? Number(row.stockAfterBlue)
+                        : Math.max(
+                            0,
+                            Number(row.stockBeforeBlue || 0) -
+                              Number(row.salesBlue || 0) * (isBigC ? 2 : 1),
+                          );
+
+                    const stockAfterOrange = isBigC
+                      ? 0
+                      : row.stockAfterOrange !== undefined &&
+                          row.stockAfterOrange !== null &&
+                          row.stockAfterOrange !== ""
+                        ? Number(row.stockAfterOrange)
+                        : Math.max(
+                            0,
+                            Number(row.stockBeforeOrange || 0) -
+                              Number(row.salesOrange || 0) * 2,
+                          );
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50 transition">
@@ -1149,7 +1219,7 @@ export default function CustomerReportPortal() {
                           {row.stockBeforeBlue}
                         </td>
                         <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
-                          {row.stockBeforeOrange}
+                          {isBigC ? "-" : row.stockBeforeOrange}
                         </td>
 
                         {/* Sales Qty */}
@@ -1160,18 +1230,18 @@ export default function CustomerReportPortal() {
                           +{row.salesBlue}
                         </td>
                         <td className="p-2 border border-slate-200 text-center font-mono font-bold text-orange-600 bg-orange-50/40 whitespace-nowrap">
-                          +{row.salesOrange}
+                          {isBigC ? "-" : `+${row.salesOrange}`}
                         </td>
 
-                        {/* Stock After */}
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
-                          {row.stockAfterGreen}
+                        {/* 📦 STOCK หลังเลิก (P) - ปรับปรุงแล้ว */}
+                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-slate-800 bg-slate-100/50 whitespace-nowrap">
+                          {stockAfterGreen}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
-                          {row.stockAfterBlue}
+                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-slate-800 bg-slate-100/50 whitespace-nowrap">
+                          {stockAfterBlue}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
-                          {row.stockAfterOrange}
+                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-slate-800 bg-slate-100/50 whitespace-nowrap">
+                          {isBigC ? "-" : stockAfterOrange}
                         </td>
 
                         {/* Gifts Stock Before (ก่อนเริ่ม) */}

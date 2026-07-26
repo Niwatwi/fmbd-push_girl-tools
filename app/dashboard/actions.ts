@@ -48,6 +48,52 @@ function checkIsBigC(code: string = "", name: string = "") {
   );
 }
 
+// 🖼️ Helper Parse & Normalize รูปภาพจาก activity_photos
+function parsePhotoArray(fieldData: any) {
+  if (!fieldData) return [];
+  let list: any[] = [];
+
+  if (Array.isArray(fieldData)) {
+    list = fieldData;
+  } else if (typeof fieldData === "string") {
+    try {
+      const parsed = JSON.parse(fieldData);
+      list = Array.isArray(parsed) ? parsed : [parsed];
+    } catch {
+      if (fieldData.startsWith("http") || fieldData.startsWith("/")) {
+        list = [fieldData];
+      }
+    }
+  } else if (typeof fieldData === "object" && fieldData !== null) {
+    list = [fieldData];
+  }
+
+  return list
+    .map((item) => {
+      if (typeof item === "string") {
+        return { url: item, type: "", label: "" };
+      }
+      if (typeof item === "object" && item !== null) {
+        return {
+          url:
+            item.url ||
+            item.src ||
+            item.image ||
+            item.image_url ||
+            item.photo_url ||
+            "",
+          type: item.type || "",
+          label: item.label || "",
+        };
+      }
+      return { url: "", type: "", label: "" };
+    })
+    .filter(
+      (item) =>
+        item.url && typeof item.url === "string" && item.url.trim() !== "",
+    );
+}
+
 // 1. 📅 ดึงข้อมูล Time Attendance สำหรับส่งฝ่ายบัญชีทำค่าใช้จ่าย
 export async function getAttendanceReportForAccounting() {
   const supabase = getClientInstance();
@@ -110,8 +156,6 @@ export async function getCustomerSalesVsTargetReport() {
 
       const isBigC = checkIsBigC(target.store_code, target.store_name);
 
-      // BigC: เขียว x2 + ฟ้า x2
-      // Tops: เขียว x1 (แถม FOC) + ฟ้า x1 (แถม FOC) + ส้ม x2 (แถมสินค้าปกติหน้าร้าน)
       const totalActualPacks = isBigC
         ? (actualGreen + actualBlue) * 2
         : actualGreen + actualBlue + actualOrange * 2;
@@ -358,7 +402,6 @@ export async function calculateBigCCommission(
     ? Number(greenSets) + Number(blueSets)
     : Number(greenSets) + Number(blueSets) + Number(orangeSets);
 
-  // คำนวณจำนวนแพ็คที่ออกจากสต๊อกจริง
   const totalPacksSold = isBigC
     ? (Number(greenSets) + Number(blueSets)) * 2
     : Number(greenSets) + Number(blueSets) + Number(orangeSets) * 2;
@@ -410,108 +453,130 @@ export async function calculateBigCCommission(
   };
 }
 
-// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็ม + คำนวณตัดสต๊อกตามเงื่อนไข Tops (ส้ม 100 ตัด x2 หน้าร้าน)
+// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal (ปรับคำนวณยอดคงเหลือของแถมอัตโนมัติให้ถูกต้อง)
 export async function getCustomerFullActivityReport() {
   const supabase = getClientInstance();
   try {
-    const { data: stores } = await supabase.from("pg_stores").select("*");
-    const { data: targets } = await supabase.from("store_targets").select("*");
+    const { data: rawReports, error: reportError } = await supabase
+      .from("pg_daily_activity_reports")
+      .select("*")
+      .order("report_date", { ascending: false });
 
-    const { data: userProfiles, error: userError } = await supabase
+    if (reportError) throw reportError;
+
+    // ดึงข้อมูล Master Store และ Profile
+    const { data: storesData } = await supabase
+      .from("pg_stores")
+      .select("store_code, store_name, company_tag");
+
+    const { data: targetsData } = await supabase
+      .from("store_targets")
+      .select("store_code, store_name, target_packs");
+
+    const { data: userProfiles } = await supabase
       .from("user_profiles")
       .select("id, display_name, employee_id, username");
 
-    if (userError) {
-      console.error(
-        "Fetch user_profiles for Customer Portal error:",
-        userError,
-      );
-    }
-
-    const { data: reports, error } = await supabase
-      .from("pg_daily_activity_reports")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-
-    const reportIds = (reports || []).map((r) => r.id);
-    let productItems: any[] = [];
-    if (reportIds.length > 0) {
-      const { data: prodData } = await supabase
-        .from("pg_daily_report_products")
-        .select(
-          "report_id, barcode, descriptions, img_product, img_shelf, img_stock_scanner",
-        )
-        .in("report_id", reportIds);
-      productItems = prodData || [];
-    }
-
-    const formattedData = (reports || []).map((r) => {
-      const storeCodeStr = String(r.store_code || "").trim();
-
-      const masterStore = (stores || []).find(
-        (s) => String(s.store_code).trim() === storeCodeStr,
-      );
-      const targetObj = (targets || []).find(
-        (t) => String(t.store_code).trim() === storeCodeStr,
-      );
-
-      const userObj = (userProfiles || []).find(
-        (p) => Number(p.id) === Number(r.user_id),
-      );
-
-      const finalStoreName =
-        masterStore?.store_name ||
-        targetObj?.store_name ||
-        `สาขา ${storeCodeStr}`;
-
-      const isBigC = checkIsBigC(storeCodeStr, finalStoreName);
-
-      let parsedActivityPhotos: any[] = [];
-      if (r.activity_photos) {
-        if (typeof r.activity_photos === "string") {
-          try {
-            parsedActivityPhotos = JSON.parse(r.activity_photos);
-          } catch (e) {
-            parsedActivityPhotos = [];
-          }
-        } else if (Array.isArray(r.activity_photos)) {
-          parsedActivityPhotos = r.activity_photos;
-        }
+    // 🛍️ ดึงรูปภาพสินค้า 3 ประเภทจากตาราง pg_daily_report_products
+    const reportIds = (rawReports || []).map((r: any) => r.id);
+    const productsMap = new Map<
+      number,
+      {
+        img_product: string[];
+        img_shelf: string[];
+        img_stock_scanner: string[];
       }
+    >();
 
-      const matchingProdItems = productItems.filter(
-        (p) => p.report_id === r.id,
-      );
-      const productPhotos: any[] = [];
+    if (reportIds.length > 0) {
+      const { data: reportProductsData } = await supabase
+        .from("pg_daily_report_products")
+        .select("report_id, img_product, img_shelf, img_stock_scanner")
+        .in("report_id", reportIds);
 
-      matchingProdItems.forEach((pItem) => {
-        const itemDesc = pItem.descriptions || pItem.barcode || "สินค้า";
-        if (pItem.img_product) {
-          productPhotos.push({
-            url: pItem.img_product,
-            type: "img_product",
-            label: `รูปสินค้า: ${itemDesc}`,
+      (reportProductsData || []).forEach((p: any) => {
+        const rId = Number(p.report_id);
+        if (!productsMap.has(rId)) {
+          productsMap.set(rId, {
+            img_product: [],
+            img_shelf: [],
+            img_stock_scanner: [],
           });
         }
-        if (pItem.img_shelf) {
-          productPhotos.push({
-            url: pItem.img_shelf,
-            type: "img_shelf",
-            label: `รูปเชลฟ์: ${itemDesc}`,
-          });
+        const item = productsMap.get(rId)!;
+        if (
+          p.img_product &&
+          typeof p.img_product === "string" &&
+          p.img_product.trim() !== ""
+        ) {
+          item.img_product.push(p.img_product.trim());
         }
-        if (pItem.img_stock_scanner) {
-          productPhotos.push({
-            url: pItem.img_stock_scanner,
-            type: "img_stock_scanner",
-            label: `รูปสแกนสต๊อก: ${itemDesc}`,
-          });
+        if (
+          p.img_shelf &&
+          typeof p.img_shelf === "string" &&
+          p.img_shelf.trim() !== ""
+        ) {
+          item.img_shelf.push(p.img_shelf.trim());
+        }
+        if (
+          p.img_stock_scanner &&
+          typeof p.img_stock_scanner === "string" &&
+          p.img_stock_scanner.trim() !== ""
+        ) {
+          item.img_stock_scanner.push(p.img_stock_scanner.trim());
         }
       });
+    }
 
-      const allPhotos = [...parsedActivityPhotos, ...productPhotos];
+    // Map Master Store Names
+    const storeMasterMap = new Map<string, { name: string; account: string }>();
+    (storesData || []).forEach((s: any) => {
+      if (s.store_code) {
+        const acc =
+          s.company_tag ||
+          (checkIsBigC(s.store_code, s.store_name) ? "Big C" : "Tops");
+        storeMasterMap.set(s.store_code.trim(), {
+          name: s.store_name,
+          account: acc,
+        });
+      }
+    });
+
+    (targetsData || []).forEach((t: any) => {
+      if (t.store_code && !storeMasterMap.has(t.store_code.trim())) {
+        const acc = checkIsBigC(t.store_code, t.store_name) ? "Big C" : "Tops";
+        storeMasterMap.set(t.store_code.trim(), {
+          name: t.store_name,
+          account: acc,
+        });
+      }
+    });
+
+    const userMap = new Map<number, any>();
+    (userProfiles || []).forEach((u: any) => userMap.set(Number(u.id), u));
+
+    const formattedData = (rawReports || []).map((r: any) => {
+      const uId = Number(r.user_id);
+      const userObj = userMap.get(uId);
+
+      const userName =
+        userObj?.display_name || userObj?.username || `PG-${r.user_id}`;
+      const userEmpId =
+        userObj?.employee_id || userObj?.username || `PG-${r.user_id}`;
+
+      const storeCodeStr = (r.store_code || "").trim();
+      const masterInfo = storeMasterMap.get(storeCodeStr);
+
+      let finalStoreName =
+        r.store_name && r.store_name !== storeCodeStr
+          ? r.store_name
+          : masterInfo?.name || storeCodeStr;
+      let accountName =
+        masterInfo?.account ||
+        (checkIsBigC(storeCodeStr, finalStoreName) ? "Big C" : "Tops");
+
+      const targetPacks = Number(r.target_packs || 120);
+      const isBigCStore = checkIsBigC(storeCodeStr, finalStoreName);
 
       const greenPacks = Number(r.sales_qty_green90 || 0);
       const bluePacks = Number(r.sales_qty_blue90 || 0);
@@ -521,110 +586,145 @@ export async function getCustomerFullActivityReport() {
       const stockBeforeBlueVal = Number(r.stock_before_blue90 || 0);
       const stockBeforeOrangeVal = Number(r.stock_before_orange100 || 0);
 
-      // สต๊อก FOC เริ่มต้นของ Tops
-      const INITIAL_FOC_ORANGE_100 = 480;
-      const INITIAL_FOC_GREEN_40 = 60;
-
-      const giftOrangeGiven = Number(r.gift_orange_given || 0);
-      const giftNourishGiven = Number(r.gift_nourish_given || 0);
-
       let stockAfterGreen = 0;
       let stockAfterBlue = 0;
       let stockAfterOrange = 0;
       let totalActualPacks = 0;
 
-      let giftOrangeBefore = 0;
-      let giftOrangeAfter = 0;
-
-      let giftNourishBefore = 0;
-      let giftNourishAfter = 0;
-
-      if (isBigC) {
-        // 🟢 BigC: ซื้อ 1 แถม 1 หน้าร้าน (เขียว, ฟ้า ตัด x2)
+      if (isBigCStore) {
         const physicalGreen = greenPacks * 2;
         const physicalBlue = bluePacks * 2;
-
         stockAfterGreen =
-          stockBeforeGreenVal > 0
-            ? Math.max(0, stockBeforeGreenVal - physicalGreen)
-            : Number(r.stock_after_green90 || 0);
-
+          r.stock_after_green90 !== null && Number(r.stock_after_green90) > 0
+            ? Number(r.stock_after_green90)
+            : Math.max(0, stockBeforeGreenVal - physicalGreen);
         stockAfterBlue =
-          stockBeforeBlueVal > 0
-            ? Math.max(0, stockBeforeBlueVal - physicalBlue)
-            : Number(r.stock_after_blue90 || 0);
-
+          r.stock_after_blue90 !== null && Number(r.stock_after_blue90) > 0
+            ? Number(r.stock_after_blue90)
+            : Math.max(0, stockBeforeBlueVal - physicalBlue);
         stockAfterOrange = 0;
         totalActualPacks = physicalGreen + physicalBlue;
       } else {
-        // 🔴 Tops:
-        // - เขียว 90 & ฟ้า 90 แถม FOC -> ตัดสต๊อกเชลฟ์ 1:1
-        // - ส้ม 100 แถมสินค้าขายปกติสีส้ม 100 -> ตัดสต๊อกเชลฟ์ 1:2 (orangePacks * 2)
         const physicalOrange = orangePacks * 2;
-
         stockAfterGreen =
-          stockBeforeGreenVal > 0
-            ? Math.max(0, stockBeforeGreenVal - greenPacks)
-            : Number(r.stock_after_green90 || 0);
-
+          r.stock_after_green90 !== null && Number(r.stock_after_green90) > 0
+            ? Number(r.stock_after_green90)
+            : Math.max(0, stockBeforeGreenVal - greenPacks);
         stockAfterBlue =
-          stockBeforeBlueVal > 0
-            ? Math.max(0, stockBeforeBlueVal - bluePacks)
-            : Number(r.stock_after_blue90 || 0);
-
+          r.stock_after_blue90 !== null && Number(r.stock_after_blue90) > 0
+            ? Number(r.stock_after_blue90)
+            : Math.max(0, stockBeforeBlueVal - bluePacks);
         stockAfterOrange =
-          stockBeforeOrangeVal > 0
-            ? Math.max(0, stockBeforeOrangeVal - physicalOrange)
-            : Number(r.stock_after_orange100 || 0);
-
+          r.stock_after_orange100 !== null &&
+          Number(r.stock_after_orange100) > 0
+            ? Number(r.stock_after_orange100)
+            : Math.max(0, stockBeforeOrangeVal - physicalOrange);
         totalActualPacks = greenPacks + bluePacks + physicalOrange;
-
-        // ของแถม FOC
-        giftOrangeBefore = Number(
-          r.gift_orange_before || INITIAL_FOC_ORANGE_100,
-        );
-        giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
-
-        giftNourishBefore = Number(
-          r.gift_nourish_before || INITIAL_FOC_GREEN_40,
-        );
-        giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
       }
 
-      const traffic = Number(r.traffic_count || 0);
-      const approach = Number(r.approach_count || 0);
-      const closed = Number(r.closed_sales_count || 0);
+      const compCellox = Number(
+        r.comp_cellox_price || r.price_comp_cellox || r.cellox_price || 0,
+      );
+      const compKleenex = Number(
+        r.comp_kleenex_price || r.price_comp_kleenex || r.kleenex_price || 0,
+      );
+      const compPaseo = Number(
+        r.comp_paseo_price || r.price_comp_paseo || r.paseo_price || 0,
+      );
 
-      const approachRate =
-        traffic > 0 ? Math.round((approach / traffic) * 100) : 0;
-      const closingRate =
-        approach > 0 ? Math.round((closed / approach) * 100) : 0;
+      const feedbackText =
+        r.feedback_store ||
+        r.feedback_notes ||
+        r.feedback ||
+        r.store_feedback ||
+        "";
+      const competitorPromoText =
+        r.competitor_promotion || r.competitor_promo || r.comp_promo || "";
+
+      // 🖼️ ดึงรูปภาพกิจกรรมทั่วไป
+      const rawActivityPhotos = parsePhotoArray(r.activity_photos);
+
+      // 🖼️ ดึงรูปภาพเกี่ยวกับสินค้าจาก pg_daily_report_products
+      const prodData = productsMap.get(Number(r.id)) || {
+        img_product: [],
+        img_shelf: [],
+        img_stock_scanner: [],
+      };
+
+      const productPhotos = prodData.img_product.map((url) => ({
+        url,
+        type: "img_product",
+        label: "รูปสินค้า",
+      }));
+
+      const shelfPhotos = prodData.img_shelf.map((url) => ({
+        url,
+        type: "img_shelf",
+        label: "รูปเชลฟ์ชั้นวาง",
+      }));
+
+      const stockPhotos = prodData.img_stock_scanner.map((url) => ({
+        url,
+        type: "img_stock_scanner",
+        label: "รูปสแกนสต๊อก",
+      }));
+
+      const activityPhotos = [
+        ...rawActivityPhotos,
+        ...productPhotos,
+        ...shelfPhotos,
+        ...stockPhotos,
+      ];
+
+      // 🎁 [แก้ไขจุดนี้] คำนวณยอดคงเหลือของแถมแบบ Real-time (ก่อนเริ่ม - แจก = คงเหลือ)
+      const giftOrangeBefore = Number(r.gift_orange_before || 0);
+      const giftOrangeGiven = Number(r.gift_orange_given || 0);
+      const giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
+
+      const giftNourishBefore = Number(r.gift_nourish_before || 0);
+      const giftNourishGiven = Number(r.gift_nourish_given || 0);
+      const giftNourishAfter = Math.max(
+        0,
+        giftNourishBefore - giftNourishGiven,
+      );
 
       return {
         id: r.id,
         userId: r.user_id,
-        userName:
-          userObj?.display_name || userObj?.username || `PG-${r.user_id}`,
-        userEmpId:
-          userObj?.employee_id || userObj?.username || `PG-${r.user_id}`,
+        userName,
+        userEmpId,
+        account: accountName,
         storeCode: storeCodeStr,
         storeName: finalStoreName,
-        reportDate: r.report_date,
-        targetPacks: Number(targetObj?.target_packs || 0),
+        reportDate: r.report_date || "-",
+        targetPacks,
 
-        traffic,
-        approach,
-        closedSales: closed,
-        approachRate,
-        closingRate,
+        traffic: Number(r.traffic_count || 0),
+        approach: Number(r.approach_count || 0),
+        closedSales: Number(r.closed_sales_count || 0),
+        approachRate:
+          Number(r.traffic_count || 0) > 0
+            ? Math.round(
+                (Number(r.approach_count || 0) / Number(r.traffic_count || 1)) *
+                  100,
+              )
+            : 0,
+        closingRate:
+          Number(r.approach_count || 0) > 0
+            ? Math.round(
+                (Number(r.closed_sales_count || 0) /
+                  Number(r.approach_count || 1)) *
+                  100,
+              )
+            : 0,
 
-        priceGreen: Number(r.price_our_green90 || 150),
-        priceBlue: Number(r.price_our_blue90 || 142),
-        priceOrange: Number(r.price_our_orange100 || 100),
+        priceGreen: Number(r.price_our_green90 || r.price_green90 || 150),
+        priceBlue: Number(r.price_our_blue90 || r.price_blue90 || 142),
+        priceOrange: Number(r.price_our_orange100 || r.price_orange100 || 100),
 
-        compCellox: Number(r.price_comp_cellox || 0),
-        compKleenex: Number(r.price_comp_kleenex || 0),
-        compPaseo: Number(r.price_comp_paseo || 0),
+        compCellox,
+        compKleenex,
+        compPaseo,
 
         stockBeforeGreen: stockBeforeGreenVal,
         salesGreen: greenPacks,
@@ -640,17 +740,21 @@ export async function getCustomerFullActivityReport() {
 
         actualPacksTotal: totalActualPacks,
 
+        // 🎁 คืนค่าของแถมที่คำนวณถูกต้องแล้ว
         giftOrangeBefore,
         giftOrangeGiven,
         giftOrangeAfter,
-
         giftNourishBefore,
         giftNourishGiven,
         giftNourishAfter,
 
-        feedback: r.feedback_store || "",
-        competitorPromo: r.competitor_promotion || "",
-        activityPhotos: allPhotos,
+        feedback: feedbackText,
+        competitorPromo: competitorPromoText,
+
+        activityPhotos,
+        productPhotos,
+        shelfPhotos,
+        stockPhotos,
       };
     });
 
@@ -664,15 +768,15 @@ export async function getCustomerFullActivityReport() {
 // 🇹🇭 Helper Function: คำนวณค่าแรงรายวันตามจำนวนชั่วโมงทำงานจริง
 function calculateDailyWage(hours: number, baseRate: number = 700): number {
   if (hours >= 9) {
-    return baseRate; // 9 ชม. ขึ้นไป = 700 บาท
+    return baseRate;
   } else if (hours >= 1) {
-    return baseRate / 2; // 1 ชม. ถึง 8.9 ชม. = 350 บาท
+    return baseRate / 2;
   } else {
-    return 0; // น้อยกว่า 1 ชม. = 0 บาท
+    return 0;
   }
 }
 
-// 10. 📅 ดึงรายงาน Time Attendance & Expense (ปรับปรุงการคิดค่าแรงตามชั่วโมงทำงาน)
+// 10. 📅 ดึงรายงาน Time Attendance & Expense
 export async function getAdminAttendanceExpenseReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -725,8 +829,6 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
       }
 
       const wageRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
-
-      // 🎯 คำนวณค่าแรงรายวันตามเกณฑ์ชั่วโมงทำงานจริง
       const dailyWage = calculateDailyWage(workedHours, wageRate);
 
       const lat = log.check_in_latitude || log.check_in_lat || null;
@@ -764,7 +866,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   }
 }
 
-// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (คำนวณค่าแรงรายวันตามเกณฑ์ชั่วโมงทำงานจริง)
+// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -855,7 +957,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
         storeCode: "-",
         baseSalaryRate: user.base_salary ? Number(user.base_salary) : 700,
         workDaysCount: 0,
-        totalDailyWage: 0, // ยอดรวมค่าแรงที่คำนวณจากชั่วโมงทำงานจริง
+        totalDailyWage: 0,
         dailyReportsList: [],
       });
     });
@@ -870,7 +972,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
         if (log.store_code && item.storeCode === "-")
           item.storeCode = log.store_code;
 
-        // ⏱️ คำนวณชั่วโมงทำงานของกะนี้
         let workedHours = 0;
         if (log.check_in_at && log.check_out_at) {
           const checkIn = new Date(log.check_in_at).getTime();
@@ -880,7 +981,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
           );
         }
 
-        // 🎯 คำนวณค่าแรงประจำกะตามเกณฑ์ใหม่ (>=9 ชม. = 700฿, 1-8.9 ชม. = 350฿, <1 ชม. = 0฿)
         const wageForShift = calculateDailyWage(
           workedHours,
           item.baseSalaryRate,
@@ -933,7 +1033,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
     const resultList = await Promise.all(
       Array.from(userSummaryMap.values()).map(async (item: any) => {
-        // ใช้ยอดรวมค่าแรงที่คำนวณตามชั่วโมงทำงานจริง
         const totalDailyWage = item.totalDailyWage;
 
         const sortedReports = item.dailyReportsList.sort(
