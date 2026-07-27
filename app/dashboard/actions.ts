@@ -453,7 +453,7 @@ export async function calculateBigCCommission(
   };
 }
 
-// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal (ปรับคำนวณยอดคงเหลือของแถมอัตโนมัติให้ถูกต้อง)
+// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal (ดึง Target ล่าสุดจากตาราง store_targets แบบ Real-time)
 export async function getCustomerFullActivityReport() {
   const supabase = getClientInstance();
   try {
@@ -476,6 +476,31 @@ export async function getCustomerFullActivityReport() {
     const { data: userProfiles } = await supabase
       .from("user_profiles")
       .select("id, display_name, employee_id, username");
+
+    // 🎯 Map เป้าหมายสาขา (target_packs) และ Master Store
+    const storeTargetMap = new Map<string, number>();
+    const storeMasterMap = new Map<string, { name: string; account: string }>();
+
+    (targetsData || []).forEach((t: any) => {
+      if (t.store_code) {
+        const code = t.store_code.trim();
+        storeTargetMap.set(code, Number(t.target_packs || 0));
+        const acc = checkIsBigC(t.store_code, t.store_name) ? "Big C" : "Tops";
+        storeMasterMap.set(code, { name: t.store_name, account: acc });
+      }
+    });
+
+    (storesData || []).forEach((s: any) => {
+      if (s.store_code) {
+        const code = s.store_code.trim();
+        const acc =
+          s.company_tag ||
+          (checkIsBigC(s.store_code, s.store_name) ? "Big C" : "Tops");
+        if (!storeMasterMap.has(code)) {
+          storeMasterMap.set(code, { name: s.store_name, account: acc });
+        }
+      }
+    });
 
     // 🛍️ ดึงรูปภาพสินค้า 3 ประเภทจากตาราง pg_daily_report_products
     const reportIds = (rawReports || []).map((r: any) => r.id);
@@ -528,30 +553,6 @@ export async function getCustomerFullActivityReport() {
       });
     }
 
-    // Map Master Store Names
-    const storeMasterMap = new Map<string, { name: string; account: string }>();
-    (storesData || []).forEach((s: any) => {
-      if (s.store_code) {
-        const acc =
-          s.company_tag ||
-          (checkIsBigC(s.store_code, s.store_name) ? "Big C" : "Tops");
-        storeMasterMap.set(s.store_code.trim(), {
-          name: s.store_name,
-          account: acc,
-        });
-      }
-    });
-
-    (targetsData || []).forEach((t: any) => {
-      if (t.store_code && !storeMasterMap.has(t.store_code.trim())) {
-        const acc = checkIsBigC(t.store_code, t.store_name) ? "Big C" : "Tops";
-        storeMasterMap.set(t.store_code.trim(), {
-          name: t.store_name,
-          account: acc,
-        });
-      }
-    });
-
     const userMap = new Map<number, any>();
     (userProfiles || []).forEach((u: any) => userMap.set(Number(u.id), u));
 
@@ -575,7 +576,13 @@ export async function getCustomerFullActivityReport() {
         masterInfo?.account ||
         (checkIsBigC(storeCodeStr, finalStoreName) ? "Big C" : "Tops");
 
-      const targetPacks = Number(r.target_packs || 120);
+      // 🎯 ดึง Target ล่าสุดจากตาราง store_targets
+      const storeTargetPacks = storeTargetMap.get(storeCodeStr);
+      const targetPacks =
+        storeTargetPacks !== undefined && storeTargetPacks > 0
+          ? storeTargetPacks
+          : Number(r.target_packs || 120);
+
       const isBigCStore = checkIsBigC(storeCodeStr, finalStoreName);
 
       const greenPacks = Number(r.sales_qty_green90 || 0);
@@ -676,7 +683,7 @@ export async function getCustomerFullActivityReport() {
         ...stockPhotos,
       ];
 
-      // 🎁 [แก้ไขจุดนี้] คำนวณยอดคงเหลือของแถมแบบ Real-time (ก่อนเริ่ม - แจก = คงเหลือ)
+      // 🎁 คำนวณยอดคงเหลือของแถม
       const giftOrangeBefore = Number(r.gift_orange_before || 0);
       const giftOrangeGiven = Number(r.gift_orange_given || 0);
       const giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
@@ -740,7 +747,6 @@ export async function getCustomerFullActivityReport() {
 
         actualPacksTotal: totalActualPacks,
 
-        // 🎁 คืนค่าของแถมที่คำนวณถูกต้องแล้ว
         giftOrangeBefore,
         giftOrangeGiven,
         giftOrangeAfter,
