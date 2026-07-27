@@ -6,14 +6,12 @@ import {
   BarChart3,
   TrendingUp,
   Download,
-  Building2,
   Printer,
   RefreshCw,
   ShoppingBag,
   Filter,
   MessageCircle,
   CheckCircle2,
-  Tag,
   Clock,
   Calendar,
   Layers,
@@ -52,6 +50,35 @@ function getAccountName(storeName: string = "", storeCode: string = "") {
   }
   return "อื่นๆ";
 }
+
+// 📌 Helper สำหรับแสดงผล สต๊อกหลังเลิก (ถ้าเหลือน้อยกว่า 3 แพ็ค ติดตัวเลขสีแดงกระพริบ)
+const renderStockCell = (stockValue: number | string | null | undefined) => {
+  if (
+    stockValue === null ||
+    stockValue === undefined ||
+    stockValue === "" ||
+    stockValue === "-"
+  ) {
+    return <span className="text-slate-300 font-mono">-</span>;
+  }
+  const num = Number(stockValue);
+  if (isNaN(num))
+    return <span className="text-slate-700 font-mono">{stockValue}</span>;
+
+  const isLowStock = num < 3;
+
+  return (
+    <span
+      className={`px-1.5 py-0.5 rounded font-black font-mono transition-all ${
+        isLowStock
+          ? "text-rose-600 bg-rose-100/90 border border-rose-300 animate-pulse shadow-xs"
+          : "text-slate-800"
+      }`}
+    >
+      {num}
+    </span>
+  );
+};
 
 // 🎯 Custom Tooltip สำหรับกราฟที่ 1: ยอดขายรายสินค้า
 const CustomSalesTooltip = ({ active, payload, label }: any) => {
@@ -460,7 +487,7 @@ export default function CustomerReportPortal() {
       return <span className="text-slate-300 font-mono text-[10px]">-</span>;
     }
     return (
-      <div className="flex items-center gap-1.5 whitespace-nowrap">
+      <div className="flex items-center gap-1.5 whitespace-nowrap justify-center">
         {photos.map((photo: any, pIdx: number) => (
           <div
             key={pIdx}
@@ -490,6 +517,7 @@ export default function CustomerReportPortal() {
   const exportToExcel = () => {
     if (!filteredData || filteredData.length === 0) return;
 
+    // 📌 จัดเรียงลำดับคอลัมน์ CSV ตามโครงสร้างใหม่ของตาราง
     const headers = [
       "No.",
       "Account",
@@ -503,12 +531,6 @@ export default function CustomerReportPortal() {
       "Approach",
       "Closed Sales",
       "Closing Rate (%)",
-      "ราคาเขียว 90 (บาท)",
-      "ราคาฟ้า 90 (บาท)",
-      "ราคาส้ม 100 (บาท)",
-      "ราคา Cellox (บาท)",
-      "ราคา Kleenex (บาท)",
-      "ราคา Paseo (บาท)",
       "Stock ก่อนเริ่ม (เขียว 90)",
       "Stock ก่อนเริ่ม (ฟ้า 90)",
       "Stock ก่อนเริ่ม (ส้ม 100)",
@@ -525,8 +547,15 @@ export default function CustomerReportPortal() {
       "จำนวนแถม (ส้ม 100)",
       "ของแถมคงเหลือ (เขียว 40)",
       "ของแถมคงเหลือ (ส้ม 100)",
+      "ราคาเขียว 90 (บาท)",
+      "ราคาฟ้า 90 (บาท)",
+      "ราคาส้ม 100 (บาท)",
+      "ราคา Cellox (บาท)",
+      "ราคา Kleenex (บาท)",
+      "ราคา Paseo (บาท)",
       "Feedback หน้าร้าน",
       "โปรโมชันคู่แข่ง",
+      "หมายเหตุ",
     ];
 
     const csvRows = filteredData.map((row, idx) => {
@@ -534,7 +563,9 @@ export default function CustomerReportPortal() {
       const isBigC = accountName === "Big C";
 
       const stockAfterGreen =
-        row.stockAfterGreen !== undefined && row.stockAfterGreen !== null
+        row.stockAfterGreen !== undefined &&
+        row.stockAfterGreen !== null &&
+        row.stockAfterGreen !== ""
           ? Number(row.stockAfterGreen)
           : Math.max(
               0,
@@ -543,7 +574,9 @@ export default function CustomerReportPortal() {
             );
 
       const stockAfterBlue =
-        row.stockAfterBlue !== undefined && row.stockAfterBlue !== null
+        row.stockAfterBlue !== undefined &&
+        row.stockAfterBlue !== null &&
+        row.stockAfterBlue !== ""
           ? Number(row.stockAfterBlue)
           : Math.max(
               0,
@@ -553,7 +586,9 @@ export default function CustomerReportPortal() {
 
       const stockAfterOrange = isBigC
         ? 0
-        : row.stockAfterOrange !== undefined && row.stockAfterOrange !== null
+        : row.stockAfterOrange !== undefined &&
+            row.stockAfterOrange !== null &&
+            row.stockAfterOrange !== ""
           ? Number(row.stockAfterOrange)
           : Math.max(
               0,
@@ -574,18 +609,12 @@ export default function CustomerReportPortal() {
         row.approach,
         row.closedSales,
         `${row.closingRate}%`,
-        row.priceGreen,
-        row.priceBlue,
-        row.priceOrange,
-        row.compCellox || 0,
-        row.compKleenex || 0,
-        row.compPaseo || 0,
         row.stockBeforeGreen,
         row.stockBeforeBlue,
-        row.stockBeforeOrange,
+        isBigC ? "-" : row.stockBeforeOrange,
         row.salesGreen,
         row.salesBlue,
-        row.salesOrange,
+        isBigC ? "-" : row.salesOrange,
         row.actualPacksTotal,
         stockAfterGreen,
         stockAfterBlue,
@@ -596,8 +625,15 @@ export default function CustomerReportPortal() {
         row.giftOrangeGiven || 0,
         row.giftNourishAfter || 0,
         row.giftOrangeAfter || 0,
+        row.priceGreen,
+        row.priceBlue,
+        row.priceOrange,
+        row.compCellox || 0,
+        row.compKleenex || 0,
+        row.compPaseo || 0,
         `"${(row.feedback || "").replace(/"/g, '""')}"`,
         `"${(row.competitorPromo || "").replace(/"/g, '""')}"`,
+        `"${(row.remark || "").replace(/"/g, '""')}"`,
       ];
     });
 
@@ -609,7 +645,9 @@ export default function CustomerReportPortal() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `PG_Activity_Report_${new Date().toISOString().split("T")[0]}.csv`;
+    link.download = `PG_Activity_Report_${
+      new Date().toISOString().split("T")[0]
+    }.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -623,7 +661,7 @@ export default function CustomerReportPortal() {
   const avgClosingRate =
     totalApproach > 0 ? Math.round((totalClosed / totalApproach) * 100) : 0;
 
-  // 💰 การคำนวณสรุปยอดทางการเงิน (ประกาศตัวแปรในระดับ Component Body)
+  // 💰 การคำนวณสรุปยอดทางการเงิน
   const totalGreenRevenue = filteredData.reduce(
     (sum, r) => sum + Number(r.salesGreen || 0) * Number(r.priceGreen || 150),
     0,
@@ -640,7 +678,7 @@ export default function CustomerReportPortal() {
   const totalRevenue =
     totalGreenRevenue + totalBlueRevenue + totalOrangeRevenue;
 
-  // รายจ่ายค่าแรงพนักงาน (ดึงจาก pg_attendance_logs โดยตรง ตรงกับ Admin 100%)
+  // รายจ่ายค่าแรงพนักงาน
   const totalBaseWage = filteredAttendanceWages.reduce(
     (sum, item) => sum + Number(item.wage || 0),
     0,
@@ -698,8 +736,10 @@ export default function CustomerReportPortal() {
           .shadow-md {
             box-shadow: none !important;
           }
-          .overflow-x-auto {
+          .overflow-x-auto,
+          .overflow-auto {
             overflow: visible !important;
+            max-height: none !important;
           }
           table {
             width: 100% !important;
@@ -710,6 +750,7 @@ export default function CustomerReportPortal() {
           td {
             padding: 1.5px 2px !important;
             white-space: nowrap !important;
+            position: static !important;
           }
           tr {
             page-break-inside: avoid !important;
@@ -1030,7 +1071,7 @@ export default function CustomerReportPortal() {
             </div>
           </div>
 
-          {/* 📊 3 CHARTS SECTION (EMBEDDED GRADIENTS FOR 100% RELIABLE RENDERING) */}
+          {/* 📊 3 CHARTS SECTION */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {/* กราฟที่ 1: ยอดขายแยกรายสินค้า */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
@@ -1285,222 +1326,231 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-[10px] border-collapse">
-                <thead className="bg-slate-100 text-slate-600 font-black uppercase border-b border-slate-200">
-                  <tr>
+            {/* 📌 Slide Bar Container + Freeze Panes & Sticky Header */}
+            <div className="relative overflow-auto max-h-[70vh] border-t border-slate-200">
+              <table className="w-full text-[10px] border-collapse min-w-[2500px]">
+                {/* Header Row 1 - Sticky Top */}
+                <thead className="sticky top-0 z-30 bg-slate-100 text-slate-600 font-black uppercase shadow-xs">
+                  <tr className="border-b border-slate-200">
+                    {/* Freeze Column NO. & สาขา */}
                     <th
                       rowSpan={2}
-                      className="p-2 border border-slate-200 text-center whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center sticky left-0 z-40 bg-slate-100 min-w-[50px] w-[50px]"
                     >
                       NO.
                     </th>
                     <th
                       rowSpan={2}
-                      className="p-2 border border-slate-200 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 sticky left-[50px] z-40 bg-slate-100 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                     >
                       สาขา
                     </th>
+
                     <th
                       rowSpan={2}
-                      className="p-2 border border-slate-200 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 min-w-[140px]"
                     >
                       พนักงาน
                     </th>
                     <th
                       rowSpan={2}
-                      className="p-2 border border-slate-200 text-center whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center min-w-[90px]"
                     >
                       วันที่
                     </th>
                     <th
                       rowSpan={2}
-                      className="p-2 border border-slate-200 text-center whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center min-w-[90px]"
                     >
                       TARGET (แพ็ค)
                     </th>
 
                     <th
                       colSpan={3}
-                      className="p-2 border border-slate-200 text-center bg-blue-50/50 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center bg-blue-50/70 text-blue-900"
                     >
                       สถิติลูกค้า (FUNNEL)
                     </th>
                     <th
                       colSpan={3}
-                      className="p-2 border border-slate-200 text-center bg-emerald-50/50 whitespace-nowrap"
-                    >
-                      ราคาขายหน้าร้าน
-                    </th>
-                    <th
-                      colSpan={3}
-                      className="p-2 border border-slate-200 text-center bg-rose-50/50 whitespace-nowrap"
-                    >
-                      ราคาคู่แข่ง
-                    </th>
-                    <th
-                      colSpan={3}
-                      className="p-2 border border-slate-200 text-center bg-amber-50/50 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center bg-slate-200/60"
                     >
                       STOCK ก่อนเริ่ม (P)
                     </th>
                     <th
                       colSpan={3}
-                      className="p-2 border border-slate-200 text-center bg-emerald-100/50 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center bg-emerald-100/60 text-emerald-900"
                     >
                       จำนวนขาย (แพ็ค)
                     </th>
                     <th
                       colSpan={3}
-                      className="p-2 border border-slate-200 text-center bg-slate-200/50 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center bg-slate-200/60"
                     >
                       STOCK หลังเลิก (P)
                     </th>
 
                     <th
                       colSpan={2}
-                      className="p-2 border border-slate-200 text-center bg-orange-50/50 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center bg-orange-50/70 text-orange-900"
                     >
                       ของแถมก่อนเริ่ม
                     </th>
                     <th
                       colSpan={2}
-                      className="p-2 border border-slate-200 text-center bg-amber-100/60 text-amber-900 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center bg-amber-100/70 text-amber-900"
                     >
                       จำนวนแจกแถม
                     </th>
                     <th
                       colSpan={2}
-                      className="p-2 border border-slate-200 text-center bg-orange-100/50 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center bg-orange-100/60 text-orange-900"
                     >
                       ของแถมคงเหลือ
                     </th>
 
+                    {/* 📌 สลับมาต่อท้ายของแถมคงเหลือ: ราคาขายหน้าร้าน & ราคาคู่แข่ง */}
+                    <th
+                      colSpan={3}
+                      className="p-2 border-r border-slate-200 text-center bg-indigo-50/70 text-indigo-900"
+                    >
+                      ราคาขายหน้าร้าน
+                    </th>
+                    <th
+                      colSpan={3}
+                      className="p-2 border-r border-slate-200 text-center bg-rose-50/70 text-rose-900"
+                    >
+                      ราคาคู่แข่ง
+                    </th>
+
                     <th
                       rowSpan={2}
-                      className="p-2 border border-slate-200 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 min-w-[200px]"
                     >
                       FEEDBACK หน้าร้าน
                     </th>
                     <th
                       rowSpan={2}
-                      className="p-2 border border-slate-200 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 min-w-[180px]"
                     >
                       โปรคู่แข่ง
                     </th>
 
+                    {/* 📌 คอลัมน์ "หมายเหตุ" ใหม่ */}
+                    <th
+                      rowSpan={2}
+                      className="p-2 border-r border-slate-200 min-w-[180px] bg-amber-100/80 text-amber-950 font-black"
+                    >
+                      หมายเหตุ
+                    </th>
+
                     <th
                       colSpan={6}
-                      className="p-2 border border-slate-200 text-center bg-blue-100/60 text-blue-900 whitespace-nowrap"
+                      className="p-2 border-r border-slate-200 text-center bg-blue-100/80 text-blue-950 min-w-[360px]"
                     >
                       📸 รูปภาพกิจกรรมหน้าร้าน & สต๊อกสินค้า
                     </th>
                   </tr>
 
-                  <tr className="bg-slate-50 text-[9px]">
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
+                  {/* Sub-Header Row 2 */}
+                  <tr className="bg-slate-50 text-[9px] border-b border-slate-200 text-center">
+                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/40">
                       TRAFFIC
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
+                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/40">
                       APPROACH
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
+                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/40">
                       CLOSED
                     </th>
 
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
+                    <th className="p-1.5 border-r border-slate-200">
                       เขียว 90
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
+                    <th className="p-1.5 border-r border-slate-200">ฟ้า 90</th>
+                    <th className="p-1.5 border-r border-slate-200">ส้ม 100</th>
+
+                    <th className="p-1.5 border-r border-slate-200 bg-emerald-50/40">
+                      เขียว 90
+                    </th>
+                    <th className="p-1.5 border-r border-slate-200 bg-emerald-50/40">
                       ฟ้า 90
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
+                    <th className="p-1.5 border-r border-slate-200 bg-emerald-50/40">
                       ส้ม 100
                     </th>
 
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
+                    <th className="p-1.5 border-r border-slate-200">
+                      เขียว 90
+                    </th>
+                    <th className="p-1.5 border-r border-slate-200">ฟ้า 90</th>
+                    <th className="p-1.5 border-r border-slate-200">ส้ม 100</th>
+
+                    <th className="p-1.5 border-r border-slate-200 bg-orange-50/40">
+                      เขียว 40
+                    </th>
+                    <th className="p-1.5 border-r border-slate-200 bg-orange-50/40">
+                      ส้ม 100
+                    </th>
+
+                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
+                      เขียว 40
+                    </th>
+                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
+                      ส้ม 100
+                    </th>
+
+                    <th className="p-1.5 border-r border-slate-200 bg-orange-50/40">
+                      เขียว 40
+                    </th>
+                    <th className="p-1.5 border-r border-slate-200 bg-orange-50/40">
+                      ส้ม 100
+                    </th>
+
+                    {/* Prices Sub */}
+                    <th className="p-1.5 border-r border-slate-200 bg-indigo-50/40">
+                      เขียว 90
+                    </th>
+                    <th className="p-1.5 border-r border-slate-200 bg-indigo-50/40">
+                      ฟ้า 90
+                    </th>
+                    <th className="p-1.5 border-r border-slate-200 bg-indigo-50/40">
+                      ส้ม 100
+                    </th>
+
+                    <th className="p-1.5 border-r border-slate-200 bg-rose-50/40">
                       CELLOX
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
+                    <th className="p-1.5 border-r border-slate-200 bg-rose-50/40">
                       KLEENEX
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
+                    <th className="p-1.5 border-r border-slate-200 bg-rose-50/40">
                       PASEO
                     </th>
 
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      เขียว 90
-                    </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      ฟ้า 90
-                    </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      ส้ม 100
-                    </th>
-
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      เขียว 90
-                    </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      ฟ้า 90
-                    </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      ส้ม 100
-                    </th>
-
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      เขียว 90
-                    </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      ฟ้า 90
-                    </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      ส้ม 100
-                    </th>
-
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      เขียว 40
-                    </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      ส้ม 100
-                    </th>
-
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      เขียว 40
-                    </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      ส้ม 100
-                    </th>
-
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      เขียว 40
-                    </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap">
-                      ส้ม 100
-                    </th>
-
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap bg-blue-50/70">
+                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
                       พนักงานถือสินค้า
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap bg-blue-50/70">
+                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
                       ถ่ายคู่กับลูกค้า/ตะกร้า
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap bg-blue-50/70">
+                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
                       บรรยากาศหน้าร้าน
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap bg-blue-50/70">
+                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
                       รูปสินค้า
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap bg-blue-50/70">
+                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
                       รูปเชลฟ์ชั้นวาง
                     </th>
-                    <th className="p-1.5 border border-slate-200 text-center whitespace-nowrap bg-blue-50/70">
+                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
                       รูปสแกนสต๊อก
                     </th>
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {/* Body Rows */}
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
                   {filteredData.map((row, idx) => {
                     const photos = categorizePhotos(row.activityPhotos);
                     const accountName = getAccountName(
@@ -1532,7 +1582,7 @@ export default function CustomerReportPortal() {
                           );
 
                     const stockAfterOrange = isBigC
-                      ? 0
+                      ? "-"
                       : row.stockAfterOrange !== undefined &&
                           row.stockAfterOrange !== null &&
                           row.stockAfterOrange !== ""
@@ -1544,136 +1594,155 @@ export default function CustomerReportPortal() {
                           );
 
                     return (
-                      <tr key={idx} className="hover:bg-slate-50 transition">
-                        <td className="p-2 border border-slate-200 text-center font-bold text-slate-400 whitespace-nowrap">
+                      <tr
+                        key={idx}
+                        className="hover:bg-slate-50 transition text-center"
+                      >
+                        {/* 📌 Freeze Pane NO. & สาขา */}
+                        <td className="p-2 border-r border-slate-200 font-bold text-slate-400 sticky left-0 z-20 bg-white min-w-[50px] w-[50px]">
                           {idx + 1}
                         </td>
-                        <td className="p-2 border border-slate-200 font-bold text-slate-800 whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-black text-slate-800 text-left sticky left-[50px] z-20 bg-white min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                           {row.storeName}
                         </td>
-                        <td className="p-2 border border-slate-200 font-medium text-slate-600 whitespace-nowrap">
+
+                        <td className="p-2 border-r border-slate-200 text-left font-medium text-slate-600">
                           {row.userName}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono">
                           {row.reportDate}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-slate-500 whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-slate-500">
                           {row.targetPacks}
                         </td>
 
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
+                        {/* Funnel */}
+                        <td className="p-2 border-r border-slate-200 font-mono">
                           {row.traffic}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono text-blue-600 font-bold whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono text-blue-600 font-bold">
                           {row.approach}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono text-emerald-600 font-bold whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono text-emerald-600 font-bold">
                           {row.closedSales}
                         </td>
 
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
-                          {row.priceGreen}฿
-                        </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
-                          {row.priceBlue}฿
-                        </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
-                          {row.priceOrange}฿
-                        </td>
-
-                        <td className="p-2 border border-slate-200 text-center font-mono text-rose-600 font-bold whitespace-nowrap">
-                          {row.compCellox > 0 ? `${row.compCellox}฿` : "-"}
-                        </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono text-rose-600 font-bold whitespace-nowrap">
-                          {row.compKleenex > 0 ? `${row.compKleenex}฿` : "-"}
-                        </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono text-rose-600 font-bold whitespace-nowrap">
-                          {row.compPaseo > 0 ? `${row.compPaseo}฿` : "-"}
-                        </td>
-
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
+                        {/* Stock Before */}
+                        <td className="p-2 border-r border-slate-200 font-mono">
                           {row.stockBeforeGreen}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono">
                           {row.stockBeforeBlue}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono">
                           {isBigC ? "-" : row.stockBeforeOrange}
                         </td>
 
-                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-emerald-600 bg-emerald-50/40 whitespace-nowrap">
+                        {/* Sales Qty */}
+                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-emerald-600 bg-emerald-50/20">
                           +{row.salesGreen}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-blue-600 bg-blue-50/40 whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-blue-600 bg-blue-50/20">
                           +{row.salesBlue}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-orange-600 bg-orange-50/40 whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-orange-600 bg-orange-50/20">
                           {isBigC ? "-" : `+${row.salesOrange}`}
                         </td>
 
-                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-slate-800 bg-slate-100/50 whitespace-nowrap">
-                          {stockAfterGreen}
+                        {/* 📌 STOCK หลังเลิก (P) - ถ้าเหลือน้อยกว่า 3 แพ็ค ติดสีแดงกระพริบ */}
+                        <td className="p-2 border-r border-slate-200">
+                          {renderStockCell(stockAfterGreen)}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-slate-800 bg-slate-100/50 whitespace-nowrap">
-                          {stockAfterBlue}
+                        <td className="p-2 border-r border-slate-200">
+                          {renderStockCell(stockAfterBlue)}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono font-bold text-slate-800 bg-slate-100/50 whitespace-nowrap">
-                          {isBigC ? "-" : stockAfterOrange}
+                        <td className="p-2 border-r border-slate-200">
+                          {renderStockCell(stockAfterOrange)}
                         </td>
 
-                        <td className="p-2 border border-slate-200 text-center font-mono text-slate-500 whitespace-nowrap">
+                        {/* Gifts */}
+                        <td className="p-2 border-r border-slate-200 font-mono text-slate-500">
                           {row.giftNourishBefore || 0}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono text-slate-500 whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono text-slate-500">
                           {row.giftOrangeBefore || 0}
                         </td>
 
-                        <td className="p-2 border border-slate-200 text-center font-mono text-amber-600 font-bold bg-amber-50/30 whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono text-amber-600 font-bold bg-amber-50/20">
                           {row.giftNourishGiven || 0}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono text-amber-600 font-bold bg-amber-50/30 whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono text-amber-600 font-bold bg-amber-50/20">
                           {row.giftOrangeGiven || 0}
                         </td>
 
-                        <td className="p-2 border border-slate-200 text-center font-mono text-emerald-600 font-bold whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono text-emerald-600 font-bold">
                           {row.giftNourishAfter || 0}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center font-mono text-emerald-600 font-bold whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 font-mono text-emerald-600 font-bold">
                           {row.giftOrangeAfter || 0}
                         </td>
 
-                        <td className="p-2 border border-slate-200 text-[10px] text-slate-600 whitespace-nowrap">
+                        {/* 📌 สลับมาต่อท้ายของแถมคงเหลือ: ราคาขายหน้าร้าน */}
+                        <td className="p-2 border-r border-slate-200 font-mono font-semibold">
+                          {row.priceGreen ? `${row.priceGreen}฿` : "-"}
+                        </td>
+                        <td className="p-2 border-r border-slate-200 font-mono font-semibold">
+                          {row.priceBlue ? `${row.priceBlue}฿` : "-"}
+                        </td>
+                        <td className="p-2 border-r border-slate-200 font-mono font-semibold">
+                          {row.priceOrange ? `${row.priceOrange}฿` : "-"}
+                        </td>
+
+                        {/* 📌 สลับมาต่อท้ายของแถมคงเหลือ: ราคาคู่แข่ง */}
+                        <td className="p-2 border-r border-slate-200 font-mono text-rose-600 font-bold">
+                          {row.compCellox > 0 ? `${row.compCellox}฿` : "-"}
+                        </td>
+                        <td className="p-2 border-r border-slate-200 font-mono text-rose-600 font-bold">
+                          {row.compKleenex > 0 ? `${row.compKleenex}฿` : "-"}
+                        </td>
+                        <td className="p-2 border-r border-slate-200 font-mono text-rose-600 font-bold">
+                          {row.compPaseo > 0 ? `${row.compPaseo}฿` : "-"}
+                        </td>
+
+                        {/* Feedback & Comp Promo */}
+                        <td className="p-2 border-r border-slate-200 text-left text-slate-600 max-w-[200px] truncate">
                           {row.feedback || "-"}
                         </td>
-                        <td className="p-2 border border-slate-200 text-[10px] text-rose-600 whitespace-nowrap">
+                        <td className="p-2 border-r border-slate-200 text-left text-rose-600 max-w-[180px] truncate">
                           {row.competitorPromo || "-"}
                         </td>
 
-                        <td className="p-2 border border-slate-200 text-center">
+                        {/* 📌 คอลัมน์ "หมายเหตุ" ใหม่ */}
+                        <td className="p-2 border-r border-slate-200 text-left font-bold text-amber-900 bg-amber-50/40 max-w-[180px] truncate">
+                          {row.remark || "-"}
+                        </td>
+
+                        {/* Activity Photos */}
+                        <td className="p-2 border-r border-slate-200">
                           {renderPhotoCell(
                             photos.staffHolding,
                             "พนักงานถือสินค้า",
                           )}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center">
+                        <td className="p-2 border-r border-slate-200">
                           {renderPhotoCell(
                             photos.customerBasket,
                             "ถ่ายคู่กับลูกค้า/ตะกร้า",
                           )}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center">
+                        <td className="p-2 border-r border-slate-200">
                           {renderPhotoCell(
                             photos.atmosphere,
                             "บรรยากาศหน้าร้าน",
                           )}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center">
+                        <td className="p-2 border-r border-slate-200">
                           {renderPhotoCell(photos.product, "รูปสินค้า")}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center">
+                        <td className="p-2 border-r border-slate-200">
                           {renderPhotoCell(photos.shelf, "รูปเชลฟ์ชั้นวาง")}
                         </td>
-                        <td className="p-2 border border-slate-200 text-center">
+                        <td className="p-2 border-r border-slate-200">
                           {renderPhotoCell(photos.stockScanner, "รูปสแกนสต๊อก")}
                         </td>
                       </tr>

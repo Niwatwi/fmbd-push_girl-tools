@@ -88,6 +88,8 @@ export default function DailyReportPage() {
   const [priceCompKleenex, setPriceCompKleenex] = useState("");
   const [priceCompPaseo, setPriceCompPaseo] = useState("");
 
+  const [remark, setRemark] = useState("");
+
   // 3. รูปภาพรวมกิจกรรม 6 รูป
   const [activityPhotos, setActivityPhotos] = useState<ActivityPhotoState[]>([
     {
@@ -546,6 +548,7 @@ export default function DailyReportPage() {
           priceCompPaseo: Number(priceCompPaseo) || 0,
           feedbackStore: feedback,
           competitorPromotion: compPromo,
+          remark: remark,
           activityPhotos: activityPhotos.filter((p) => p.base64 !== ""),
           products: productsForm.map((p) => ({
             barcode: p.barcode,
@@ -1409,6 +1412,20 @@ export default function DailyReportPage() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* ช่องคีย์หมายเหตุเพิ่มเติม */}
+          <div>
+            <label className="text-[11px] font-bold text-slate-600 block mb-1">
+              หมายเหตุเพิ่มเติม (เช่น สต๊อกสีเขียว 90 เหลือน้อย / สินค้าชำรุด)
+            </label>
+            <textarea
+              rows={2}
+              placeholder="ระบุเหตุผลอื่นๆ หรือหมายเหตุแจ้งฝ่ายบริหาร..."
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs outline-none focus:bg-white focus:border-blue-500"
+            />
           </div>
 
           <button

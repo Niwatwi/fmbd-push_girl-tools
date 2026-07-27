@@ -54,6 +54,7 @@ export interface FullActivityReportInput {
   priceCompPaseo: number;
   feedbackStore: string;
   competitorPromotion: string;
+  remark?: string;
   activityPhotos: ActivityPhotoPayload[];
   products: ProductReportPayload[];
 
@@ -289,6 +290,7 @@ export async function submitFullDailyActivityReportAction(
       price_comp_kleenex: Number(payload.priceCompKleenex || 0),
       price_comp_paseo: Number(payload.priceCompPaseo || 0),
       feedback_store: payload.feedbackStore || "",
+      remark: payload.remark || "",
       competitor_promotion: payload.competitorPromotion || "",
       activity_photos: JSON.stringify(processedActivityPhotos),
 
