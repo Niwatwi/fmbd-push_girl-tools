@@ -27,7 +27,7 @@ import {
   getTodayActiveAttendance,
   submitFullDailyActivityReportAction,
   getProductByBarcode,
-  getStoreInitialGiftsAction, // 🎁 เพิ่ม Action ดึงยอดยกมาของแถม
+  getStoreInitialGiftsAction,
 } from "./actions";
 
 interface ProductFormState {
@@ -78,7 +78,7 @@ export default function DailyReportPage() {
   const [approach, setApproach] = useState("");
   const [closedSales, setClosedSales] = useState("");
 
-  // สถานะการบันทึกคลังของแถมสำหรับห้าง Tops (เซ็ตค่าไว้อัตโนมัติจากการยกยอดวันก่อนหน้า/ADMIN)
+  // สถานะการบันทึกคลังของแถมสำหรับห้าง Tops
   const [giftOrangeBefore, setGiftOrangeBefore] = useState("480");
   const [giftNourishBefore, setGiftNourishBefore] = useState("60");
   const [giftNourishGiven, setGiftNourishGiven] = useState("");
@@ -138,16 +138,21 @@ export default function DailyReportPage() {
   const [feedback, setFeedback] = useState("");
   const [compPromo, setCompPromo] = useState("");
 
-  // 🏪 ตรวจสอบชื่อห้าง
+  // 🏪 ตรวจสอบชื่อห้าง/รหัสสาขา
   const storeName = attendanceLog?.store_name || "";
+  const storeCode = attendanceLog?.store_code || "";
   const isTops =
     storeName.toLowerCase().includes("top") ||
     storeName.includes("ท็อป") ||
-    storeName.includes("ทอป");
+    storeName.includes("ทอป") ||
+    storeCode.toLowerCase().includes("top");
+
   const isBigC =
     storeName.toLowerCase().includes("big") ||
     storeName.includes("บิ๊ก") ||
-    storeName.includes("บิ๊กซี");
+    storeName.includes("บิ๊กซี") ||
+    storeCode.toLowerCase().includes("big") ||
+    storeCode.toLowerCase().includes("pgbc");
 
   // 🔍 ตรวจสอบและโหลดข้อมูลสถานะการลงเวลาทำงาน + ดึงยอดยกมาของแถมสำหรับ Tops
   useEffect(() => {
@@ -235,12 +240,12 @@ export default function DailyReportPage() {
       if (res.success && res.log) {
         setAttendanceLog(res.log);
 
-        // 🎁 ดึงยอดยกมาจากวันก่อนหน้า หรือ ยอดเริ่มต้นจาก Admin
+        // 🎁 ดึงยอดยกมาจากวันก่อนหน้า (คำนวณคงเหลือจริงจาก before - given)
         if (res.log.store_code) {
           const giftRes = await getStoreInitialGiftsAction(res.log.store_code);
           if (giftRes.success) {
-            setGiftNourishBefore(giftRes.giftNourishBefore.toString());
             setGiftOrangeBefore(giftRes.giftOrangeBefore.toString());
+            setGiftNourishBefore(giftRes.giftNourishBefore.toString());
           }
         }
       } else {
@@ -844,7 +849,7 @@ export default function DailyReportPage() {
               <button
                 type="button"
                 onClick={startBarcodeScanner}
-                className="bg-blue-600 text-white p-2.5 rounded-lg flex items-center justify-center hover:bg-blue-700 transition shadow-xs"
+                className="bg-blue-600 text-white p-2.5 rounded-lg flex items-center justify-center hover:bg-blue-700 transition shadow-xs cursor-pointer"
               >
                 <Scan size={16} />
               </button>
@@ -870,7 +875,7 @@ export default function DailyReportPage() {
                 type="button"
                 disabled={searching}
                 onClick={() => handleSearchAndAddProduct(searchBarcode)}
-                className="bg-blue-900 text-white px-3 py-2 rounded-lg text-xs font-black hover:bg-blue-800 transition"
+                className="bg-blue-900 text-white px-3 py-2 rounded-lg text-xs font-black hover:bg-blue-800 transition cursor-pointer"
               >
                 {searching ? "..." : "ค้นหา"}
               </button>
@@ -884,21 +889,21 @@ export default function DailyReportPage() {
                 <button
                   type="button"
                   onClick={() => handleSearchAndAddProduct("8858678423339")}
-                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95"
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
                 >
                   <Plus size={8} /> สีเขียว 90
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSearchAndAddProduct("8858678423681")}
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95"
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
                 >
                   <Plus size={8} /> สีฟ้า 90
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSearchAndAddProduct("8858678422875")}
-                  className="bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95"
+                  className="bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
                 >
                   <Plus size={8} /> สีส้ม 100
                 </button>
@@ -977,7 +982,7 @@ export default function DailyReportPage() {
                               prev.filter((p) => p.barcode !== prod.barcode),
                             )
                           }
-                          className="p-1 text-red-500"
+                          className="p-1 text-red-500 cursor-pointer"
                         >
                           <Trash2 size={12} />
                         </button>
@@ -1158,7 +1163,7 @@ export default function DailyReportPage() {
             </div>
           </div>
 
-          {/* 🎁 3. ระบบบันทึกและตัดยอดของแถมประจำวัน (เปิดการแสดงผลเฉพาะ Tops เท่านั้น) */}
+          {/* 🎁 3. ระบบบันทึกและตัดยอดของแถมประจำวัน (เปิดเฉพาะ Tops) */}
           {isTops && (
             <div className="bg-white p-4 rounded-xl border border-orange-300 shadow-xs space-y-3 bg-gradient-to-br from-white to-orange-50/10">
               <h4 className="text-xs font-black text-slate-800 flex items-center justify-between border-b border-orange-100 pb-2 text-left">
@@ -1172,7 +1177,7 @@ export default function DailyReportPage() {
               </h4>
 
               <div className="space-y-3">
-                {/* 1. สต๊อกของแถมสีส้ม 100 แผ่น (ตัดยอด 1:1 อัตโนมัติ) */}
+                {/* 1. สต๊อกของแถมสีส้ม 100 แผ่น */}
                 <div className="p-3 bg-slate-50/60 rounded-lg border border-slate-200 text-left space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-black text-slate-800">
@@ -1214,7 +1219,7 @@ export default function DailyReportPage() {
                   </div>
                 </div>
 
-                {/* 2. สต๊อกของแถมพิเศษ 6 Ply (อิงยอดบิลคีย์มือ) */}
+                {/* 2. สต๊อกของแถมพิเศษ Nourish Soft 6 Ply */}
                 <div className="p-3 bg-slate-50/60 rounded-lg border border-slate-200 text-left space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-black text-slate-800">
@@ -1302,7 +1307,7 @@ export default function DailyReportPage() {
                             e.preventDefault();
                             handleActivityPhotoChange(photo.type, null);
                           }}
-                          className="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded-full hover:bg-red-700 transition"
+                          className="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded-full hover:bg-red-700 transition cursor-pointer"
                         >
                           <Trash2 size={10} />
                         </button>

@@ -453,7 +453,27 @@ export async function calculateBigCCommission(
   };
 }
 
-// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal (พร้อมคำนวณค่าแรงจริงจาก pg_attendance_logs)
+// Helper คำนวณค่าแรงจาก Log เข้า-ออกงาน (ตรงตามเงื่อนไข Admin)
+function getWageFromAttendanceLog(log: any): number {
+  // หากยังไม่ Check-in หรือยังไม่ Check-out เลิกงาน ให้คิดค่าแรงเป็น 0 บาท
+  if (!log.check_in_at || !log.check_out_at) return 0;
+
+  const checkIn = new Date(log.check_in_at).getTime();
+  const checkOut = new Date(log.check_out_at).getTime();
+  const workedHours = Number(
+    ((checkOut - checkIn) / (1000 * 60 * 60)).toFixed(1),
+  );
+
+  if (workedHours > 0 && workedHours < 6) {
+    return 350; // กะครึ่งวัน
+  } else if (workedHours >= 6) {
+    return 700; // กะเต็มวัน
+  }
+
+  return 0;
+}
+
+// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal (พร้อมข้อมูล Log ค่าแรงเข้างาน)
 export async function getCustomerFullActivityReport() {
   const supabase = getClientInstance();
   try {
@@ -464,30 +484,27 @@ export async function getCustomerFullActivityReport() {
 
     if (reportError) throw reportError;
 
-    // 🕒 ดึงข้อมูล pg_attendance_logs เพื่อคำนวณค่าแรงจริง (รองรับกะครึ่งวัน 350฿)
+    // 🕒 ดึงข้อมูล pg_attendance_logs เพื่อคำนวณค่าแรงจริงตามกะการทำงาน (ตรงกับ Admin)
     const { data: attendanceLogs } = await supabase
       .from("pg_attendance_logs")
-      .select("user_id, check_in_at, check_out_at, store_code");
+      .select("id, user_id, check_in_at, check_out_at, store_code");
 
-    const attendanceWageMap = new Map<string, number>();
-    (attendanceLogs || []).forEach((log: any) => {
+    const attendanceWages = (attendanceLogs || []).map((log: any) => {
+      let dateStr = "";
       if (log.check_in_at) {
-        const dateStr = log.check_in_at.split("T")[0];
-        const key = `${log.user_id}_${dateStr}`;
-
-        let workedHours = 0;
-        if (log.check_in_at && log.check_out_at) {
-          const checkIn = new Date(log.check_in_at).getTime();
-          const checkOut = new Date(log.check_out_at).getTime();
-          workedHours = Number(
-            ((checkOut - checkIn) / (1000 * 60 * 60)).toFixed(1),
-          );
-        }
-
-        const wage =
-          workedHours > 0 ? calculateDailyWage(workedHours, 700) : 700;
-        attendanceWageMap.set(key, wage);
+        const d = new Date(log.check_in_at);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        dateStr = `${year}-${month}-${day}`;
       }
+
+      return {
+        userId: log.user_id,
+        storeCode: (log.store_code || "").trim(),
+        date: dateStr,
+        wage: getWageFromAttendanceLog(log),
+      };
     });
 
     const { data: storesData } = await supabase
@@ -711,11 +728,6 @@ export async function getCustomerFullActivityReport() {
         giftNourishBefore - giftNourishGiven,
       );
 
-      // 💰 ดึงค่าแรงจริงจาก Attendance Log Map
-      const reportDateStr = r.report_date || "";
-      const wageKey = `${uId}_${reportDateStr}`;
-      const dailyWage = attendanceWageMap.get(wageKey) ?? 700;
-
       return {
         id: r.id,
         userId: r.user_id,
@@ -724,9 +736,8 @@ export async function getCustomerFullActivityReport() {
         account: accountName,
         storeCode: storeCodeStr,
         storeName: finalStoreName,
-        reportDate: reportDateStr,
+        reportDate: r.report_date || "",
         targetPacks,
-        dailyWage, // 💰 ส่งค่าแรงจริงประจำกะไปด้วย
 
         traffic: Number(r.traffic_count || 0),
         approach: Number(r.approach_count || 0),
@@ -786,10 +797,15 @@ export async function getCustomerFullActivityReport() {
       };
     });
 
-    return { success: true, data: formattedData };
+    return { success: true, data: formattedData, attendanceWages };
   } catch (error: any) {
     console.error("Get customer full report error:", error);
-    return { success: false, data: [], message: error.message };
+    return {
+      success: false,
+      data: [],
+      attendanceWages: [],
+      message: error.message,
+    };
   }
 }
 

@@ -132,6 +132,7 @@ const CustomPieTooltip = ({ active, payload }: any) => {
 
 export default function CustomerReportPortal() {
   const [reportData, setReportData] = useState<any[]>([]);
+  const [attendanceWages, setAttendanceWages] = useState<any[]>([]);
   const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -172,6 +173,7 @@ export default function CustomerReportPortal() {
     if (res.success) {
       setReportData(res.data);
       setFilteredData(res.data);
+      setAttendanceWages(res.attendanceWages || []);
     }
     setLoading(false);
   };
@@ -180,7 +182,7 @@ export default function CustomerReportPortal() {
     loadPortalData();
   }, []);
 
-  // Filter Logic
+  // Filter Logic สำหรับตารางรายงานกิจกรรม
   useEffect(() => {
     let result = [...reportData];
 
@@ -214,6 +216,52 @@ export default function CustomerReportPortal() {
 
     setFilteredData(result);
   }, [
+    selectedAccount,
+    selectedStore,
+    selectedUser,
+    startDate,
+    endDate,
+    reportData,
+  ]);
+
+  // Filter Logic สำหรับค่าแรงเข้างาน (Attendance Logs)
+  const filteredAttendanceWages = useMemo(() => {
+    let result = [...attendanceWages];
+
+    if (selectedUser !== "ALL") {
+      result = result.filter(
+        (item) => String(item.userId).trim() === String(selectedUser).trim(),
+      );
+    }
+
+    if (selectedStore !== "ALL") {
+      result = result.filter(
+        (item) =>
+          String(item.storeCode).trim() === String(selectedStore).trim(),
+      );
+    }
+
+    if (selectedAccount !== "ALL") {
+      result = result.filter((item) => {
+        const storeObj = reportData.find((r) => r.storeCode === item.storeCode);
+        const acc = storeObj
+          ? getAccountName(storeObj.storeName, storeObj.storeCode)
+          : getAccountName("", item.storeCode);
+        return acc === selectedAccount;
+      });
+    }
+
+    if (startDate) {
+      result = result.filter((item) => item.date >= startDate);
+    }
+
+    if (endDate) {
+      result = result.filter((item) => item.date <= endDate);
+    }
+
+    return result;
+  }, [
+    attendanceWages,
     selectedAccount,
     selectedStore,
     selectedUser,
@@ -575,7 +623,7 @@ export default function CustomerReportPortal() {
   const avgClosingRate =
     totalApproach > 0 ? Math.round((totalClosed / totalApproach) * 100) : 0;
 
-  // 💰 การคำนวณสรุปยอดทางการเงิน
+  // 💰 การคำนวณสรุปยอดทางการเงิน (ประกาศตัวแปรในระดับ Component Body)
   const totalGreenRevenue = filteredData.reduce(
     (sum, r) => sum + Number(r.salesGreen || 0) * Number(r.priceGreen || 150),
     0,
@@ -592,9 +640,9 @@ export default function CustomerReportPortal() {
   const totalRevenue =
     totalGreenRevenue + totalBlueRevenue + totalOrangeRevenue;
 
-  // รายจ่ายค่าแรงพนักงาน (คำนวณจาก dailyWage จริงของแต่ละกะเพื่อความแม่นยำและตรงกับหน้า Admin)
-  const totalBaseWage = filteredData.reduce(
-    (sum, r) => sum + Number(r.dailyWage !== undefined ? r.dailyWage : 700),
+  // รายจ่ายค่าแรงพนักงาน (ดึงจาก pg_attendance_logs โดยตรง ตรงกับ Admin 100%)
+  const totalBaseWage = filteredAttendanceWages.reduce(
+    (sum, item) => sum + Number(item.wage || 0),
     0,
   );
 
@@ -1655,19 +1703,19 @@ export default function CustomerReportPortal() {
               <p className="font-black text-xs text-slate-800">
                 FBMBD CONTROLLER
               </p>
-              <p className="text-[10px] text-red-400 font-medium">
+              <p className="text-[10px] text-white font-medium">
                 Niwat Wiyasing
               </p>
-              <p className="text-[10px] text-red-400 font-medium">
+              <p className="text-[10px] text-white font-medium">
                 Niwat_wiy@riverpro.co.th
               </p>
-              <p className="text-[10px] text-red-400 font-medium">
+              <p className="text-[10px] text-white font-medium">
                 ระบบรายงานกิจกรรมพนักงาน PG หน้าร้าน & การตลาด
               </p>
             </div>
           </div>
 
-          <div className="text-[11px] text-red-400 text-center sm:text-right font-medium">
+          <div className="text-[11px] text-white text-center sm:text-right font-medium">
             © {new Date().getFullYear()} Riverpro Intertrade Co., Ltd. All
             Rights Reserved.
           </div>
