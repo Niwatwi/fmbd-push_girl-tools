@@ -299,36 +299,67 @@ export async function getAvailableStores() {
   }
 }
 
-// 6. ดึงโปรไฟล์พนักงาน + สถานที่ Check-in + ยอดขายจริงวันนี้
-export async function getUserDashboardDataAction(userId: number) {
+// 6. ดึงโปรไฟล์พนักงาน + สถานที่ Check-in + ยอดขายจริงวันนี้ + ยอดสะสมประจำเดือน
+export async function getUserDashboardDataAction(userIdInput: number | string) {
   const supabase = getClientInstance();
-  try {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("display_name, employee_id, area, company_tag")
-      .eq("id", userId)
-      .maybeSingle();
+  const userId = Number(userIdInput);
 
+  try {
+    // กำหนดวันที่ปัจจุบันตามโซนเวลาไทย (YYYY-MM-DD)
     const now = new Date();
-    const ictDate = new Intl.DateTimeFormat("en-US", {
+    const yearMonthDay = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Bangkok",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
     }).format(now);
-    const [month, day, year] = ictDate.split("/");
+
+    const firstDayOfMonth = `${yearMonthDay.substring(0, 7)}-01`;
+
+    // 1. ค้นหา Profile พนักงานแบบยืดหยุ่นจากตารางต่างๆ
+    let profile: any = null;
+    const { data: p1 } = await supabase
+      .from("user_profiles")
+      .select("display_name, employee_id, area, company_tag")
+      .eq("id", userId)
+      .maybeSingle();
+    profile = p1;
+
+    if (!profile) {
+      const { data: p2 } = await supabase
+        .from("users")
+        .select("display_name, employee_id, area, company_tag")
+        .eq("id", userId)
+        .maybeSingle();
+      profile = p2;
+    }
+
+    if (!profile) {
+      const { data: p3 } = await supabase
+        .from("profiles")
+        .select("display_name, employee_id, area, company_tag")
+        .eq("id", userId)
+        .maybeSingle();
+      profile = p3;
+    }
+
+    // 2. ดึง Log การลงเวลาวันนี้
+    const startOfToday = `${yearMonthDay}T00:00:00+07:00`;
+    const endOfToday = `${yearMonthDay}T23:59:59+07:00`;
 
     const { data: attendance } = await supabase
       .from("pg_attendance_logs")
       .select("store_code, store_name")
       .eq("user_id", userId)
-      .gte("check_in_at", `${year}-${month}-${day}T00:00:00+07:00`)
+      .gte("check_in_at", startOfToday)
+      .lte("check_in_at", endOfToday)
       .order("check_in_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     const activeStoreCode = attendance?.store_code || profile?.area || "";
 
+    // 3. ดึงเป้าหมายสาขา
     let storeTarget = null;
     if (activeStoreCode) {
       const { data: targetData } = await supabase
@@ -339,25 +370,41 @@ export async function getUserDashboardDataAction(userId: number) {
       storeTarget = targetData;
     }
 
+    // 4. ดึงรายงานกิจกรรมของวันนี้
     const { data: todayReport } = await supabase
       .from("pg_daily_activity_reports")
-      .select(
-        `
-        sales_qty_green90,
-        sales_qty_blue90,
-        sales_qty_orange100,
-        price_our_green90,
-        price_our_blue90,
-        price_our_orange100,
-        gift_orange_given,
-        gift_nourish_given
-      `,
-      )
+      .select("*")
       .eq("user_id", userId)
-      .gte("report_date", `${year}-${month}-${day}`)
+      .eq("report_date", yearMonthDay)
       .order("id", { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    // 5. ดึงรายงานยอดขายสะสมประจำเดือนนี้
+    const { data: monthlyReports } = await supabase
+      .from("pg_daily_activity_reports")
+      .select(
+        "sales_qty_green90, sales_qty_blue90, sales_qty_orange100, store_code",
+      )
+      .eq("user_id", userId)
+      .gte("report_date", firstDayOfMonth)
+      .lte("report_date", yearMonthDay);
+
+    let monthlyTotalPacks = 0;
+    if (monthlyReports && monthlyReports.length > 0) {
+      monthlyReports.forEach((r) => {
+        const g = Number(r.sales_qty_green90 || 0);
+        const b = Number(r.sales_qty_blue90 || 0);
+        const o = Number(r.sales_qty_orange100 || 0);
+
+        const isBigCStore = checkIsBigC(r.store_code || activeStoreCode, "");
+        if (isBigCStore) {
+          monthlyTotalPacks += g + b + o;
+        } else {
+          monthlyTotalPacks += (g + b + o) * 2;
+        }
+      });
+    }
 
     return {
       success: true,
@@ -371,6 +418,9 @@ export async function getUserDashboardDataAction(userId: number) {
       storeCode: activeStoreCode,
       storeTarget: storeTarget,
       todaySales: todayReport || null,
+      monthlyProgress: {
+        total_packs: monthlyTotalPacks,
+      },
     };
   } catch (error: any) {
     console.error("GetUserDashboardDataAction Error:", error);
@@ -493,7 +543,7 @@ function getWageFromAttendanceLog(log: any): number {
   return 0;
 }
 
-// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal (ปรับปรุงการคำนวณค่าแรงและคอมมิชชั่น)
+// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal
 export async function getCustomerFullActivityReport() {
   const supabase = getClientInstance();
   try {
@@ -504,7 +554,6 @@ export async function getCustomerFullActivityReport() {
 
     if (reportError) throw reportError;
 
-    // 🕒 ดึงข้อมูล PG Profiles เพื่อเอาอัตราค่าแรง (base_salary)
     const { data: userProfiles } = await supabase
       .from("user_profiles")
       .select("id, display_name, employee_id, username, base_salary");
@@ -512,7 +561,6 @@ export async function getCustomerFullActivityReport() {
     const userMap = new Map<number, any>();
     (userProfiles || []).forEach((u: any) => userMap.set(Number(u.id), u));
 
-    // 🕒 ดึงข้อมูล pg_attendance_logs
     const { data: attendanceLogs } = await supabase
       .from("pg_attendance_logs")
       .select(
@@ -570,7 +618,6 @@ export async function getCustomerFullActivityReport() {
         attendancePhotoByUserDateMap.get(userDateKey)?.push(...attPhotos);
       }
 
-      // 💵 คำนวณค่าแรงตามชั่วโมงทำงานจริง + ฐานเงินเดือนพนักงาน
       const userObj = userMap.get(Number(log.user_id));
       const baseRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
 
@@ -583,7 +630,6 @@ export async function getCustomerFullActivityReport() {
         );
       }
 
-      // หากมีการลงเวลาแต่ยังไม่กดเลิกงาน หรือทำงานเต็มวัน ให้คิดค่าแรงวันนั้น
       const calculatedWage =
         workedHours > 0 ? calculateDailyWage(workedHours, baseRate) : baseRate;
 
@@ -846,7 +892,7 @@ export async function getCustomerFullActivityReport() {
         userId: r.user_id,
         userName,
         userEmpId,
-        dailyWage: userBaseSalary, // แนบค่าแรงต่อวันของ PG รายคน
+        dailyWage: userBaseSalary,
         account: accountName,
         storeCode: storeCodeStr,
         storeName: finalStoreName,
@@ -1376,12 +1422,10 @@ export async function updateAdminAttendanceLogAction(payload: {
 export async function adminSaveReportWithImagesAction(payload: any) {
   const supabase = getClientInstance();
   try {
-    // ⚠️ สำคัญมาก: เปลี่ยนชื่อ Bucket ให้ตรงกับที่ใช้งานจริงบน Supabase (เช่น "activity_photos" หรือ "reports")
     const BUCKET_NAME = "pg-attendance-photos";
 
     const finalPhotos: any[] = [];
 
-    // 1. ตรวจสอบและอัปโหลดรูปภาพที่ถูกแนบมาใหม่ (Base64)
     for (const photo of payload.activityPhotos || []) {
       if (photo.url && photo.url.startsWith("data:image")) {
         try {
@@ -1391,8 +1435,7 @@ export async function adminSaveReportWithImagesAction(payload: any) {
           const fileName = `admin_${payload.storeCode}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
           const filePath = `reports/${fileName}`;
 
-          // อัปโหลดขึ้น Storage ด้วย Service Role (ข้าม RLS)
-          const { data, error } = await supabase.storage
+          const { error } = await supabase.storage
             .from(BUCKET_NAME)
             .upload(filePath, buffer, {
               contentType: `image/${ext}`,
@@ -1401,10 +1444,9 @@ export async function adminSaveReportWithImagesAction(payload: any) {
 
           if (error) {
             console.error("Storage upload error:", error);
-            continue; // หากอัปโหลดรูปนี้ล้มเหลว ให้ข้ามไปรูปถัดไป
+            continue;
           }
 
-          // ขอ Public URL
           const { data: pubData } = supabase.storage
             .from(BUCKET_NAME)
             .getPublicUrl(filePath);
@@ -1418,12 +1460,10 @@ export async function adminSaveReportWithImagesAction(payload: any) {
           console.error("Base64 process error:", err);
         }
       } else {
-        // ถ้ารูปเป็น URL ที่มีอยู่แล้ว (กรณีแก้ไขแล้วไม่ได้เปลี่ยนรูป) ให้ใส่กลับเข้าไปเลย
         finalPhotos.push(photo);
       }
     }
 
-    // 2. Map ข้อมูลลง Database โดยคำนวณ Stock ของแถมคงเหลืออัตโนมัติ
     const dbData = {
       report_date: payload.reportDateInput,
       user_id: payload.userId,
@@ -1437,7 +1477,7 @@ export async function adminSaveReportWithImagesAction(payload: any) {
       feedback_store: payload.feedbackStore,
       competitor_promotion: payload.competitorPromotion,
       remark: payload.remark,
-      activity_photos: finalPhotos, // บันทึกรูปที่ได้ URL จริงแล้ว!
+      activity_photos: finalPhotos,
 
       price_our_green90: payload.priceOurGreen90,
       stock_before_green90: payload.stockBeforeGreen90,
@@ -1464,14 +1504,12 @@ export async function adminSaveReportWithImagesAction(payload: any) {
     };
 
     if (payload.reportId) {
-      // โหมดแก้ไข
       const { error } = await supabase
         .from("pg_daily_activity_reports")
         .update(dbData)
         .eq("id", payload.reportId);
       if (error) throw error;
     } else {
-      // โหมดคีย์ย้อนหลังใหม่
       const { error } = await supabase
         .from("pg_daily_activity_reports")
         .insert([dbData]);
