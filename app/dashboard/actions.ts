@@ -299,13 +299,13 @@ export async function getAvailableStores() {
   }
 }
 
-// 6. ดึงโปรไฟล์พนักงาน + สถานที่ Check-in + ยอดขายจริงวันนี้ + ยอดสะสมประจำเดือน
+// 6. 🏆 ดึงโปรไฟล์พนักงาน + สถานที่ Check-in + ยอดขายจริงวันนี้ + ยอดสะสมประจำเดือน
 export async function getUserDashboardDataAction(userIdInput: number | string) {
   const supabase = getClientInstance();
   const userId = Number(userIdInput);
 
   try {
-    // กำหนดวันที่ปัจจุบันตามโซนเวลาไทย (YYYY-MM-DD)
+    // 1. กำหนดวันที่ตามโซนเวลาไทย YYYY-MM-DD
     const now = new Date();
     const yearMonthDay = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Bangkok",
@@ -316,7 +316,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
     const firstDayOfMonth = `${yearMonthDay.substring(0, 7)}-01`;
 
-    // 1. ค้นหา Profile พนักงานแบบยืดหยุ่นจากตารางต่างๆ
+    // 2. ดึงโปรไฟล์พนักงานแบบค้นหาครอบคลุมหลายตาราง
     let profile: any = null;
     const { data: p1 } = await supabase
       .from("user_profiles")
@@ -327,9 +327,9 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
     if (!profile) {
       const { data: p2 } = await supabase
-        .from("users")
+        .from("user_profiles")
         .select("display_name, employee_id, area, company_tag")
-        .eq("id", userId)
+        .eq("user_id", userId)
         .maybeSingle();
       profile = p2;
     }
@@ -343,7 +343,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
       profile = p3;
     }
 
-    // 2. ดึง Log การลงเวลาวันนี้
+    // 3. ดึง Log Check-in วันนี้
     const startOfToday = `${yearMonthDay}T00:00:00+07:00`;
     const endOfToday = `${yearMonthDay}T23:59:59+07:00`;
 
@@ -359,7 +359,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
     const activeStoreCode = attendance?.store_code || profile?.area || "";
 
-    // 3. ดึงเป้าหมายสาขา
+    // 4. ดึงเป้าหมายสาขา
     let storeTarget = null;
     if (activeStoreCode) {
       const { data: targetData } = await supabase
@@ -370,21 +370,21 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
       storeTarget = targetData;
     }
 
-    // 4. ดึงรายงานกิจกรรมของวันนี้
+    // 5. ดึงรายงานกิจกรรมขายของวันนี้
     const { data: todayReport } = await supabase
       .from("pg_daily_activity_reports")
       .select("*")
       .eq("user_id", userId)
-      .eq("report_date", yearMonthDay)
+      .gte("report_date", yearMonthDay)
       .order("id", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    // 5. ดึงรายงานยอดขายสะสมประจำเดือนนี้
+    // 6. คำนวณยอดขายสะสมทั้งเดือน (ตั้งแต่วันที่ 1 ถึงปัจจุบัน)
     const { data: monthlyReports } = await supabase
       .from("pg_daily_activity_reports")
       .select(
-        "sales_qty_green90, sales_qty_blue90, sales_qty_orange100, store_code",
+        "sales_qty_green90, sales_qty_blue90, sales_qty_orange100, store_code, store_name",
       )
       .eq("user_id", userId)
       .gte("report_date", firstDayOfMonth)
@@ -397,7 +397,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
         const b = Number(r.sales_qty_blue90 || 0);
         const o = Number(r.sales_qty_orange100 || 0);
 
-        const isBigCStore = checkIsBigC(r.store_code || activeStoreCode, "");
+        const isBigCStore = checkIsBigC(r.store_code, r.store_name);
         if (isBigCStore) {
           monthlyTotalPacks += g + b + o;
         } else {

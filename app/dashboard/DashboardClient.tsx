@@ -33,7 +33,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false); // 🔄 State สำหรับแสดงสถานะการกดรีเฟรช
+  const [refreshing, setRefreshing] = useState(false);
   const [pgName, setPgName] = useState("");
   const [empCode, setEmpCode] = useState("");
   const [storeName, setStoreName] = useState("");
@@ -59,7 +59,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   const [productDetails, setProductDetails] = useState<any[]>([]);
   const [giftSummary, setGiftSummary] = useState<any[]>([]);
 
-  // 🔄 ฟังก์ชันดึงข้อมูลหลัก (รองรับการกดรีเฟรช และดึงอัตโนมัติ)
+  // 🔄 ฟังก์ชันดึงข้อมูลหลัก
   const loadUserData = useCallback(
     async (isManualRefresh = false) => {
       if (isManualRefresh) setRefreshing(true);
@@ -76,7 +76,6 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           const checkIsBigC =
             storeLower.includes("big c") ||
             storeLower.includes("bigc") ||
-            res.profile?.company_tag === "PG" ||
             res.profile?.company_tag === "BIGC";
 
           setIsBigC(checkIsBigC);
@@ -85,91 +84,93 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
             setMonthlyTarget(Number(res.storeTarget.target_packs || 240));
           }
 
-          if (res.todaySales) {
-            const gPacks = Number(res.todaySales.sales_qty_green90 || 0);
-            const bPacks = Number(res.todaySales.sales_qty_blue90 || 0);
-            const oPacks = Number(res.todaySales.sales_qty_orange100 || 0);
+          // 1. ประมวลผลยอดขายวันนี้ (ถ้าไม่มีข้อมูลให้เป็น 0)
+          const gPacks = Number(res.todaySales?.sales_qty_green90 || 0);
+          const bPacks = Number(res.todaySales?.sales_qty_blue90 || 0);
+          const oPacks = Number(res.todaySales?.sales_qty_orange100 || 0);
 
-            const gPrice = Number(res.todaySales.price_our_green90 || 150);
-            const bPrice = Number(res.todaySales.price_our_blue90 || 142);
-            const oPrice = Number(res.todaySales.price_our_orange100 || 100);
+          const gPrice = Number(res.todaySales?.price_our_green90 || 150);
+          const bPrice = Number(res.todaySales?.price_our_blue90 || 142);
+          const oPrice = Number(res.todaySales?.price_our_orange100 || 100);
 
-            let gSets = 0;
-            let bSets = 0;
-            let oSets = 0;
-            let totalPacks = 0;
+          let gSets = 0;
+          let bSets = 0;
+          let oSets = 0;
+          let totalPacks = 0;
 
-            if (checkIsBigC) {
-              gSets = Math.floor(gPacks / 2);
-              bSets = Math.floor(bPacks / 2);
-              oSets = Math.floor(oPacks / 2);
-              totalPacks = gPacks + bPacks + oPacks;
-            } else {
-              gSets = gPacks;
-              bSets = bPacks;
-              oSets = oPacks;
-              totalPacks = (gSets + bSets + oSets) * 2;
-            }
-
-            const totalSets = gSets + bSets + oSets;
-            const totalRev = gSets * gPrice + bSets * bPrice + oSets * oPrice;
-
-            setTodaySales({
-              totalPacks: totalPacks,
-              totalSets: totalSets,
-              totalRevenue: totalRev,
-              greenQty: gPacks,
-              blueQty: bPacks,
-              orangeQty: oPacks,
-            });
-
-            // 🎯 ใช้ (res as any) เพื่อดึงยอดสะสมประจำเดือนโดยไม่ติด TypeScript Error
-            const monthlyTotalPacks = Number(
-              (res as any).monthlyProgress?.total_packs || totalPacks,
-            );
-            setCurrentMonthlyProgress(monthlyTotalPacks);
-
-            const comm = await calculateBigCCommission(gSets, bSets, oSets);
-            setIncentiveBonus(comm.incentiveAmount);
-
-            setProductDetails([
-              {
-                name: "Mild Luxury สีเขียว 90",
-                price: gPrice,
-                keyedPacks: gPacks,
-                actualSets: gSets,
-                revenue: gSets * gPrice,
-                dotColor: "bg-emerald-500",
-              },
-              {
-                name: "Mild Luxury สีฟ้า 90",
-                price: bPrice,
-                keyedPacks: bPacks,
-                actualSets: bSets,
-                revenue: bSets * bPrice,
-                dotColor: "bg-blue-500",
-              },
-              {
-                name: "Mild Luxury สีส้ม 100",
-                price: oPrice,
-                keyedPacks: oPacks,
-                actualSets: oSets,
-                revenue: oSets * oPrice,
-                dotColor: "bg-orange-500",
-              },
-            ]);
-
-            setGiftSummary([
-              {
-                name: "ทิชชู่ส้มพรีเมียม",
-                given: Number(res.todaySales.gift_orange_given || 0),
-              },
-              {
-                name: "ทิชชู่สูตรบำรุงผิว",
-                given: Number(res.todaySales.gift_nourish_given || 0),
-              },
-            ]);
+          if (checkIsBigC) {
+            gSets = Math.floor(gPacks / 2);
+            bSets = Math.floor(bPacks / 2);
+            oSets = Math.floor(oPacks / 2);
+            totalPacks = gPacks + bPacks + oPacks;
+          } else {
+            gSets = gPacks;
+            bSets = bPacks;
+            oSets = oPacks;
+            totalPacks = (gSets + bSets + oSets) * 2;
           }
+
+          const totalSets = gSets + bSets + oSets;
+          const totalRev = gSets * gPrice + bSets * bPrice + oSets * oPrice;
+
+          setTodaySales({
+            totalPacks: totalPacks,
+            totalSets: totalSets,
+            totalRevenue: totalRev,
+            greenQty: gPacks,
+            blueQty: bPacks,
+            orangeQty: oPacks,
+          });
+
+          // 2. ตั้งค่ายอดขายสะสมประจำเดือน
+          const monthlyTotalPacks = Number(
+            (res as any).monthlyProgress?.total_packs || 0,
+          );
+          setCurrentMonthlyProgress(monthlyTotalPacks);
+
+          // 3. คำนวณ Incentive
+          const comm = await calculateBigCCommission(gSets, bSets, oSets);
+          setIncentiveBonus(comm.incentiveAmount);
+
+          // 4. ตั้งค่ารายการสินค้าลงตารางเสมอ
+          setProductDetails([
+            {
+              name: "Mild Luxury สีเขียว 90",
+              price: gPrice,
+              keyedPacks: gPacks,
+              actualSets: gSets,
+              revenue: gSets * gPrice,
+              dotColor: "bg-emerald-500",
+            },
+            {
+              name: "Mild Luxury สีฟ้า 90",
+              price: bPrice,
+              keyedPacks: bPacks,
+              actualSets: bSets,
+              revenue: bSets * bPrice,
+              dotColor: "bg-blue-500",
+            },
+            {
+              name: "Mild Luxury สีส้ม 100",
+              price: oPrice,
+              keyedPacks: oPacks,
+              actualSets: oSets,
+              revenue: oSets * oPrice,
+              dotColor: "bg-orange-500",
+            },
+          ]);
+
+          // 5. รายงานของแถม
+          setGiftSummary([
+            {
+              name: "ทิชชู่ส้มพรีเมียม",
+              given: Number(res.todaySales?.gift_orange_given || 0),
+            },
+            {
+              name: "ทิชชู่สูตรบำรุงผิว",
+              given: Number(res.todaySales?.gift_nourish_given || 0),
+            },
+          ]);
         }
       } catch (error) {
         console.error("Error loading dashboard data:", error);
@@ -181,7 +182,6 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
     [userId],
   );
 
-  // ⚡ โหลดครั้งแรก + เพิ่ม Event Listener ให้รีเฟรชอัตโนมัติเมื่อน้องสลับ Tab หรือสลับหน้าจอกลับมา
   useEffect(() => {
     loadUserData();
 
@@ -244,13 +244,11 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
             </div>
           </div>
 
-          {/* 🔄 ปุ่มกดรีเฟรชข้อมูลสด */}
           <button
             type="button"
             onClick={() => loadUserData(true)}
             disabled={refreshing}
             className="p-2 bg-blue-800/80 hover:bg-blue-700 active:scale-95 rounded-xl transition text-white border border-blue-400/30 cursor-pointer flex items-center gap-1 text-[10px] font-bold"
-            title="อัปเดตข้อมูลล่าสุด"
           >
             <RefreshCw
               size={13}
