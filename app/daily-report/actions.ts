@@ -404,3 +404,99 @@ export async function submitFullDailyActivityReportAction(
     return { success: false, message: error.message };
   }
 }
+
+// 📌 ฟังก์ชันสำหรับ Admin: บันทึกใหม่หรือแก้ไขรายงานย้อนหลัง
+export async function adminUpsertDailyReportAction(
+  payload: FullActivityReportInput & { reportId?: number; reportDateInput?: string }
+) {
+  const supabase = getClientInstance();
+  try {
+    const userId = payload.userId;
+
+    // 1. กำหนดวันที่รายงาน (หากระบุวันย้อนหลังให้ใช้วันที่ส่งมา ถ้าไม่ระบุใช้ วันปัจจุบัน)
+    const reportDate = payload.reportDateInput || new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    // 2. คำนวณยอดยกไปของแถม (After) ให้ถูกต้อง
+    const giftOrangeBefore = Number(payload.giftOrangeBefore || 0);
+    const giftOrangeGiven = Number(payload.giftOrangeGiven || 0);
+    const giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
+
+    const giftNourishBefore = Number(payload.giftNourishBefore || 0);
+    const giftNourishGiven = Number(payload.giftNourishGiven || 0);
+    const giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
+
+    // 3. เตรียมข้อมูลสำหรับ บันทึก / แก้ไข
+    const recordToUpsert: any = {
+      attendance_log_id: payload.attendanceLogId || null,
+      user_id: userId,
+      store_code: payload.storeCode,
+      report_date: reportDate,
+      traffic_count: Number(payload.trafficCount || 0),
+      approach_count: Number(payload.approachCount || 0),
+      closed_sales_count: Number(payload.closedSalesCount || 0),
+      price_comp_cellox: Number(payload.priceCompCellox || 0),
+      price_comp_kleenex: Number(payload.priceCompKleenex || 0),
+      price_comp_paseo: Number(payload.priceCompPaseo || 0),
+      feedback_store: payload.feedbackStore || "",
+      competitor_promotion: payload.competitorPromotion || "",
+      remark: payload.remark || "",
+
+      price_our_green90: Number(payload.priceOurGreen90 || 0),
+      stock_before_green90: Number(payload.stockBeforeGreen90 || 0),
+      sales_qty_green90: Number(payload.salesQtyGreen90 || 0),
+      stock_after_green90: Number(payload.stockAfterGreen90 || 0),
+
+      price_our_blue90: Number(payload.priceOurBlue90 || 0),
+      stock_before_blue90: Number(payload.stockBeforeBlue90 || 0),
+      sales_qty_blue90: Number(payload.salesQtyBlue90 || 0),
+      stock_after_blue90: Number(payload.stockAfterBlue90 || 0),
+
+      price_our_orange100: Number(payload.priceOurOrange100 || 0),
+      stock_before_orange100: Number(payload.stockBeforeOrange100 || 0),
+      sales_qty_orange100: Number(payload.salesQtyOrange100 || 0),
+      stock_after_orange100: Number(payload.stockAfterOrange100 || 0),
+
+      gift_orange_before: giftOrangeBefore,
+      gift_orange_given: giftOrangeGiven,
+      gift_orange_after: giftOrangeAfter,
+      gift_nourish_before: giftNourishBefore,
+      gift_nourish_given: giftNourishGiven,
+      gift_nourish_after: giftNourishAfter,
+    };
+
+    let resultData;
+
+    // กรณีแก้ไข (Update) ข้อมูลเดิมที่มี id อยู่แล้ว
+    if (payload.reportId) {
+      const { data, error } = await supabase
+        .from("pg_daily_activity_reports")
+        .update(recordToUpsert)
+        .eq("id", payload.reportId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      resultData = data;
+    } else {
+      // กรณีคีย์ย้อนหลังใหม่ (Insert)
+      const { data, error } = await supabase
+        .from("pg_daily_activity_reports")
+        .insert([recordToUpsert])
+        .select()
+        .single();
+
+      if (error) throw error;
+      resultData = data;
+    }
+
+    return { success: true, data: resultData };
+  } catch (error: any) {
+    console.error("adminUpsertDailyReportAction error:", error);
+    return { success: false, message: error.message };
+  }
+}

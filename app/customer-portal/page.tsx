@@ -18,6 +18,12 @@ import {
   DollarSign,
   Percent,
   PieChart as PieChartIcon,
+  PlusCircle,
+  Edit3,
+  X,
+  Save,
+  Image as ImageIcon,
+  Upload,
 } from "lucide-react";
 import {
   BarChart,
@@ -34,6 +40,7 @@ import {
 } from "recharts";
 import Swal from "sweetalert2";
 import { getCustomerFullActivityReport } from "../dashboard/actions";
+import { adminUpsertDailyReportAction } from "../daily-report/actions";
 
 // 🔍 Helper เช็คชื่อ Account จากชื่อสาขาหรือรหัสสาขา
 function getAccountName(storeName: string = "", storeCode: string = "") {
@@ -51,7 +58,7 @@ function getAccountName(storeName: string = "", storeCode: string = "") {
   return "อื่นๆ";
 }
 
-// 📌 Helper สำหรับแสดงผล สต๊อกหลังเลิก (ถ้าเหลือน้อยกว่า 3 แพ็ค ติดตัวเลขสีแดงกระพริบ)
+// 📌 Helper สำหรับแสดงผล สต๊อกหลังเลิก
 const renderStockCell = (stockValue: number | string | null | undefined) => {
   if (
     stockValue === null ||
@@ -80,7 +87,7 @@ const renderStockCell = (stockValue: number | string | null | undefined) => {
   );
 };
 
-// 🎯 Custom Tooltip สำหรับกราฟที่ 1: ยอดขายรายสินค้า
+// 🎯 Custom Tooltip กราฟที่ 1
 const CustomSalesTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
@@ -108,7 +115,7 @@ const CustomSalesTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-// 🎯 Custom Tooltip สำหรับกราฟที่ 2: Funnel
+// 🎯 Custom Tooltip กราฟที่ 2
 const CustomFunnelTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
@@ -136,7 +143,7 @@ const CustomFunnelTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-// 🎯 Custom Tooltip สำหรับกราฟที่ 3: โดนัทชาร์ตเปรียบเทียบราคา
+// 🎯 Custom Tooltip กราฟที่ 3
 const CustomPieTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0];
@@ -163,7 +170,7 @@ export default function CustomerReportPortal() {
   const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ⏰ นาฬิกา Real-time State
+  // ⏰ Real-time State
   const [currentTime, setCurrentTime] = useState<string>("");
 
   // Filter States
@@ -172,6 +179,59 @@ export default function CustomerReportPortal() {
   const [selectedUser, setSelectedUser] = useState<string>("ALL");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+
+  // Modal State สำหรับแก้ไข/คีย์ย้อนหลัง
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [savingAdmin, setSavingAdmin] = useState(false);
+
+  // State สำหรับรูปภาพย้อนหลังใน Modal
+  const [photoFiles, setPhotoFiles] = useState<{
+    staffHolding: string[];
+    customerBasket: string[];
+    atmosphere: string[];
+    product: string[];
+    shelf: string[];
+    stockScanner: string[];
+  }>({
+    staffHolding: [],
+    customerBasket: [],
+    atmosphere: [],
+    product: [],
+    shelf: [],
+    stockScanner: [],
+  });
+
+  const [editForm, setEditForm] = useState<any>({
+    id: null,
+    reportDate: new Date().toISOString().split("T")[0],
+    userId: "",
+    storeCode: "",
+    traffic: 0,
+    approach: 0,
+    closedSales: 0,
+    priceGreen: 150,
+    stockBeforeGreen: 0,
+    salesGreen: 0,
+    stockAfterGreen: 0,
+    priceBlue: 142,
+    stockBeforeBlue: 0,
+    salesBlue: 0,
+    stockAfterBlue: 0,
+    priceOrange: 100,
+    stockBeforeOrange: 0,
+    salesOrange: 0,
+    stockAfterOrange: 0,
+    giftNourishBefore: 0,
+    giftNourishGiven: 0,
+    giftOrangeBefore: 0,
+    giftOrangeGiven: 0,
+    compCellox: 0,
+    compKleenex: 0,
+    compPaseo: 0,
+    feedback: "",
+    competitorPromo: "",
+    remark: "",
+  });
 
   useEffect(() => {
     const updateClock = () => {
@@ -209,7 +269,7 @@ export default function CustomerReportPortal() {
     loadPortalData();
   }, []);
 
-  // Filter Logic สำหรับตารางรายงานกิจกรรม
+  // Filter Logic
   useEffect(() => {
     let result = [...reportData];
 
@@ -251,7 +311,6 @@ export default function CustomerReportPortal() {
     reportData,
   ]);
 
-  // Filter Logic สำหรับค่าแรงเข้างาน (Attendance Logs)
   const filteredAttendanceWages = useMemo(() => {
     let result = [...attendanceWages];
 
@@ -317,7 +376,6 @@ export default function CustomerReportPortal() {
     new Map(reportData.map((item) => [item.userId, item.userName])).entries(),
   );
 
-  // 📊 สรุปข้อมูลสำหรับกราฟที่ 1 & 2
   const chart1And2Data = useMemo(() => {
     if (!filteredData || filteredData.length === 0) return [];
 
@@ -374,7 +432,6 @@ export default function CustomerReportPortal() {
     }
   }, [filteredData, selectedStore]);
 
-  // 🍩 สรุปข้อมูลสำหรับกราฟที่ 3 (เปรียบเทียบราคา Donut Chart วันล่าสุด)
   const chart3Data = useMemo(() => {
     if (!filteredData || filteredData.length === 0)
       return { latestDate: "-", slices: [] };
@@ -414,7 +471,6 @@ export default function CustomerReportPortal() {
     return { latestDate: maxDate, slices };
   }, [filteredData]);
 
-  // 🖼️ ดูรูปภาพใหญ่
   const handleViewImage = (url: string, label: string) => {
     Swal.fire({
       title: label || "รูปภาพกิจกรรม PG หน้าร้าน",
@@ -517,7 +573,6 @@ export default function CustomerReportPortal() {
   const exportToExcel = () => {
     if (!filteredData || filteredData.length === 0) return;
 
-    // 📌 จัดเรียงลำดับคอลัมน์ CSV ตามโครงสร้างใหม่ของตาราง
     const headers = [
       "No.",
       "Account",
@@ -653,7 +708,6 @@ export default function CustomerReportPortal() {
     document.body.removeChild(link);
   };
 
-  // 🧮 การคำนวณตัวเลขปฏิบัติงานหน้าร้าน
   const totalPacks = filteredData.reduce((s, r) => s + r.actualPacksTotal, 0);
   const totalTraffic = filteredData.reduce((s, r) => s + r.traffic, 0);
   const totalApproach = filteredData.reduce((s, r) => s + r.approach, 0);
@@ -661,7 +715,6 @@ export default function CustomerReportPortal() {
   const avgClosingRate =
     totalApproach > 0 ? Math.round((totalClosed / totalApproach) * 100) : 0;
 
-  // 💰 การคำนวณสรุปยอดทางการเงิน
   const totalGreenRevenue = filteredData.reduce(
     (sum, r) => sum + Number(r.salesGreen || 0) * Number(r.priceGreen || 150),
     0,
@@ -678,7 +731,6 @@ export default function CustomerReportPortal() {
   const totalRevenue =
     totalGreenRevenue + totalBlueRevenue + totalOrangeRevenue;
 
-  // รายจ่ายค่าแรงพนักงาน
   const totalBaseWage = filteredAttendanceWages.reduce(
     (sum, item) => sum + Number(item.wage || 0),
     0,
@@ -705,6 +757,223 @@ export default function CustomerReportPortal() {
   const netProfit = totalRevenue - totalStaffExpense;
   const profitMarginPercent =
     totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+  // 📸 Helper อ่านไฟล์รูป Base64
+  const handleFileUpload = (
+    type: keyof typeof photoFiles,
+    files: FileList | null,
+  ) => {
+    if (!files || files.length === 0) return;
+    const fileArr = Array.from(files);
+
+    fileArr.forEach((file) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoFiles((prev) => ({
+          ...prev,
+          [type]: [...prev[type], reader.result as string],
+        }));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removePhoto = (type: keyof typeof photoFiles, index: number) => {
+    setPhotoFiles((prev) => ({
+      ...prev,
+      [type]: prev[type].filter((_, i) => i !== index),
+    }));
+  };
+
+  // ✏️ แก้ไขแถวเดิม
+  const handleEditRow = (row: any) => {
+    const photos = categorizePhotos(row.activityPhotos);
+    setPhotoFiles({
+      staffHolding: photos.staffHolding.map((p: any) => p.url),
+      customerBasket: photos.customerBasket.map((p: any) => p.url),
+      atmosphere: photos.atmosphere.map((p: any) => p.url),
+      product: photos.product.map((p: any) => p.url),
+      shelf: photos.shelf.map((p: any) => p.url),
+      stockScanner: photos.stockScanner.map((p: any) => p.url),
+    });
+
+    setEditForm({
+      id: row.id,
+      reportDate: row.reportDate || new Date().toISOString().split("T")[0],
+      userId: row.userId || "",
+      storeCode: row.storeCode || "",
+      traffic: row.traffic || 0,
+      approach: row.approach || 0,
+      closedSales: row.closedSales || 0,
+      priceGreen: row.priceGreen || 150,
+      stockBeforeGreen: row.stockBeforeGreen || 0,
+      salesGreen: row.salesGreen || 0,
+      stockAfterGreen: row.stockAfterGreen || 0,
+      priceBlue: row.priceBlue || 142,
+      stockBeforeBlue: row.stockBeforeBlue || 0,
+      salesBlue: row.salesBlue || 0,
+      stockAfterBlue: row.stockAfterBlue || 0,
+      priceOrange: row.priceOrange || 100,
+      stockBeforeOrange: row.stockBeforeOrange || 0,
+      salesOrange: row.salesOrange || 0,
+      stockAfterOrange: row.stockAfterOrange || 0,
+      giftNourishBefore: row.giftNourishBefore || 0,
+      giftNourishGiven: row.giftNourishGiven || 0,
+      giftOrangeBefore: row.giftOrangeBefore || 0,
+      giftOrangeGiven: row.giftOrangeGiven || 0,
+      compCellox: row.compCellox || 0,
+      compKleenex: row.compKleenex || 0,
+      compPaseo: row.compPaseo || 0,
+      feedback: row.feedback || "",
+      competitorPromo: row.competitorPromo || "",
+      remark: row.remark || "",
+    });
+    setIsEditModalOpen(true);
+  };
+
+  // ➕ คีย์ย้อนหลังใหม่
+  const handleCreateBackdate = () => {
+    setPhotoFiles({
+      staffHolding: [],
+      customerBasket: [],
+      atmosphere: [],
+      product: [],
+      shelf: [],
+      stockScanner: [],
+    });
+
+    setEditForm({
+      id: null,
+      reportDate: new Date().toISOString().split("T")[0],
+      userId: userOptions[0]?.[0] || "",
+      storeCode: storeOptions[0]?.[0] || "",
+      traffic: 0,
+      approach: 0,
+      closedSales: 0,
+      priceGreen: 150,
+      stockBeforeGreen: 0,
+      salesGreen: 0,
+      stockAfterGreen: 0,
+      priceBlue: 142,
+      stockBeforeBlue: 0,
+      salesBlue: 0,
+      stockAfterBlue: 0,
+      priceOrange: 100,
+      stockBeforeOrange: 0,
+      salesOrange: 0,
+      stockAfterOrange: 0,
+      giftNourishBefore: 0,
+      giftNourishGiven: 0,
+      giftOrangeBefore: 0,
+      giftOrangeGiven: 0,
+      compCellox: 0,
+      compKleenex: 0,
+      compPaseo: 0,
+      feedback: "",
+      competitorPromo: "",
+      remark: "",
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveByAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editForm.userId || !editForm.storeCode) {
+      Swal.fire("ข้อมูลไม่ครบถ้วน", "กรุณาเลือกพนักงานและสาขา", "warning");
+      return;
+    }
+
+    setSavingAdmin(true);
+
+    // 📌 แก้ไข TypeScript Error: เพิ่ม base64: url ให้สอดคล้องกับ ActivityPhotoPayload
+    const formattedPhotos = [
+      ...photoFiles.staffHolding.map((url) => ({
+        url,
+        base64: url,
+        type: "staff_holding",
+        label: "พนักงานถือสินค้า",
+      })),
+      ...photoFiles.customerBasket.map((url) => ({
+        url,
+        base64: url,
+        type: "customer_basket",
+        label: "ถ่ายคู่กับลูกค้า/ตะกร้า",
+      })),
+      ...photoFiles.atmosphere.map((url) => ({
+        url,
+        base64: url,
+        type: "atmosphere",
+        label: "บรรยากาศหน้าร้าน",
+      })),
+      ...photoFiles.product.map((url) => ({
+        url,
+        base64: url,
+        type: "img_product",
+        label: "รูปสินค้า",
+      })),
+      ...photoFiles.shelf.map((url) => ({
+        url,
+        base64: url,
+        type: "img_shelf",
+        label: "รูปเชลฟ์ชั้นวาง",
+      })),
+      ...photoFiles.stockScanner.map((url) => ({
+        url,
+        base64: url,
+        type: "img_stock_scanner",
+        label: "รูปสแกนสต๊อก",
+      })),
+    ];
+
+    const res = await adminUpsertDailyReportAction({
+      reportId: editForm.id ? Number(editForm.id) : undefined,
+      reportDateInput: editForm.reportDate,
+      attendanceLogId: 0,
+      userId: Number(editForm.userId),
+      storeCode: editForm.storeCode,
+      trafficCount: Number(editForm.traffic),
+      approachCount: Number(editForm.approach),
+      closedSalesCount: Number(editForm.closedSales),
+      priceCompCellox: Number(editForm.compCellox),
+      priceCompKleenex: Number(editForm.compKleenex),
+      priceCompPaseo: Number(editForm.compPaseo),
+      feedbackStore: editForm.feedback,
+      competitorPromotion: editForm.competitorPromo,
+      remark: editForm.remark,
+      activityPhotos: formattedPhotos,
+      products: [],
+
+      priceOurGreen90: Number(editForm.priceGreen),
+      stockBeforeGreen90: Number(editForm.stockBeforeGreen),
+      salesQtyGreen90: Number(editForm.salesGreen),
+      stockAfterGreen90: Number(editForm.stockAfterGreen),
+
+      priceOurBlue90: Number(editForm.priceBlue),
+      stockBeforeBlue90: Number(editForm.stockBeforeBlue),
+      salesQtyBlue90: Number(editForm.salesBlue),
+      stockAfterBlue90: Number(editForm.stockAfterBlue),
+
+      priceOurOrange100: Number(editForm.priceOrange),
+      stockBeforeOrange100: Number(editForm.stockBeforeOrange),
+      salesQtyOrange100: Number(editForm.salesOrange),
+      stockAfterOrange100: Number(editForm.stockAfterOrange),
+
+      giftOrangeBefore: Number(editForm.giftOrangeBefore),
+      giftOrangeGiven: Number(editForm.giftOrangeGiven),
+      giftNourishBefore: Number(editForm.giftNourishBefore),
+      giftNourishGiven: Number(editForm.giftNourishGiven),
+    });
+
+    setSavingAdmin(false);
+
+    if (res.success) {
+      Swal.fire("บันทึกสำเร็จ!", "ข้อมูลถูกปรับปรุงเรียบร้อยแล้ว", "success");
+      setIsEditModalOpen(false);
+      loadPortalData();
+    } else {
+      Swal.fire("เกิดข้อผิดพลาด!", res.message, "error");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans antialiased flex flex-col justify-between">
@@ -833,6 +1102,14 @@ export default function CustomerReportPortal() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              <button
+                onClick={handleCreateBackdate}
+                className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer whitespace-nowrap mr-2"
+              >
+                <PlusCircle size={14} />
+                <span>คีย์รายงานย้อนหลัง</span>
+              </button>
+
               <div className="flex items-center gap-1 text-xs">
                 <Layers size={14} className="text-slate-400" />
                 <span className="font-bold text-slate-500">Account:</span>
@@ -1073,7 +1350,6 @@ export default function CustomerReportPortal() {
 
           {/* 📊 3 CHARTS SECTION */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            {/* กราฟที่ 1: ยอดขายแยกรายสินค้า */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -1137,7 +1413,6 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            {/* กราฟที่ 2: Funnel */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -1207,7 +1482,6 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            {/* กราฟที่ 3: โดนัทชาร์ตเปรียบเทียบราคาวันล่าสุด */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -1326,13 +1600,10 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            {/* 📌 Slide Bar Container + Freeze Panes & Sticky Header */}
             <div className="relative overflow-auto max-h-[70vh] border-t border-slate-200">
-              <table className="w-full text-[10px] border-collapse min-w-[2500px]">
-                {/* Header Row 1 - Sticky Top */}
+              <table className="w-full text-[10px] border-collapse min-w-[2600px]">
                 <thead className="sticky top-0 z-30 bg-slate-100 text-slate-600 font-black uppercase shadow-xs">
                   <tr className="border-b border-slate-200">
-                    {/* Freeze Column NO. & สาขา */}
                     <th
                       rowSpan={2}
                       className="p-2 border-r border-slate-200 text-center sticky left-0 z-40 bg-slate-100 min-w-[50px] w-[50px]"
@@ -1344,6 +1615,13 @@ export default function CustomerReportPortal() {
                       className="p-2 border-r border-slate-200 sticky left-[50px] z-40 bg-slate-100 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                     >
                       สาขา
+                    </th>
+
+                    <th
+                      rowSpan={2}
+                      className="p-2 border-r border-slate-200 text-center bg-amber-100 text-amber-900 min-w-[70px] no-print"
+                    >
+                      จัดการ
                     </th>
 
                     <th
@@ -1409,7 +1687,6 @@ export default function CustomerReportPortal() {
                       ของแถมคงเหลือ
                     </th>
 
-                    {/* 📌 สลับมาต่อท้ายของแถมคงเหลือ: ราคาขายหน้าร้าน & ราคาคู่แข่ง */}
                     <th
                       colSpan={3}
                       className="p-2 border-r border-slate-200 text-center bg-indigo-50/70 text-indigo-900"
@@ -1436,7 +1713,6 @@ export default function CustomerReportPortal() {
                       โปรคู่แข่ง
                     </th>
 
-                    {/* 📌 คอลัมน์ "หมายเหตุ" ใหม่ */}
                     <th
                       rowSpan={2}
                       className="p-2 border-r border-slate-200 min-w-[180px] bg-amber-100/80 text-amber-950 font-black"
@@ -1452,7 +1728,6 @@ export default function CustomerReportPortal() {
                     </th>
                   </tr>
 
-                  {/* Sub-Header Row 2 */}
                   <tr className="bg-slate-50 text-[9px] border-b border-slate-200 text-center">
                     <th className="p-1.5 border-r border-slate-200 bg-blue-50/40">
                       TRAFFIC
@@ -1507,7 +1782,6 @@ export default function CustomerReportPortal() {
                       ส้ม 100
                     </th>
 
-                    {/* Prices Sub */}
                     <th className="p-1.5 border-r border-slate-200 bg-indigo-50/40">
                       เขียว 90
                     </th>
@@ -1549,7 +1823,6 @@ export default function CustomerReportPortal() {
                   </tr>
                 </thead>
 
-                {/* Body Rows */}
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
                   {filteredData.map((row, idx) => {
                     const photos = categorizePhotos(row.activityPhotos);
@@ -1598,12 +1871,21 @@ export default function CustomerReportPortal() {
                         key={idx}
                         className="hover:bg-slate-50 transition text-center"
                       >
-                        {/* 📌 Freeze Pane NO. & สาขา */}
                         <td className="p-2 border-r border-slate-200 font-bold text-slate-400 sticky left-0 z-20 bg-white min-w-[50px] w-[50px]">
                           {idx + 1}
                         </td>
                         <td className="p-2 border-r border-slate-200 font-black text-slate-800 text-left sticky left-[50px] z-20 bg-white min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                           {row.storeName}
+                        </td>
+
+                        <td className="p-2 border-r border-slate-200 text-center no-print">
+                          <button
+                            onClick={() => handleEditRow(row)}
+                            className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded text-[9px] transition cursor-pointer flex items-center gap-1 mx-auto"
+                            title="แก้ไขรายงานแถวนี้"
+                          >
+                            <Edit3 size={11} /> แก้ไข
+                          </button>
                         </td>
 
                         <td className="p-2 border-r border-slate-200 text-left font-medium text-slate-600">
@@ -1649,7 +1931,7 @@ export default function CustomerReportPortal() {
                           {isBigC ? "-" : `+${row.salesOrange}`}
                         </td>
 
-                        {/* 📌 STOCK หลังเลิก (P) - ถ้าเหลือน้อยกว่า 3 แพ็ค ติดสีแดงกระพริบ */}
+                        {/* Stock After */}
                         <td className="p-2 border-r border-slate-200">
                           {renderStockCell(stockAfterGreen)}
                         </td>
@@ -1682,7 +1964,7 @@ export default function CustomerReportPortal() {
                           {row.giftOrangeAfter || 0}
                         </td>
 
-                        {/* 📌 สลับมาต่อท้ายของแถมคงเหลือ: ราคาขายหน้าร้าน */}
+                        {/* Prices */}
                         <td className="p-2 border-r border-slate-200 font-mono font-semibold">
                           {row.priceGreen ? `${row.priceGreen}฿` : "-"}
                         </td>
@@ -1693,7 +1975,6 @@ export default function CustomerReportPortal() {
                           {row.priceOrange ? `${row.priceOrange}฿` : "-"}
                         </td>
 
-                        {/* 📌 สลับมาต่อท้ายของแถมคงเหลือ: ราคาคู่แข่ง */}
                         <td className="p-2 border-r border-slate-200 font-mono text-rose-600 font-bold">
                           {row.compCellox > 0 ? `${row.compCellox}฿` : "-"}
                         </td>
@@ -1704,7 +1985,7 @@ export default function CustomerReportPortal() {
                           {row.compPaseo > 0 ? `${row.compPaseo}฿` : "-"}
                         </td>
 
-                        {/* Feedback & Comp Promo */}
+                        {/* Text Feedback */}
                         <td className="p-2 border-r border-slate-200 text-left text-slate-600 max-w-[200px] truncate">
                           {row.feedback || "-"}
                         </td>
@@ -1712,12 +1993,11 @@ export default function CustomerReportPortal() {
                           {row.competitorPromo || "-"}
                         </td>
 
-                        {/* 📌 คอลัมน์ "หมายเหตุ" ใหม่ */}
                         <td className="p-2 border-r border-slate-200 text-left font-bold text-amber-900 bg-amber-50/40 max-w-[180px] truncate">
                           {row.remark || "-"}
                         </td>
 
-                        {/* Activity Photos */}
+                        {/* Photos */}
                         <td className="p-2 border-r border-slate-200">
                           {renderPhotoCell(
                             photos.staffHolding,
@@ -1754,6 +2034,509 @@ export default function CustomerReportPortal() {
           </div>
         </main>
       </div>
+
+      {/* 🛠️ MODAL สำหรับ ADMIN บันทึก/แก้ไข รายงานย้อนหลัง + แนบรูปภาพ */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto no-print">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden my-8">
+            <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Edit3 size={16} className="text-amber-400" />
+                {editForm.id
+                  ? `แก้ไขรายงานกิจกรรม (ID: ${editForm.id})`
+                  : "คีย์รายงานกิจกรรมย้อนหลัง (Admin)"}
+              </h3>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-1 hover:bg-slate-700 rounded-lg text-slate-300 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSaveByAdmin}
+              className="p-4 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs"
+            >
+              {/* ข้อมูลทั่วไป */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <label className="block font-bold mb-1">วันที่รายงาน:</label>
+                  <input
+                    type="date"
+                    value={editForm.reportDate}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, reportDate: e.target.value })
+                    }
+                    className="w-full border p-2 rounded-lg font-mono font-bold bg-white"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">พนักงาน (PG):</label>
+                  <select
+                    value={editForm.userId}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, userId: e.target.value })
+                    }
+                    className="w-full border p-2 rounded-lg font-bold bg-white"
+                    required
+                  >
+                    <option value="">-- เลือกพนักงาน --</option>
+                    {userOptions.map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">สาขา:</label>
+                  <select
+                    value={editForm.storeCode}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, storeCode: e.target.value })
+                    }
+                    className="w-full border p-2 rounded-lg font-bold bg-white"
+                    required
+                  >
+                    <option value="">-- เลือกสาขา --</option>
+                    {storeOptions.map(([code, name]) => (
+                      <option key={code} value={code}>
+                        {name} ({code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* สถิติ Funnel */}
+              <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100">
+                <span className="font-bold text-blue-900 block mb-2">
+                  📊 สถิติลูกค้า (Funnel)
+                </span>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-slate-500 mb-1">Traffic</label>
+                    <input
+                      type="number"
+                      value={editForm.traffic}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, traffic: e.target.value })
+                      }
+                      className="w-full border p-2 rounded-lg font-mono bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 mb-1">
+                      Approach
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.approach}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, approach: e.target.value })
+                      }
+                      className="w-full border p-2 rounded-lg font-mono bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 mb-1">
+                      Closed Sales
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.closedSales}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          closedSales: e.target.value,
+                        })
+                      }
+                      className="w-full border p-2 rounded-lg font-mono bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* ยอดขายและสต๊อกสินค้า */}
+              <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 space-y-3">
+                <span className="font-bold text-emerald-900 block">
+                  📦 ยอดขายและสต๊อกสินค้า
+                </span>
+
+                <div className="grid grid-cols-4 gap-2 items-center bg-white p-2 rounded-lg border">
+                  <span className="font-bold text-emerald-700">เขียว 90</span>
+                  <div>
+                    <label className="text-[10px] text-slate-400">
+                      Stock เริ่ม
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.stockBeforeGreen}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          stockBeforeGreen: e.target.value,
+                        })
+                      }
+                      className="w-full border p-1 rounded font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">ยอดขาย</label>
+                    <input
+                      type="number"
+                      value={editForm.salesGreen}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          salesGreen: e.target.value,
+                        })
+                      }
+                      className="w-full border p-1 rounded font-mono text-emerald-600 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">
+                      Stock หลังเลิก
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.stockAfterGreen}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          stockAfterGreen: e.target.value,
+                        })
+                      }
+                      className="w-full border p-1 rounded font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 items-center bg-white p-2 rounded-lg border">
+                  <span className="font-bold text-blue-700">ฟ้า 90</span>
+                  <div>
+                    <label className="text-[10px] text-slate-400">
+                      Stock เริ่ม
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.stockBeforeBlue}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          stockBeforeBlue: e.target.value,
+                        })
+                      }
+                      className="w-full border p-1 rounded font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">ยอดขาย</label>
+                    <input
+                      type="number"
+                      value={editForm.salesBlue}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          salesBlue: e.target.value,
+                        })
+                      }
+                      className="w-full border p-1 rounded font-mono text-blue-600 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">
+                      Stock หลังเลิก
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.stockAfterBlue}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          stockAfterBlue: e.target.value,
+                        })
+                      }
+                      className="w-full border p-1 rounded font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 items-center bg-white p-2 rounded-lg border">
+                  <span className="font-bold text-orange-600">ส้ม 100</span>
+                  <div>
+                    <label className="text-[10px] text-slate-400">
+                      Stock เริ่ม
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.stockBeforeOrange}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          stockBeforeOrange: e.target.value,
+                        })
+                      }
+                      className="w-full border p-1 rounded font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">ยอดขาย</label>
+                    <input
+                      type="number"
+                      value={editForm.salesOrange}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          salesOrange: e.target.value,
+                        })
+                      }
+                      className="w-full border p-1 rounded font-mono text-orange-600 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400">
+                      Stock หลังเลิก
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.stockAfterOrange}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          stockAfterOrange: e.target.value,
+                        })
+                      }
+                      className="w-full border p-1 rounded font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* ของแถม */}
+              <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-100">
+                <span className="font-bold text-amber-900 block mb-2">
+                  🎁 สต๊อกของแถม
+                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white p-2 rounded-lg border">
+                    <span className="font-bold block text-slate-700 mb-1">
+                      เขียว 40
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          ยกมา
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.giftNourishBefore}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              giftNourishBefore: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          แจกไป
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.giftNourishGiven}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              giftNourishGiven: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono text-amber-600 font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-2 rounded-lg border">
+                    <span className="font-bold block text-slate-700 mb-1">
+                      ส้ม 100
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          ยกมา
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.giftOrangeBefore}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              giftOrangeBefore: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          แจกไป
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.giftOrangeGiven}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              giftOrangeGiven: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono text-amber-600 font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 📸 ส่วนอัปโหลดรูปภาพกิจกรรมหน้าร้านย้อนหลัง */}
+              <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100 space-y-3">
+                {/* 📌 แก้ไข CSS Conflict: ลบ block เหลือเฉพาะ flex */}
+                <span className="font-bold text-purple-900 flex items-center gap-1.5">
+                  <ImageIcon size={15} className="text-purple-600" />
+                  📸 อัปโหลดรูปภาพกิจกรรมหน้าร้าน (Admin)
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[
+                    { key: "staffHolding", label: "1. พนักงานถือสินค้า" },
+                    {
+                      key: "customerBasket",
+                      label: "2. ถ่ายคู่กับลูกค้า/ตะกร้า",
+                    },
+                    { key: "atmosphere", label: "3. บรรยากาศหน้าร้าน" },
+                    { key: "product", label: "4. รูปสินค้า" },
+                    { key: "shelf", label: "5. รูปเชลฟ์ชั้นวาง" },
+                    { key: "stockScanner", label: "6. รูปสแกนสต๊อก" },
+                  ].map((field) => {
+                    const k = field.key as keyof typeof photoFiles;
+                    return (
+                      <div
+                        key={k}
+                        className="bg-white p-2.5 rounded-lg border border-slate-200"
+                      >
+                        <span className="font-bold text-slate-700 block mb-1.5 text-[11px]">
+                          {field.label}
+                        </span>
+
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {photoFiles[k].map((url, imgIdx) => (
+                            <div key={imgIdx} className="relative group">
+                              <img
+                                src={url}
+                                alt={field.label}
+                                className="w-10 h-10 object-cover rounded-lg border border-slate-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removePhoto(k, imgIdx)}
+                                className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full p-0.5 shadow-xs cursor-pointer"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <label className="flex items-center justify-center gap-1 py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-dashed border-slate-300 rounded-lg cursor-pointer transition text-[10px] font-bold">
+                          <Upload size={12} />
+                          <span>เพิ่มรูปภาพ</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) =>
+                              handleFileUpload(k, e.target.files)
+                            }
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ข้อความเพิ่มเติม */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold mb-1">
+                    Feedback หน้าร้าน:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editForm.feedback}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, feedback: e.target.value })
+                    }
+                    className="w-full border p-2 rounded-lg bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">
+                    โปรโมชันคู่แข่ง:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editForm.competitorPromo}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        competitorPromo: e.target.value,
+                      })
+                    }
+                    className="w-full border p-2 rounded-lg bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">หมายเหตุ:</label>
+                  <textarea
+                    rows={2}
+                    value={editForm.remark}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, remark: e.target.value })
+                    }
+                    className="w-full border p-2 rounded-lg bg-amber-50/50"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 border rounded-xl hover:bg-slate-100 font-bold cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingAdmin}
+                  className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Save size={14} />
+                  {savingAdmin ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* FOOTER BAR */}
       <footer className="bg-blue-400 border-t border-slate-200 mt-12 py-6 no-print text-slate-600">
