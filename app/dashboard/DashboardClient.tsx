@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Trophy,
@@ -33,22 +33,23 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false); // 🔄 State สำหรับแสดงสถานะการกดรีเฟรช
   const [pgName, setPgName] = useState("");
   const [empCode, setEmpCode] = useState("");
   const [storeName, setStoreName] = useState("");
   const [isBigC, setIsBigC] = useState(false);
 
   // State เป้าหมายรวม และโบนัสสะสม
-  const [monthlyTarget, setMonthlyTarget] = useState<number>(240); // เป้าหมายชิ้น/ห่อ
+  const [monthlyTarget, setMonthlyTarget] = useState<number>(240);
   const [currentMonthlyProgress, setCurrentMonthlyProgress] =
     useState<number>(0);
   const [incentiveBonus, setIncentiveBonus] = useState<number>(0);
 
   // ยอดขายสะสมของวันนี้
   const [todaySales, setTodaySales] = useState({
-    totalPacks: 0, // ยอดตัดสต๊อกชิ้น/ห่อจริง
-    totalSets: 0, // ยอดขายเซ็ท/ชุดโปรโมชันจริง
-    totalRevenue: 0, // มูลค่ารวมบาทจริง
+    totalPacks: 0,
+    totalSets: 0,
+    totalRevenue: 0,
     greenQty: 0,
     blueQty: 0,
     orangeQty: 0,
@@ -58,123 +59,141 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   const [productDetails, setProductDetails] = useState<any[]>([]);
   const [giftSummary, setGiftSummary] = useState<any[]>([]);
 
-  useEffect(() => {
-    async function loadUserData() {
-      setLoading(true);
-      const res = await getUserDashboardDataAction(userId);
-      if (res.success && res.profile) {
-        setPgName(res.profile.display_name || `PG-${userId}`);
-        setEmpCode(res.profile.employee_id || `PG-${userId}`);
-        const currentStore = res.storeName || "";
-        setStoreName(currentStore);
+  // 🔄 ฟังก์ชันดึงข้อมูลหลัก (รองรับการกดรีเฟรช และดึงอัตโนมัติ)
+  const loadUserData = useCallback(
+    async (isManualRefresh = false) => {
+      if (isManualRefresh) setRefreshing(true);
 
-        // 🎯 FIX Bug 1: ปรับแก้เงื่อนไขตรวจสอบ Big C ให้เป็น พิมพ์เล็ก ทั้งหมดเพื่อความแม่นยำ 100%
-        const storeLower = currentStore.toLowerCase();
-        const checkIsBigC =
-          storeLower.includes("big c") ||
-          storeLower.includes("bigc") ||
-          res.profile?.company_tag === "PG" ||
-          res.profile?.company_tag === "BIGC";
+      try {
+        const res = await getUserDashboardDataAction(userId);
+        if (res.success && res.profile) {
+          setPgName(res.profile.display_name || `PG-${userId}`);
+          setEmpCode(res.profile.employee_id || `PG-${userId}`);
+          const currentStore = res.storeName || "";
+          setStoreName(currentStore);
 
-        setIsBigC(checkIsBigC);
+          const storeLower = currentStore.toLowerCase();
+          const checkIsBigC =
+            storeLower.includes("big c") ||
+            storeLower.includes("bigc") ||
+            res.profile?.company_tag === "PG" ||
+            res.profile?.company_tag === "BIGC";
 
-        // ดึงเป้าหมายรวมชิ้น/ห่อจากตาราง store_targets
-        if (res.storeTarget) {
-          setMonthlyTarget(Number(res.storeTarget.target_packs || 240));
-        }
+          setIsBigC(checkIsBigC);
 
-        if (res.todaySales) {
-          // ยอดคีย์ตัดสต๊อกหน้าชั้นวาง (Pieces / Packs)
-          const gPacks = Number(res.todaySales.sales_qty_green90 || 0);
-          const bPacks = Number(res.todaySales.sales_qty_blue90 || 0);
-          const oPacks = Number(res.todaySales.sales_qty_orange100 || 0);
-
-          const gPrice = Number(res.todaySales.price_our_green90 || 150);
-          const bPrice = Number(res.todaySales.price_our_blue90 || 142);
-          const oPrice = Number(res.todaySales.price_our_orange100 || 100);
-
-          let gSets = 0;
-          let bSets = 0;
-          let oSets = 0;
-          let totalPacks = 0;
-
-          // 🎯 FIX Bug 2: แยกคำนวณชุดโปรโมชัน และยอดเงินหน้าร้านจริง
-          if (checkIsBigC) {
-            // กรณี Big C: ซื้อ 1 แถม 1 หยิบ Shelf ทั้งคู่ (คีย์ 90 ชิ้น -> ได้ 45 ชุด)
-            gSets = Math.floor(gPacks / 2);
-            bSets = Math.floor(bPacks / 2);
-            oSets = Math.floor(oPacks / 2);
-            totalPacks = gPacks + bPacks + oPacks; // สต๊อกตัดจริง (เช่น 140 ชิ้น)
-          } else {
-            // กรณี Tops: คีย์ยอดสินค้าหลัก (รับของแถมพรีเมียมต่างหาก)
-            gSets = gPacks;
-            bSets = bPacks;
-            oSets = oPacks;
-            totalPacks = (gSets + bSets + oSets) * 2; // คิดจำนวนชิ้นรวมพร้อมของแถม
+          if (res.storeTarget) {
+            setMonthlyTarget(Number(res.storeTarget.target_packs || 240));
           }
 
-          const totalSets = gSets + bSets + oSets;
-          // คำนวณยอดเงินจริง = จำนวนชุดโปรโมชัน x ราคาขายต่อชุด
-          const totalRev = gSets * gPrice + bSets * bPrice + oSets * oPrice;
+          if (res.todaySales) {
+            const gPacks = Number(res.todaySales.sales_qty_green90 || 0);
+            const bPacks = Number(res.todaySales.sales_qty_blue90 || 0);
+            const oPacks = Number(res.todaySales.sales_qty_orange100 || 0);
 
-          setTodaySales({
-            totalPacks: totalPacks,
-            totalSets: totalSets,
-            totalRevenue: totalRev,
-            greenQty: gPacks,
-            blueQty: bPacks,
-            orangeQty: oPacks,
-          });
+            const gPrice = Number(res.todaySales.price_our_green90 || 150);
+            const bPrice = Number(res.todaySales.price_our_blue90 || 142);
+            const oPrice = Number(res.todaySales.price_our_orange100 || 100);
 
-          setCurrentMonthlyProgress(totalPacks);
+            let gSets = 0;
+            let bSets = 0;
+            let oSets = 0;
+            let totalPacks = 0;
 
-          // 🎯 คำนวณ Commission Incentive จาก "จำนวนชุดจริง"
-          const comm = await calculateBigCCommission(gSets, bSets, oSets);
-          setIncentiveBonus(comm.incentiveAmount);
+            if (checkIsBigC) {
+              gSets = Math.floor(gPacks / 2);
+              bSets = Math.floor(bPacks / 2);
+              oSets = Math.floor(oPacks / 2);
+              totalPacks = gPacks + bPacks + oPacks;
+            } else {
+              gSets = gPacks;
+              bSets = bPacks;
+              oSets = oPacks;
+              totalPacks = (gSets + bSets + oSets) * 2;
+            }
 
-          setProductDetails([
-            {
-              name: "Mild Luxury สีเขียว 90",
-              price: gPrice,
-              keyedPacks: gPacks,
-              actualSets: gSets,
-              revenue: gSets * gPrice,
-              dotColor: "bg-emerald-500",
-            },
-            {
-              name: "Mild Luxury สีฟ้า 90",
-              price: bPrice,
-              keyedPacks: bPacks,
-              actualSets: bSets,
-              revenue: bSets * bPrice,
-              dotColor: "bg-blue-500",
-            },
-            {
-              name: "Mild Luxury สีส้ม 100",
-              price: oPrice,
-              keyedPacks: oPacks,
-              actualSets: oSets,
-              revenue: oSets * oPrice,
-              dotColor: "bg-orange-500",
-            },
-          ]);
+            const totalSets = gSets + bSets + oSets;
+            const totalRev = gSets * gPrice + bSets * bPrice + oSets * oPrice;
 
-          setGiftSummary([
-            {
-              name: "ทิชชู่ส้มพรีเมียม",
-              given: Number(res.todaySales.gift_orange_given || 0),
-            },
-            {
-              name: "ทิชชู่สูตรบำรุงผิว",
-              given: Number(res.todaySales.gift_nourish_given || 0),
-            },
-          ]);
+            setTodaySales({
+              totalPacks: totalPacks,
+              totalSets: totalSets,
+              totalRevenue: totalRev,
+              greenQty: gPacks,
+              blueQty: bPacks,
+              orangeQty: oPacks,
+            });
+
+            // 🎯 ใช้ (res as any) เพื่อดึงยอดสะสมประจำเดือนโดยไม่ติด TypeScript Error
+            const monthlyTotalPacks = Number(
+              (res as any).monthlyProgress?.total_packs || totalPacks,
+            );
+            setCurrentMonthlyProgress(monthlyTotalPacks);
+
+            const comm = await calculateBigCCommission(gSets, bSets, oSets);
+            setIncentiveBonus(comm.incentiveAmount);
+
+            setProductDetails([
+              {
+                name: "Mild Luxury สีเขียว 90",
+                price: gPrice,
+                keyedPacks: gPacks,
+                actualSets: gSets,
+                revenue: gSets * gPrice,
+                dotColor: "bg-emerald-500",
+              },
+              {
+                name: "Mild Luxury สีฟ้า 90",
+                price: bPrice,
+                keyedPacks: bPacks,
+                actualSets: bSets,
+                revenue: bSets * bPrice,
+                dotColor: "bg-blue-500",
+              },
+              {
+                name: "Mild Luxury สีส้ม 100",
+                price: oPrice,
+                keyedPacks: oPacks,
+                actualSets: oSets,
+                revenue: oSets * oPrice,
+                dotColor: "bg-orange-500",
+              },
+            ]);
+
+            setGiftSummary([
+              {
+                name: "ทิชชู่ส้มพรีเมียม",
+                given: Number(res.todaySales.gift_orange_given || 0),
+              },
+              {
+                name: "ทิชชู่สูตรบำรุงผิว",
+                given: Number(res.todaySales.gift_nourish_given || 0),
+              },
+            ]);
+          }
         }
+      } catch (error) {
+        console.error("Error loading dashboard data:", error);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-      setLoading(false);
-    }
+    },
+    [userId],
+  );
+
+  // ⚡ โหลดครั้งแรก + เพิ่ม Event Listener ให้รีเฟรชอัตโนมัติเมื่อน้องสลับ Tab หรือสลับหน้าจอกลับมา
+  useEffect(() => {
     loadUserData();
-  }, [userId]);
+
+    const handleFocus = () => {
+      loadUserData();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [loadUserData]);
 
   const progressPercent = Math.min(
     100,
@@ -193,7 +212,9 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
       <div className="min-h-screen bg-blue-800 flex items-center justify-center p-6 text-slate-500">
         <div className="text-center space-y-2">
           <RefreshCw size={24} className="animate-spin text-blue-600 mx-auto" />
-          <p className="text-xs font-bold">กำลังโหลดข้อมูลแดชบอร์ดส่วนตัว...</p>
+          <p className="text-xs font-bold text-white">
+            กำลังโหลดข้อมูลแดชบอร์ดส่วนตัว...
+          </p>
         </div>
       </div>
     );
@@ -203,23 +224,42 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-12 select-none">
       {/* HEADER BAR */}
       <header className="bg-[#1e3a8a] text-white p-4 sticky top-0 z-50 shadow-xs">
-        <div className="max-w-md mx-auto flex items-center gap-3">
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => router.push(`/?userId=${userId}`)}
+              className="p-1 hover:bg-blue-800 rounded-lg transition cursor-pointer"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <div className="text-left">
+              <h1 className="text-sm font-black tracking-tight flex items-center gap-1.5">
+                <Trophy size={16} className="text-amber-400" />{" "}
+                แดชบอร์ดล่ารางวัล Incentive
+              </h1>
+              <p className="text-[10px] text-blue-200 font-medium">
+                รหัสพนักงาน: {empCode} | ติดตามผลงานเรียลไทม์
+              </p>
+            </div>
+          </div>
+
+          {/* 🔄 ปุ่มกดรีเฟรชข้อมูลสด */}
           <button
             type="button"
-            onClick={() => router.push(`/?userId=${userId}`)}
-            className="p-1 hover:bg-blue-800 rounded-lg transition cursor-pointer"
+            onClick={() => loadUserData(true)}
+            disabled={refreshing}
+            className="p-2 bg-blue-800/80 hover:bg-blue-700 active:scale-95 rounded-xl transition text-white border border-blue-400/30 cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+            title="อัปเดตข้อมูลล่าสุด"
           >
-            <ArrowLeft size={20} />
+            <RefreshCw
+              size={13}
+              className={
+                refreshing ? "animate-spin text-amber-300" : "text-blue-200"
+              }
+            />
+            <span>{refreshing ? "อัปเดต..." : "รีเฟรช"}</span>
           </button>
-          <div className="text-left">
-            <h1 className="text-sm font-black tracking-tight flex items-center gap-1.5">
-              <Trophy size={16} className="text-amber-400" /> แดชบอร์ดล่ารางวัล
-              Incentive
-            </h1>
-            <p className="text-[10px] text-blue-200 font-medium">
-              รหัสพนักงาน: {empCode} | ติดตามผลงานเรียลไทม์
-            </p>
-          </div>
         </div>
       </header>
 
