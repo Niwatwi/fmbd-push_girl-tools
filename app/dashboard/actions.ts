@@ -37,6 +37,27 @@ export async function formatThaiDateTime(dateStr: string | null | undefined) {
   }
 }
 
+// 🇹🇭 Helper Function: แปลง timestamp เป็น YYYY-MM-DD โซนเวลาไทย (Asia/Bangkok)
+function getIctDateStr(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "";
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(d);
+    const month = parts.find((p) => p.type === "month")?.value || "01";
+    const day = parts.find((p) => p.type === "day")?.value || "01";
+    const year = parts.find((p) => p.type === "year")?.value || "1970";
+    return `${year}-${month}-${day}`;
+  } catch {
+    return "";
+  }
+}
+
 // 🔍 Helper เช็คว่าสาขาเป็น BigC หรือไม่ (ตัดช่องว่าง + ตัวพิมพ์เล็ก)
 function checkIsBigC(code: string = "", name: string = "") {
   const cleanCode = (code || "").toLowerCase().replace(/\s+/g, "");
@@ -453,9 +474,8 @@ export async function calculateBigCCommission(
   };
 }
 
-// Helper คำนวณค่าแรงจาก Log เข้า-ออกงาน (ตรงตามเงื่อนไข Admin)
+// Helper คำนวณค่าแรงจาก Log เข้า-ออกงาน
 function getWageFromAttendanceLog(log: any): number {
-  // หากยังไม่ Check-in หรือยังไม่ Check-out เลิกงาน ให้คิดค่าแรงเป็น 0 บาท
   if (!log.check_in_at || !log.check_out_at) return 0;
 
   const checkIn = new Date(log.check_in_at).getTime();
@@ -465,15 +485,15 @@ function getWageFromAttendanceLog(log: any): number {
   );
 
   if (workedHours > 0 && workedHours < 6) {
-    return 350; // กะครึ่งวัน
+    return 350;
   } else if (workedHours >= 6) {
-    return 700; // กะเต็มวัน
+    return 700;
   }
 
   return 0;
 }
 
-// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal (พร้อมข้อมูล Log ค่าแรงเข้างาน)
+// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal (ปรับปรุงการคำนวณค่าแรงและคอมมิชชั่น)
 export async function getCustomerFullActivityReport() {
   const supabase = getClientInstance();
   try {
@@ -484,26 +504,97 @@ export async function getCustomerFullActivityReport() {
 
     if (reportError) throw reportError;
 
-    // 🕒 ดึงข้อมูล pg_attendance_logs เพื่อคำนวณค่าแรงจริงตามกะการทำงาน (ตรงกับ Admin)
+    // 🕒 ดึงข้อมูล PG Profiles เพื่อเอาอัตราค่าแรง (base_salary)
+    const { data: userProfiles } = await supabase
+      .from("user_profiles")
+      .select("id, display_name, employee_id, username, base_salary");
+
+    const userMap = new Map<number, any>();
+    (userProfiles || []).forEach((u: any) => userMap.set(Number(u.id), u));
+
+    // 🕒 ดึงข้อมูล pg_attendance_logs
     const { data: attendanceLogs } = await supabase
       .from("pg_attendance_logs")
-      .select("id, user_id, check_in_at, check_out_at, store_code");
+      .select(
+        "id, user_id, check_in_at, check_out_at, store_code, check_in_image_url, check_in_photo, check_out_image_url, check_out_photo",
+      );
+
+    const attendancePhotoByIdMap = new Map<number, any[]>();
+    const attendancePhotoByStoreDateMap = new Map<string, any[]>();
+    const attendancePhotoByUserDateMap = new Map<string, any[]>();
 
     const attendanceWages = (attendanceLogs || []).map((log: any) => {
-      let dateStr = "";
-      if (log.check_in_at) {
-        const d = new Date(log.check_in_at);
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        dateStr = `${year}-${month}-${day}`;
+      const dateStr = getIctDateStr(log.check_in_at);
+      const rawStoreCode = (log.store_code || "").trim();
+      const cleanStoreCode = rawStoreCode.toLowerCase().replace(/\s+/g, "");
+
+      const attPhotos: any[] = [];
+      const checkInImg = log.check_in_image_url || log.check_in_photo;
+      if (
+        checkInImg &&
+        typeof checkInImg === "string" &&
+        checkInImg.trim() !== ""
+      ) {
+        attPhotos.push({
+          url: checkInImg.trim(),
+          type: "staff_holding",
+          label: "รูป Check-in เข้างาน",
+        });
       }
 
+      const checkOutImg = log.check_out_image_url || log.check_out_photo;
+      if (
+        checkOutImg &&
+        typeof checkOutImg === "string" &&
+        checkOutImg.trim() !== ""
+      ) {
+        attPhotos.push({
+          url: checkOutImg.trim(),
+          type: "atmosphere",
+          label: "รูป Check-out เลิกงาน",
+        });
+      }
+
+      if (attPhotos.length > 0) {
+        attendancePhotoByIdMap.set(Number(log.id), attPhotos);
+        const storeDateKey = `${log.user_id}_${cleanStoreCode}_${dateStr}`;
+        if (!attendancePhotoByStoreDateMap.has(storeDateKey)) {
+          attendancePhotoByStoreDateMap.set(storeDateKey, []);
+        }
+        attendancePhotoByStoreDateMap.get(storeDateKey)?.push(...attPhotos);
+
+        const userDateKey = `${log.user_id}_${dateStr}`;
+        if (!attendancePhotoByUserDateMap.has(userDateKey)) {
+          attendancePhotoByUserDateMap.set(userDateKey, []);
+        }
+        attendancePhotoByUserDateMap.get(userDateKey)?.push(...attPhotos);
+      }
+
+      // 💵 คำนวณค่าแรงตามชั่วโมงทำงานจริง + ฐานเงินเดือนพนักงาน
+      const userObj = userMap.get(Number(log.user_id));
+      const baseRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
+
+      let workedHours = 0;
+      if (log.check_in_at && log.check_out_at) {
+        const checkIn = new Date(log.check_in_at).getTime();
+        const checkOut = new Date(log.check_out_at).getTime();
+        workedHours = Number(
+          ((checkOut - checkIn) / (1000 * 60 * 60)).toFixed(1),
+        );
+      }
+
+      // หากมีการลงเวลาแต่ยังไม่กดเลิกงาน หรือทำงานเต็มวัน ให้คิดค่าแรงวันนั้น
+      const calculatedWage =
+        workedHours > 0 ? calculateDailyWage(workedHours, baseRate) : baseRate;
+
       return {
+        id: log.id,
         userId: log.user_id,
-        storeCode: (log.store_code || "").trim(),
+        storeCode: rawStoreCode,
         date: dateStr,
-        wage: getWageFromAttendanceLog(log),
+        wage: calculatedWage,
+        dailyWage: calculatedWage,
+        baseSalary: baseRate,
       };
     });
 
@@ -514,10 +605,6 @@ export async function getCustomerFullActivityReport() {
     const { data: targetsData } = await supabase
       .from("store_targets")
       .select("store_code, store_name, target_packs");
-
-    const { data: userProfiles } = await supabase
-      .from("user_profiles")
-      .select("id, display_name, employee_id, username");
 
     const storeTargetMap = new Map<string, number>();
     const storeMasterMap = new Map<string, { name: string; account: string }>();
@@ -593,9 +680,6 @@ export async function getCustomerFullActivityReport() {
       });
     }
 
-    const userMap = new Map<number, any>();
-    (userProfiles || []).forEach((u: any) => userMap.set(Number(u.id), u));
-
     const formattedData = (rawReports || []).map((r: any) => {
       const uId = Number(r.user_id);
       const userObj = userMap.get(uId);
@@ -604,8 +688,15 @@ export async function getCustomerFullActivityReport() {
         userObj?.display_name || userObj?.username || `PG-${r.user_id}`;
       const userEmpId =
         userObj?.employee_id || userObj?.username || `PG-${r.user_id}`;
+      const userBaseSalary = userObj?.base_salary
+        ? Number(userObj.base_salary)
+        : 700;
 
       const storeCodeStr = (r.store_code || "").trim();
+      const cleanReportStoreCode = storeCodeStr
+        .toLowerCase()
+        .replace(/\s+/g, "");
+      const reportDateStr = r.report_date ? r.report_date.split("T")[0] : "";
       const masterInfo = storeMasterMap.get(storeCodeStr);
 
       let finalStoreName =
@@ -686,6 +777,13 @@ export async function getCustomerFullActivityReport() {
         "";
       const competitorPromoText =
         r.competitor_promotion || r.competitor_promo || r.comp_promo || "";
+      const remarkText =
+        r.remark ||
+        r.remark_store ||
+        r.remarkStore ||
+        r.remarks ||
+        r.note ||
+        "";
 
       const rawActivityPhotos = parsePhotoArray(r.activity_photos);
       const prodData = productsMap.get(Number(r.id)) || {
@@ -710,11 +808,26 @@ export async function getCustomerFullActivityReport() {
         label: "รูปสแกนสต๊อก",
       }));
 
+      let attPhotos: any[] = [];
+      if (r.attendance_log_id) {
+        attPhotos =
+          attendancePhotoByIdMap.get(Number(r.attendance_log_id)) || [];
+      }
+      if (attPhotos.length === 0) {
+        const storeDateKey = `${r.user_id}_${cleanReportStoreCode}_${reportDateStr}`;
+        attPhotos = attendancePhotoByStoreDateMap.get(storeDateKey) || [];
+      }
+      if (attPhotos.length === 0) {
+        const userDateKey = `${r.user_id}_${reportDateStr}`;
+        attPhotos = attendancePhotoByUserDateMap.get(userDateKey) || [];
+      }
+
       const activityPhotos = [
         ...rawActivityPhotos,
         ...productPhotos,
         ...shelfPhotos,
         ...stockPhotos,
+        ...attPhotos,
       ];
 
       const giftOrangeBefore = Number(r.gift_orange_before || 0);
@@ -733,6 +846,7 @@ export async function getCustomerFullActivityReport() {
         userId: r.user_id,
         userName,
         userEmpId,
+        dailyWage: userBaseSalary, // แนบค่าแรงต่อวันของ PG รายคน
         account: accountName,
         storeCode: storeCodeStr,
         storeName: finalStoreName,
@@ -789,6 +903,7 @@ export async function getCustomerFullActivityReport() {
 
         feedback: feedbackText,
         competitorPromo: competitorPromoText,
+        remark: remarkText,
 
         activityPhotos,
         productPhotos,
@@ -910,7 +1025,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   }
 }
 
-// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (แก้ไขให้สะสมและแสดงผลทุกสาขาที่เข้าปฏิบัติงานจริง)
+// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -918,7 +1033,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
 }) {
   const supabase = getClientInstance();
   try {
-    // 1. ดึงข้อมูล User Profiles
     const { data: userProfiles, error: userError } = await supabase
       .from("user_profiles")
       .select(
@@ -929,7 +1043,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       console.error("Error fetching user_profiles:", userError);
     }
 
-    // 2. ดึงข้อมูล Master Stores และ Store Targets เพื่อใช้แมป store_code -> store_name
     const { data: storesData } = await supabase
       .from("pg_stores")
       .select("store_code, store_name");
@@ -948,7 +1061,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
         storeNameMap.set(t.store_code.trim(), t.store_name.trim());
     });
 
-    // 3. Query Attendance Logs
     let attendanceQuery = supabase
       .from("pg_attendance_logs")
       .select("user_id, check_in_at, check_out_at, store_code, store_name");
@@ -968,7 +1080,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
     const { data: attendanceLogs } = await attendanceQuery;
 
-    // 4. Query Daily Activity Reports
     let dailyReportsQuery = supabase
       .from("pg_daily_activity_reports")
       .select("*")
@@ -990,7 +1101,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
     const { data: dailyReports } = await dailyReportsQuery;
     const reportList: any[] = dailyReports || [];
 
-    // 5. Query สินค้าในรายงาน
     let reportProductsMap = new Map<number, any[]>();
     if (reportList.length > 0) {
       const reportIds = reportList.map((r: any) => r.id);
@@ -1012,7 +1122,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       });
     }
 
-    // 6. จัดกลุ่มข้อมูลแยกรายพนักงาน PG
     const userSummaryMap = new Map<number, any>();
 
     (userProfiles || []).forEach((user: any) => {
@@ -1021,7 +1130,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
         userId: uId,
         empId: user.employee_id || user.username || `PG-${uId}`,
         displayName: user.display_name || user.username || `PG-${uId}`,
-        storeNamesSet: new Set<string>(), // 🌟 สะสมรายชื่อสาขาที่เข้าปฏิบัติงานทั้งหมด
+        storeNamesSet: new Set<string>(),
         baseSalaryRate: user.base_salary ? Number(user.base_salary) : 700,
         workDaysCount: 0,
         totalDailyWage: 0,
@@ -1029,7 +1138,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       });
     });
 
-    // วนลูป Attendance Logs
     (attendanceLogs || []).forEach((log: any) => {
       const uId = Number(log.user_id);
       if (userSummaryMap.has(uId)) {
@@ -1059,7 +1167,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       }
     });
 
-    // วนลูป Daily Reports
     reportList.forEach((report: any) => {
       const uId = Number(report.user_id);
       if (userSummaryMap.has(uId)) {
@@ -1104,12 +1211,10 @@ export async function getAdminSalarySummaryReportAction(params?: {
       }
     });
 
-    // 7. คำนวณยอดรวมเงินเดือนและคอมมิชชั่น
     const resultList = await Promise.all(
       Array.from(userSummaryMap.values()).map(async (item: any) => {
         const totalDailyWage = item.totalDailyWage;
 
-        // แปลง Set รายชื่อสาขาให้เป็นข้อความเชื่อมด้วย " / "
         const storeNameDisplay =
           item.storeNamesSet.size > 0
             ? Array.from(item.storeNamesSet).join(" / ")
@@ -1264,5 +1369,118 @@ export async function updateAdminAttendanceLogAction(payload: {
       success: false,
       message: error.message || "ไม่สามารถแก้ไขข้อมูลได้",
     };
+  }
+}
+
+// 13. 🛠️ ฟังก์ชันสำหรับ Admin บันทึกรายงานย้อนหลัง พร้อมระบบแปลง Base64 และอัปโหลดรูปภาพ
+export async function adminSaveReportWithImagesAction(payload: any) {
+  const supabase = getClientInstance();
+  try {
+    // ⚠️ สำคัญมาก: เปลี่ยนชื่อ Bucket ให้ตรงกับที่ใช้งานจริงบน Supabase (เช่น "activity_photos" หรือ "reports")
+    const BUCKET_NAME = "pg-attendance-photos";
+
+    const finalPhotos: any[] = [];
+
+    // 1. ตรวจสอบและอัปโหลดรูปภาพที่ถูกแนบมาใหม่ (Base64)
+    for (const photo of payload.activityPhotos || []) {
+      if (photo.url && photo.url.startsWith("data:image")) {
+        try {
+          const base64Data = photo.url.split(",")[1];
+          const buffer = Buffer.from(base64Data, "base64");
+          const ext = photo.url.split(";")[0].split("/")[1] || "jpg";
+          const fileName = `admin_${payload.storeCode}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+          const filePath = `reports/${fileName}`;
+
+          // อัปโหลดขึ้น Storage ด้วย Service Role (ข้าม RLS)
+          const { data, error } = await supabase.storage
+            .from(BUCKET_NAME)
+            .upload(filePath, buffer, {
+              contentType: `image/${ext}`,
+              upsert: false,
+            });
+
+          if (error) {
+            console.error("Storage upload error:", error);
+            continue; // หากอัปโหลดรูปนี้ล้มเหลว ให้ข้ามไปรูปถัดไป
+          }
+
+          // ขอ Public URL
+          const { data: pubData } = supabase.storage
+            .from(BUCKET_NAME)
+            .getPublicUrl(filePath);
+
+          finalPhotos.push({
+            url: pubData.publicUrl,
+            type: photo.type,
+            label: photo.label,
+          });
+        } catch (err) {
+          console.error("Base64 process error:", err);
+        }
+      } else {
+        // ถ้ารูปเป็น URL ที่มีอยู่แล้ว (กรณีแก้ไขแล้วไม่ได้เปลี่ยนรูป) ให้ใส่กลับเข้าไปเลย
+        finalPhotos.push(photo);
+      }
+    }
+
+    // 2. Map ข้อมูลลง Database โดยคำนวณ Stock ของแถมคงเหลืออัตโนมัติ
+    const dbData = {
+      report_date: payload.reportDateInput,
+      user_id: payload.userId,
+      store_code: payload.storeCode,
+      traffic_count: payload.trafficCount,
+      approach_count: payload.approachCount,
+      closed_sales_count: payload.closedSalesCount,
+      price_comp_cellox: payload.priceCompCellox,
+      price_comp_kleenex: payload.priceCompKleenex,
+      price_comp_paseo: payload.priceCompPaseo,
+      feedback_store: payload.feedbackStore,
+      competitor_promotion: payload.competitorPromotion,
+      remark: payload.remark,
+      activity_photos: finalPhotos, // บันทึกรูปที่ได้ URL จริงแล้ว!
+
+      price_our_green90: payload.priceOurGreen90,
+      stock_before_green90: payload.stockBeforeGreen90,
+      sales_qty_green90: payload.salesQtyGreen90,
+      stock_after_green90: payload.stockAfterGreen90,
+
+      price_our_blue90: payload.priceOurBlue90,
+      stock_before_blue90: payload.stockBeforeBlue90,
+      sales_qty_blue90: payload.salesQtyBlue90,
+      stock_after_blue90: payload.stockAfterBlue90,
+
+      price_our_orange100: payload.priceOurOrange100,
+      stock_before_orange100: payload.stockBeforeOrange100,
+      sales_qty_orange100: payload.salesQtyOrange100,
+      stock_after_orange100: payload.stockAfterOrange100,
+
+      gift_orange_before: payload.giftOrangeBefore,
+      gift_orange_given: payload.giftOrangeGiven,
+      gift_orange_after: payload.giftOrangeBefore - payload.giftOrangeGiven,
+
+      gift_nourish_before: payload.giftNourishBefore,
+      gift_nourish_given: payload.giftNourishGiven,
+      gift_nourish_after: payload.giftNourishBefore - payload.giftNourishGiven,
+    };
+
+    if (payload.reportId) {
+      // โหมดแก้ไข
+      const { error } = await supabase
+        .from("pg_daily_activity_reports")
+        .update(dbData)
+        .eq("id", payload.reportId);
+      if (error) throw error;
+    } else {
+      // โหมดคีย์ย้อนหลังใหม่
+      const { error } = await supabase
+        .from("pg_daily_activity_reports")
+        .insert([dbData]);
+      if (error) throw error;
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Admin save report error:", error);
+    return { success: false, message: error.message };
   }
 }

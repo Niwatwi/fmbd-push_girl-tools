@@ -39,8 +39,43 @@ import {
   CartesianGrid,
 } from "recharts";
 import Swal from "sweetalert2";
-import { getCustomerFullActivityReport } from "../dashboard/actions";
-import { adminUpsertDailyReportAction } from "../daily-report/actions";
+import {
+  getCustomerFullActivityReport,
+  adminSaveReportWithImagesAction,
+  getAdminSalarySummaryReportAction,
+} from "../dashboard/actions";
+
+// 📸 Helper สำหรับย่อขนาดรูปภาพ (Compress) และแปลงเป็น Base64
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onerror = (error) => reject(error);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onerror = (error) => reject(error);
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 1000;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+    };
+  });
+};
 
 // 🔍 Helper เช็คชื่อ Account จากชื่อสาขาหรือรหัสสาขา
 function getAccountName(storeName: string = "", storeCode: string = "") {
@@ -173,6 +208,12 @@ export default function CustomerReportPortal() {
   // ⏰ Real-time State
   const [currentTime, setCurrentTime] = useState<string>("");
 
+  const [adminSalaryTotal, setAdminSalaryTotal] = useState({
+    baseWage: 0,
+    commission: 0,
+    netTotal: 0,
+  });
+
   // Filter States
   const [selectedAccount, setSelectedAccount] = useState<string>("ALL");
   const [selectedStore, setSelectedStore] = useState<string>("ALL");
@@ -254,14 +295,26 @@ export default function CustomerReportPortal() {
     return () => clearInterval(timer);
   }, []);
 
+  // 1. เพิ่ม State เก็บ Raw Data จาก salary summary
+  const [salarySummaryData, setSalarySummaryData] = useState<any[]>([]);
+
+  // 2. ปรับฟังก์ชัน loadPortalData
   const loadPortalData = async () => {
     setLoading(true);
     const res = await getCustomerFullActivityReport();
+    const salaryRes = await getAdminSalarySummaryReportAction();
+
     if (res.success) {
-      setReportData(res.data);
-      setFilteredData(res.data);
+      setReportData(res.data || []);
+      setFilteredData(res.data || []);
       setAttendanceWages(res.attendanceWages || []);
     }
+
+    if (salaryRes.success) {
+      // เก็บตัว Array ไว้ใช้กรองตาม Filter
+      setSalarySummaryData(salaryRes.data || []);
+    }
+
     setLoading(false);
   };
 
@@ -366,15 +419,19 @@ export default function CustomerReportPortal() {
     );
   }, [reportData]);
 
-  const storeOptions = Array.from(
-    new Map(
-      reportData.map((item) => [item.storeCode, item.storeName]),
-    ).entries(),
-  );
+  const storeOptions = useMemo(() => {
+    return Array.from(
+      new Map(
+        reportData.map((item) => [item.storeCode, item.storeName]),
+      ).entries(),
+    );
+  }, [reportData]);
 
-  const userOptions = Array.from(
-    new Map(reportData.map((item) => [item.userId, item.userName])).entries(),
-  );
+  const userOptions = useMemo(() => {
+    return Array.from(
+      new Map(reportData.map((item) => [item.userId, item.userName])).entries(),
+    );
+  }, [reportData]);
 
   const chart1And2Data = useMemo(() => {
     if (!filteredData || filteredData.length === 0) return [];
@@ -460,12 +517,20 @@ export default function CustomerReportPortal() {
     const paseoAvg = avg(latestRows.map((r) => Number(r.compPaseo || 0)));
 
     const slices = [
-      { name: "เขียว 90 (เรา)", value: priceGreenAvg, fill: "url(#3dGreen)" },
-      { name: "ฟ้า 90 (เรา)", value: priceBlueAvg, fill: "url(#3dBlue)" },
-      { name: "ส้ม 100 (เรา)", value: priceOrangeAvg, fill: "url(#3dOrange)" },
-      { name: "Cellox", value: celloxAvg, fill: "url(#3dCellox)" },
-      { name: "Kleenex", value: kleenexAvg, fill: "url(#3dKleenex)" },
-      { name: "Paseo", value: paseoAvg, fill: "url(#3dPaseo)" },
+      {
+        name: "เขียว 90 (เรา)",
+        value: priceGreenAvg,
+        fill: "url(#c3-3dGreen)",
+      },
+      { name: "ฟ้า 90 (เรา)", value: priceBlueAvg, fill: "url(#c3-3dBlue)" },
+      {
+        name: "ส้ม 100 (เรา)",
+        value: priceOrangeAvg,
+        fill: "url(#c3-3dOrange)",
+      },
+      { name: "Cellox", value: celloxAvg, fill: "url(#c3-3dCellox)" },
+      { name: "Kleenex", value: kleenexAvg, fill: "url(#c3-3dKleenex)" },
+      { name: "Paseo", value: paseoAvg, fill: "url(#c3-3dPaseo)" },
     ].filter((s) => s.value > 0);
 
     return { latestDate: maxDate, slices };
@@ -651,6 +716,15 @@ export default function CustomerReportPortal() {
                 Number(row.salesOrange || 0) * 2,
             );
 
+      const remarkText =
+        row.remark ||
+        row.remark_store ||
+        row.remarkStore ||
+        row.remarks ||
+        row.note ||
+        row.notes ||
+        "";
+
       return [
         idx + 1,
         accountName,
@@ -688,7 +762,7 @@ export default function CustomerReportPortal() {
         row.compPaseo || 0,
         `"${(row.feedback || "").replace(/"/g, '""')}"`,
         `"${(row.competitorPromo || "").replace(/"/g, '""')}"`,
-        `"${(row.remark || "").replace(/"/g, '""')}"`,
+        `"${remarkText.replace(/"/g, '""')}"`,
       ];
     });
 
@@ -706,12 +780,25 @@ export default function CustomerReportPortal() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
-  const totalPacks = filteredData.reduce((s, r) => s + r.actualPacksTotal, 0);
-  const totalTraffic = filteredData.reduce((s, r) => s + r.traffic, 0);
-  const totalApproach = filteredData.reduce((s, r) => s + r.approach, 0);
-  const totalClosed = filteredData.reduce((s, r) => s + r.closedSales, 0);
+  const totalPacks = filteredData.reduce(
+    (s, r) => s + Number(r.actualPacksTotal || 0),
+    0,
+  );
+  const totalTraffic = filteredData.reduce(
+    (s, r) => s + Number(r.traffic || 0),
+    0,
+  );
+  const totalApproach = filteredData.reduce(
+    (s, r) => s + Number(r.approach || 0),
+    0,
+  );
+  const totalClosed = filteredData.reduce(
+    (s, r) => s + Number(r.closedSales || 0),
+    0,
+  );
   const avgClosingRate =
     totalApproach > 0 ? Math.round((totalClosed / totalApproach) * 100) : 0;
 
@@ -731,58 +818,118 @@ export default function CustomerReportPortal() {
   const totalRevenue =
     totalGreenRevenue + totalBlueRevenue + totalOrangeRevenue;
 
-  const totalBaseWage = filteredAttendanceWages.reduce(
-    (sum, item) => sum + Number(item.wage || 0),
-    0,
-  );
+  // 💵 คำนวณค่าแรงฐาน (Base Wage) มีระบบ Fallback 3 ชั้น (ถ้ารวมค่าแรงจาก log ได้ 0 จะไปคิดจากวันทำงานในรายงานแทน)
+  // 🔍 กรองข้อมูล Salary Summary ตาม Filter ที่เลือกหน้าเว็บ
+  const filteredSalarySummary = useMemo(() => {
+    let result = [...salarySummaryData];
 
-  const totalCommission = filteredData.reduce((sum, r) => {
-    const accName = getAccountName(r.storeName, r.storeCode);
-    const isBigC = accName === "Big C";
-    const greenSets = Number(r.salesGreen || 0);
-    const blueSets = Number(r.salesBlue || 0);
-    const orangeSets = isBigC ? 0 : Number(r.salesOrange || 0);
-    const totalSets = greenSets + blueSets + orangeSets;
-
-    let comm = 0;
-    if (totalSets >= 180) {
-      comm = 500 + Math.floor((totalSets - 180) / 15) * 100;
-    } else if (totalSets >= 135) {
-      comm = 200;
+    if (selectedUser !== "ALL") {
+      result = result.filter(
+        (item) =>
+          String(item.userId || item.userEmpId).trim() ===
+          String(selectedUser).trim(),
+      );
     }
-    return sum + comm;
-  }, 0);
 
+    if (selectedStore !== "ALL") {
+      result = result.filter(
+        (item) =>
+          String(item.storeCode).trim() === String(selectedStore).trim(),
+      );
+    }
+
+    return result;
+  }, [salarySummaryData, selectedUser, selectedStore]);
+
+  // 💵 ดึง ค่าแรงฐาน (Base Wage) จาก Salary Summary ที่กรองแล้ว
+  const totalBaseWage = useMemo(() => {
+    if (filteredSalarySummary.length > 0) {
+      return filteredSalarySummary.reduce(
+        (sum, item) => sum + Number(item.totalDailyWage || item.baseWage || 0),
+        0,
+      );
+    }
+
+    // Fallback: หากไม่มีข้อมูลจาก salary summary ให้ใช้การคำนวณเดิม
+    const uniqueUserDays = new Set<string>();
+    let fallbackWage = 0;
+    filteredData.forEach((r) => {
+      const userDateKey = `${r.userId}_${r.reportDate}`;
+      if (!uniqueUserDays.has(userDateKey)) {
+        uniqueUserDays.add(userDateKey);
+        fallbackWage += Number(r.dailyWage || 700);
+      }
+    });
+    return fallbackWage;
+  }, [filteredSalarySummary, filteredData]);
+
+  // 🏆 ดึง คอมมิชชัน (Commission) จาก Salary Summary ที่กรองแล้ว
+  const totalCommission = useMemo(() => {
+    if (filteredSalarySummary.length > 0) {
+      return filteredSalarySummary.reduce(
+        (sum, item) =>
+          sum + Number(item.totalCommission || item.commission || 0),
+        0,
+      );
+    }
+
+    // Fallback: หากไม่มีข้อมูลจาก salary summary ให้ใช้การคำนวณเดิม
+    const userSalesMap = new Map<string, number>();
+    filteredData.forEach((r) => {
+      const uId = String(r.userId || r.userEmpId || "unknown");
+      const accName = getAccountName(r.storeName, r.storeCode);
+      const isBigC = accName === "Big C";
+      const green = Number(r.salesGreen || 0);
+      const blue = Number(r.salesBlue || 0);
+      const orange = isBigC ? 0 : Number(r.salesOrange || 0);
+      userSalesMap.set(
+        uId,
+        (userSalesMap.get(uId) || 0) + (green + blue + orange),
+      );
+    });
+
+    let totalComm = 0;
+    userSalesMap.forEach((totalSets) => {
+      if (totalSets >= 180) {
+        totalComm += 500 + Math.floor((totalSets - 180) / 15) * 100;
+      } else if (totalSets >= 135) {
+        totalComm += 200;
+      }
+    });
+    return totalComm;
+  }, [filteredSalarySummary, filteredData]);
   const totalStaffExpense = totalBaseWage + totalCommission;
   const netProfit = totalRevenue - totalStaffExpense;
   const profitMarginPercent =
     totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-
-  // 📸 Helper อ่านไฟล์รูป Base64
-  const handleFileUpload = (
-    type: keyof typeof photoFiles,
-    files: FileList | null,
-  ) => {
-    if (!files || files.length === 0) return;
-    const fileArr = Array.from(files);
-
-    fileArr.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoFiles((prev) => ({
-          ...prev,
-          [type]: [...prev[type], reader.result as string],
-        }));
-      };
-      reader.readAsDataURL(file);
-    });
-  };
 
   const removePhoto = (type: keyof typeof photoFiles, index: number) => {
     setPhotoFiles((prev) => ({
       ...prev,
       [type]: prev[type].filter((_, i) => i !== index),
     }));
+  };
+
+  // 📸 Handler สำหรับจัดการ อัปโหลดไฟล์รูปภาพ
+  const handleFileUpload = async (
+    type: keyof typeof photoFiles,
+    files: FileList | null,
+  ) => {
+    if (!files || files.length === 0) return;
+
+    try {
+      const fileArray = Array.from(files);
+      const compressedImages = await Promise.all(
+        fileArray.map((file) => compressImage(file)),
+      );
+
+      setPhotoFiles((prev) => ({
+        ...prev,
+        [type]: [...prev[type], ...compressedImages],
+      }));
+    } catch (err) {
+      Swal.fire("ข้อผิดพลาด", "ไม่สามารถอ่านหรือย่อไฟล์รูปภาพได้", "error");
+    }
   };
 
   // ✏️ แก้ไขแถวเดิม
@@ -826,7 +973,14 @@ export default function CustomerReportPortal() {
       compPaseo: row.compPaseo || 0,
       feedback: row.feedback || "",
       competitorPromo: row.competitorPromo || "",
-      remark: row.remark || "",
+      remark:
+        row.remark ||
+        row.remark_store ||
+        row.remarkStore ||
+        row.remarks ||
+        row.note ||
+        row.notes ||
+        "",
     });
     setIsEditModalOpen(true);
   };
@@ -885,7 +1039,6 @@ export default function CustomerReportPortal() {
 
     setSavingAdmin(true);
 
-    // 📌 แก้ไข TypeScript Error: เพิ่ม base64: url ให้สอดคล้องกับ ActivityPhotoPayload
     const formattedPhotos = [
       ...photoFiles.staffHolding.map((url) => ({
         url,
@@ -925,49 +1078,51 @@ export default function CustomerReportPortal() {
       })),
     ];
 
-    const res = await adminUpsertDailyReportAction({
+    const res = await adminSaveReportWithImagesAction({
       reportId: editForm.id ? Number(editForm.id) : undefined,
       reportDateInput: editForm.reportDate,
-      attendanceLogId: 0,
       userId: Number(editForm.userId),
       storeCode: editForm.storeCode,
-      trafficCount: Number(editForm.traffic),
-      approachCount: Number(editForm.approach),
-      closedSalesCount: Number(editForm.closedSales),
-      priceCompCellox: Number(editForm.compCellox),
-      priceCompKleenex: Number(editForm.compKleenex),
-      priceCompPaseo: Number(editForm.compPaseo),
+      trafficCount: Number(editForm.traffic || 0),
+      approachCount: Number(editForm.approach || 0),
+      closedSalesCount: Number(editForm.closedSales || 0),
+      priceCompCellox: Number(editForm.compCellox || 0),
+      priceCompKleenex: Number(editForm.compKleenex || 0),
+      priceCompPaseo: Number(editForm.compPaseo || 0),
       feedbackStore: editForm.feedback,
       competitorPromotion: editForm.competitorPromo,
       remark: editForm.remark,
       activityPhotos: formattedPhotos,
-      products: [],
 
-      priceOurGreen90: Number(editForm.priceGreen),
-      stockBeforeGreen90: Number(editForm.stockBeforeGreen),
-      salesQtyGreen90: Number(editForm.salesGreen),
-      stockAfterGreen90: Number(editForm.stockAfterGreen),
+      priceOurGreen90: Number(editForm.priceGreen || 0),
+      stockBeforeGreen90: Number(editForm.stockBeforeGreen || 0),
+      salesQtyGreen90: Number(editForm.salesGreen || 0),
+      stockAfterGreen90: Number(editForm.stockAfterGreen || 0),
 
-      priceOurBlue90: Number(editForm.priceBlue),
-      stockBeforeBlue90: Number(editForm.stockBeforeBlue),
-      salesQtyBlue90: Number(editForm.salesBlue),
-      stockAfterBlue90: Number(editForm.stockAfterBlue),
+      priceOurBlue90: Number(editForm.priceBlue || 0),
+      stockBeforeBlue90: Number(editForm.stockBeforeBlue || 0),
+      salesQtyBlue90: Number(editForm.salesBlue || 0),
+      stockAfterBlue90: Number(editForm.stockAfterBlue || 0),
 
-      priceOurOrange100: Number(editForm.priceOrange),
-      stockBeforeOrange100: Number(editForm.stockBeforeOrange),
-      salesQtyOrange100: Number(editForm.salesOrange),
-      stockAfterOrange100: Number(editForm.stockAfterOrange),
+      priceOurOrange100: Number(editForm.priceOrange || 0),
+      stockBeforeOrange100: Number(editForm.stockBeforeOrange || 0),
+      salesQtyOrange100: Number(editForm.salesOrange || 0),
+      stockAfterOrange100: Number(editForm.stockAfterOrange || 0),
 
-      giftOrangeBefore: Number(editForm.giftOrangeBefore),
-      giftOrangeGiven: Number(editForm.giftOrangeGiven),
-      giftNourishBefore: Number(editForm.giftNourishBefore),
-      giftNourishGiven: Number(editForm.giftNourishGiven),
+      giftOrangeBefore: Number(editForm.giftOrangeBefore || 0),
+      giftOrangeGiven: Number(editForm.giftOrangeGiven || 0),
+      giftNourishBefore: Number(editForm.giftNourishBefore || 0),
+      giftNourishGiven: Number(editForm.giftNourishGiven || 0),
     });
 
     setSavingAdmin(false);
 
     if (res.success) {
-      Swal.fire("บันทึกสำเร็จ!", "ข้อมูลถูกปรับปรุงเรียบร้อยแล้ว", "success");
+      Swal.fire(
+        "บันทึกสำเร็จ!",
+        "ข้อมูลและรูปภาพถูกอัปเดตเรียบร้อยแล้ว",
+        "success",
+      );
       setIsEditModalOpen(false);
       loadPortalData();
     } else {
@@ -1018,7 +1173,6 @@ export default function CustomerReportPortal() {
           th,
           td {
             padding: 1.5px 2px !important;
-            white-space: nowrap !important;
             position: static !important;
           }
           tr {
@@ -1350,6 +1504,7 @@ export default function CustomerReportPortal() {
 
           {/* 📊 3 CHARTS SECTION */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {/* CHART 1 */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -1367,15 +1522,33 @@ export default function CustomerReportPortal() {
                     margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
                   >
                     <defs>
-                      <linearGradient id="3dGreen" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient
+                        id="c1-3dGreen"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
                         <stop offset="0%" stopColor="#34d399" />
                         <stop offset="100%" stopColor="#059669" />
                       </linearGradient>
-                      <linearGradient id="3dBlue" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient
+                        id="c1-3dBlue"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
                         <stop offset="0%" stopColor="#60a5fa" />
                         <stop offset="100%" stopColor="#1d4ed8" />
                       </linearGradient>
-                      <linearGradient id="3dOrange" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient
+                        id="c1-3dOrange"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
                         <stop offset="0%" stopColor="#fb923c" />
                         <stop offset="100%" stopColor="#c2410c" />
                       </linearGradient>
@@ -1393,19 +1566,19 @@ export default function CustomerReportPortal() {
                     <Bar
                       dataKey="salesGreen"
                       name="เขียว 90"
-                      fill="url(#3dGreen)"
+                      fill="url(#c1-3dGreen)"
                       radius={[6, 6, 0, 0]}
                     />
                     <Bar
                       dataKey="salesBlue"
                       name="ฟ้า 90"
-                      fill="url(#3dBlue)"
+                      fill="url(#c1-3dBlue)"
                       radius={[6, 6, 0, 0]}
                     />
                     <Bar
                       dataKey="salesOrange"
                       name="ส้ม 100"
-                      fill="url(#3dOrange)"
+                      fill="url(#c1-3dOrange)"
                       radius={[6, 6, 0, 0]}
                     />
                   </BarChart>
@@ -1413,6 +1586,7 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
+            {/* CHART 2 */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -1431,7 +1605,7 @@ export default function CustomerReportPortal() {
                   >
                     <defs>
                       <linearGradient
-                        id="3dTraffic"
+                        id="c2-3dTraffic"
                         x1="0"
                         y1="0"
                         x2="0"
@@ -1440,11 +1614,23 @@ export default function CustomerReportPortal() {
                         <stop offset="0%" stopColor="#94a3b8" />
                         <stop offset="100%" stopColor="#475569" />
                       </linearGradient>
-                      <linearGradient id="3dBlue" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient
+                        id="c2-3dBlue"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
                         <stop offset="0%" stopColor="#60a5fa" />
                         <stop offset="100%" stopColor="#1d4ed8" />
                       </linearGradient>
-                      <linearGradient id="3dGreen" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient
+                        id="c2-3dGreen"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
                         <stop offset="0%" stopColor="#34d399" />
                         <stop offset="100%" stopColor="#059669" />
                       </linearGradient>
@@ -1462,19 +1648,19 @@ export default function CustomerReportPortal() {
                     <Bar
                       dataKey="traffic"
                       name="Traffic"
-                      fill="url(#3dTraffic)"
+                      fill="url(#c2-3dTraffic)"
                       radius={[6, 6, 0, 0]}
                     />
                     <Bar
                       dataKey="approach"
                       name="Approach"
-                      fill="url(#3dBlue)"
+                      fill="url(#c2-3dBlue)"
                       radius={[6, 6, 0, 0]}
                     />
                     <Bar
                       dataKey="closedSales"
                       name="Closed Sales"
-                      fill="url(#3dGreen)"
+                      fill="url(#c2-3dGreen)"
                       radius={[6, 6, 0, 0]}
                     />
                   </BarChart>
@@ -1482,6 +1668,7 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
+            {/* CHART 3 */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -1502,7 +1689,7 @@ export default function CustomerReportPortal() {
                     <PieChart>
                       <defs>
                         <linearGradient
-                          id="3dGreen"
+                          id="c3-3dGreen"
                           x1="0"
                           y1="0"
                           x2="0"
@@ -1511,12 +1698,18 @@ export default function CustomerReportPortal() {
                           <stop offset="0%" stopColor="#34d399" />
                           <stop offset="100%" stopColor="#059669" />
                         </linearGradient>
-                        <linearGradient id="3dBlue" x1="0" y1="0" x2="0" y2="1">
+                        <linearGradient
+                          id="c3-3dBlue"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
                           <stop offset="0%" stopColor="#60a5fa" />
                           <stop offset="100%" stopColor="#1d4ed8" />
                         </linearGradient>
                         <linearGradient
-                          id="3dOrange"
+                          id="c3-3dOrange"
                           x1="0"
                           y1="0"
                           x2="0"
@@ -1526,7 +1719,7 @@ export default function CustomerReportPortal() {
                           <stop offset="100%" stopColor="#c2410c" />
                         </linearGradient>
                         <linearGradient
-                          id="3dCellox"
+                          id="c3-3dCellox"
                           x1="0"
                           y1="0"
                           x2="0"
@@ -1536,7 +1729,7 @@ export default function CustomerReportPortal() {
                           <stop offset="100%" stopColor="#be123c" />
                         </linearGradient>
                         <linearGradient
-                          id="3dKleenex"
+                          id="c3-3dKleenex"
                           x1="0"
                           y1="0"
                           x2="0"
@@ -1546,7 +1739,7 @@ export default function CustomerReportPortal() {
                           <stop offset="100%" stopColor="#7e22ce" />
                         </linearGradient>
                         <linearGradient
-                          id="3dPaseo"
+                          id="c3-3dPaseo"
                           x1="0"
                           y1="0"
                           x2="0"
@@ -1702,20 +1895,20 @@ export default function CustomerReportPortal() {
 
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 min-w-[200px]"
+                      className="p-2 border-r border-slate-200 min-w-[220px] max-w-[300px]"
                     >
                       FEEDBACK หน้าร้าน
                     </th>
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 min-w-[180px]"
+                      className="p-2 border-r border-slate-200 min-w-[200px] max-w-[280px]"
                     >
                       โปรคู่แข่ง
                     </th>
 
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 min-w-[180px] bg-amber-100/80 text-amber-950 font-black"
+                      className="p-2 border-r border-slate-200 min-w-[220px] max-w-[320px] bg-amber-100/80 text-amber-950 font-black"
                     >
                       หมายเหตุ
                     </th>
@@ -1866,9 +2059,18 @@ export default function CustomerReportPortal() {
                               Number(row.salesOrange || 0) * 2,
                           );
 
+                    const remarkDisplay =
+                      row.remark ||
+                      row.remark_store ||
+                      row.remarkStore ||
+                      row.remarks ||
+                      row.note ||
+                      row.notes ||
+                      "";
+
                     return (
                       <tr
-                        key={idx}
+                        key={row.id || idx}
                         className="hover:bg-slate-50 transition text-center"
                       >
                         <td className="p-2 border-r border-slate-200 font-bold text-slate-400 sticky left-0 z-20 bg-white min-w-[50px] w-[50px]">
@@ -1985,16 +2187,26 @@ export default function CustomerReportPortal() {
                           {row.compPaseo > 0 ? `${row.compPaseo}฿` : "-"}
                         </td>
 
-                        {/* Text Feedback */}
-                        <td className="p-2 border-r border-slate-200 text-left text-slate-600 max-w-[200px] truncate">
+                        {/* Text Feedback & Promo */}
+                        <td
+                          className="p-2 border-r border-slate-200 text-left text-slate-600 min-w-[220px] max-w-[300px] whitespace-normal break-words leading-tight"
+                          title={row.feedback || ""}
+                        >
                           {row.feedback || "-"}
                         </td>
-                        <td className="p-2 border-r border-slate-200 text-left text-rose-600 max-w-[180px] truncate">
+                        <td
+                          className="p-2 border-r border-slate-200 text-left text-rose-600 min-w-[200px] max-w-[280px] whitespace-normal break-words leading-tight"
+                          title={row.competitorPromo || ""}
+                        >
                           {row.competitorPromo || "-"}
                         </td>
 
-                        <td className="p-2 border-r border-slate-200 text-left font-bold text-amber-900 bg-amber-50/40 max-w-[180px] truncate">
-                          {row.remark || "-"}
+                        {/* 📌 หมายเหตุ */}
+                        <td
+                          className="p-2 border-r border-slate-200 text-left font-bold text-amber-900 bg-amber-50/40 min-w-[220px] max-w-[320px] whitespace-normal break-words leading-tight"
+                          title={remarkDisplay}
+                        >
+                          {remarkDisplay || "-"}
                         </td>
 
                         {/* Photos */}
@@ -2404,9 +2616,131 @@ export default function CustomerReportPortal() {
                 </div>
               </div>
 
+              {/* 🏷️ ราคาขายหน้าร้าน & ราคาคู่แข่ง */}
+              <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 space-y-3">
+                <span className="font-bold text-indigo-900 block">
+                  🏷️ ราคาขายหน้าร้าน & ราคาคู่แข่ง (บาท)
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* ราคาของเรา */}
+                  <div className="bg-white p-2.5 rounded-lg border">
+                    <span className="font-bold block text-slate-700 mb-1.5 text-[11px]">
+                      ราคาขายสินค้าของเรา
+                    </span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          เขียว 90
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.priceGreen}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              priceGreen: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono font-bold text-emerald-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          ฟ้า 90
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.priceBlue}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              priceBlue: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono font-bold text-blue-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          ส้ม 100
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.priceOrange}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              priceOrange: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono font-bold text-orange-600"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ราคาคู่แข่ง */}
+                  <div className="bg-white p-2.5 rounded-lg border">
+                    <span className="font-bold block text-slate-700 mb-1.5 text-[11px]">
+                      ราคาคู่แข่งหน้าร้าน
+                    </span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          Cellox
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.compCellox}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              compCellox: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono text-rose-600 font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          Kleenex
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.compKleenex}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              compKleenex: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono text-rose-600 font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400">
+                          Paseo
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.compPaseo}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              compPaseo: e.target.value,
+                            })
+                          }
+                          className="w-full border p-1 rounded font-mono text-rose-600 font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* 📸 ส่วนอัปโหลดรูปภาพกิจกรรมหน้าร้านย้อนหลัง */}
               <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100 space-y-3">
-                {/* 📌 แก้ไข CSS Conflict: ลบ block เหลือเฉพาะ flex */}
                 <span className="font-bold text-purple-900 flex items-center gap-1.5">
                   <ImageIcon size={15} className="text-purple-600" />
                   📸 อัปโหลดรูปภาพกิจกรรมหน้าร้าน (Admin)
@@ -2511,7 +2845,7 @@ export default function CustomerReportPortal() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, remark: e.target.value })
                     }
-                    className="w-full border p-2 rounded-lg bg-amber-50/50"
+                    className="w-full border p-2 rounded-lg bg-amber-50/50 font-medium"
                   />
                 </div>
               </div>
