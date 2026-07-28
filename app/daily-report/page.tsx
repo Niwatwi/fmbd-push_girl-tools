@@ -242,7 +242,6 @@ export default function DailyReportPage() {
       if (res.success && res.log) {
         setAttendanceLog(res.log);
 
-        // 🎁 ดึงยอดยกมาจากวันก่อนหน้า (คำนวณคงเหลือจริงจาก before - given)
         if (res.log.store_code) {
           const giftRes = await getStoreInitialGiftsAction(res.log.store_code);
           if (giftRes.success) {
@@ -337,6 +336,7 @@ export default function DailyReportPage() {
     }
   };
 
+  // ⚡ ปรับบีบอัดรูปภาพ: ย่อเหลือ 800px และคุณภาพ JPEG 0.50 เพื่อให้ไฟล์ขนาดเล็กลงมาก (~70-90KB)
   const processFileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -346,8 +346,8 @@ export default function DailyReportPage() {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement("canvas");
-          const MAX_WIDTH = 1024;
-          const MAX_HEIGHT = 1024;
+          const MAX_WIDTH = 800;
+          const MAX_HEIGHT = 800;
           let width = img.width;
           let height = img.height;
 
@@ -369,7 +369,7 @@ export default function DailyReportPage() {
           const ctx = canvas.getContext("2d");
           ctx?.drawImage(img, 0, 0, width, height);
 
-          const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
+          const compressedBase64 = canvas.toDataURL("image/jpeg", 0.5);
           resolve(compressedBase64);
         };
         img.onerror = reject;
@@ -472,7 +472,6 @@ export default function DailyReportPage() {
     );
   };
 
-  // 🧮 คำนวณยอดแถมสีส้มอัตโนมัติ (1:1 จากยอดขายเขียว, ฟ้า, ส้ม)
   const salesQtyGreen =
     Number(
       productsForm.find((p) => p.barcode === "8858678423339")?.sales_qty,
@@ -496,6 +495,7 @@ export default function DailyReportPage() {
     (Number(giftNourishBefore) || 0) - (Number(giftNourishGiven) || 0),
   );
 
+  // 📝 บันทึกข้อมูลพร้อม Try-Catch ดักจับ Exception ป้องกันหมุนค้าง
   const onFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!attendanceLog) return;
@@ -526,107 +526,122 @@ export default function DailyReportPage() {
           didOpen: () => Swal.showLoading(),
         });
 
-        const nourishGreen = productsForm.find(
-          (p) => p.barcode === "8858678423339",
-        );
-        const babyBlue = productsForm.find(
-          (p) => p.barcode === "8858678423681",
-        );
-        const pureSoftOrange = productsForm.find(
-          (p) => p.barcode === "8858678422875",
-        );
+        try {
+          const nourishGreen = productsForm.find(
+            (p) => p.barcode === "8858678423339",
+          );
+          const babyBlue = productsForm.find(
+            (p) => p.barcode === "8858678423681",
+          );
+          const pureSoftOrange = productsForm.find(
+            (p) => p.barcode === "8858678422875",
+          );
 
-        const res = await submitFullDailyActivityReportAction({
-          attendanceLogId: attendanceLog.id,
-          userId: user?.id || 102,
-          storeCode: attendanceLog.store_code,
-          trafficCount: Number(traffic) || 0,
-          approachCount: Number(approach) || 0,
-          closedSalesCount: Number(closedSales) || 0,
-          priceCompCellox: Number(priceCompCellox) || 0,
-          priceCompKleenex: Number(priceCompKleenex) || 0,
-          priceCompPaseo: Number(priceCompPaseo) || 0,
-          feedbackStore: feedback,
-          competitorPromotion: compPromo,
-          remark: remark,
-          activityPhotos: activityPhotos.filter((p) => p.base64 !== ""),
-          products: productsForm.map((p) => ({
-            barcode: p.barcode,
-            descriptions: p.descriptions,
-            price_our: Number(p.price_our) || 0,
-            stock_before: Number(p.stock_before) || 0,
-            sales_qty: Number(p.sales_qty) || 0,
-            stock_after: Math.max(
-              0,
-              (Number(p.stock_before) || 0) - (Number(p.sales_qty) || 0),
-            ),
-            img_product_base64: p.img_product_base64,
-            img_shelf_base64: p.img_shelf_base64,
-            img_stock_scanner_base64: p.img_stock_scanner_base64,
-          })),
-          priceOurGreen90: nourishGreen
-            ? Number(nourishGreen.price_our) || 0
-            : 0,
-          stockBeforeGreen90: nourishGreen
-            ? Number(nourishGreen.stock_before) || 0
-            : 0,
-          salesQtyGreen90: nourishGreen
-            ? Number(nourishGreen.sales_qty) || 0
-            : 0,
-          stockAfterGreen90: nourishGreen
-            ? Math.max(
+          const res = await submitFullDailyActivityReportAction({
+            attendanceLogId: attendanceLog.id,
+            userId: user?.id || 102,
+            storeCode: attendanceLog.store_code,
+            trafficCount: Number(traffic) || 0,
+            approachCount: Number(approach) || 0,
+            closedSalesCount: Number(closedSales) || 0,
+            priceCompCellox: Number(priceCompCellox) || 0,
+            priceCompKleenex: Number(priceCompKleenex) || 0,
+            priceCompPaseo: Number(priceCompPaseo) || 0,
+            feedbackStore: feedback,
+            competitorPromotion: compPromo,
+            remark: remark,
+            activityPhotos: activityPhotos.filter((p) => p.base64 !== ""),
+            products: productsForm.map((p) => ({
+              barcode: p.barcode,
+              descriptions: p.descriptions,
+              price_our: Number(p.price_our) || 0,
+              stock_before: Number(p.stock_before) || 0,
+              sales_qty: Number(p.sales_qty) || 0,
+              stock_after: Math.max(
                 0,
-                (Number(nourishGreen.stock_before) || 0) -
-                  (Number(nourishGreen.sales_qty) || 0),
-              )
-            : 0,
+                (Number(p.stock_before) || 0) - (Number(p.sales_qty) || 0),
+              ),
+              img_product_base64: p.img_product_base64,
+              img_shelf_base64: p.img_shelf_base64,
+              img_stock_scanner_base64: p.img_stock_scanner_base64,
+            })),
+            priceOurGreen90: nourishGreen
+              ? Number(nourishGreen.price_our) || 0
+              : 0,
+            stockBeforeGreen90: nourishGreen
+              ? Number(nourishGreen.stock_before) || 0
+              : 0,
+            salesQtyGreen90: nourishGreen
+              ? Number(nourishGreen.sales_qty) || 0
+              : 0,
+            stockAfterGreen90: nourishGreen
+              ? Math.max(
+                  0,
+                  (Number(nourishGreen.stock_before) || 0) -
+                    (Number(nourishGreen.sales_qty) || 0),
+                )
+              : 0,
 
-          priceOurBlue90: babyBlue ? Number(babyBlue.price_our) || 0 : 0,
-          stockBeforeBlue90: babyBlue ? Number(babyBlue.stock_before) || 0 : 0,
-          salesQtyBlue90: babyBlue ? Number(babyBlue.sales_qty) || 0 : 0,
-          stockAfterBlue90: babyBlue
-            ? Math.max(
-                0,
-                (Number(babyBlue.stock_before) || 0) -
-                  (Number(babyBlue.sales_qty) || 0),
-              )
-            : 0,
+            priceOurBlue90: babyBlue ? Number(babyBlue.price_our) || 0 : 0,
+            stockBeforeBlue90: babyBlue
+              ? Number(babyBlue.stock_before) || 0
+              : 0,
+            salesQtyBlue90: babyBlue ? Number(babyBlue.sales_qty) || 0 : 0,
+            stockAfterBlue90: babyBlue
+              ? Math.max(
+                  0,
+                  (Number(babyBlue.stock_before) || 0) -
+                    (Number(babyBlue.sales_qty) || 0),
+                )
+              : 0,
 
-          priceOurOrange100: pureSoftOrange
-            ? Number(pureSoftOrange.price_our) || 0
-            : 0,
-          stockBeforeOrange100: pureSoftOrange
-            ? Number(pureSoftOrange.stock_before) || 0
-            : 0,
-          salesQtyOrange100: pureSoftOrange
-            ? Number(pureSoftOrange.sales_qty) || 0
-            : 0,
-          stockAfterOrange100: pureSoftOrange
-            ? Math.max(
-                0,
-                (Number(pureSoftOrange.stock_before) || 0) -
-                  (Number(pureSoftOrange.sales_qty) || 0),
-              )
-            : 0,
+            priceOurOrange100: pureSoftOrange
+              ? Number(pureSoftOrange.price_our) || 0
+              : 0,
+            stockBeforeOrange100: pureSoftOrange
+              ? Number(pureSoftOrange.stock_before) || 0
+              : 0,
+            salesQtyOrange100: pureSoftOrange
+              ? Number(pureSoftOrange.sales_qty) || 0
+              : 0,
+            stockAfterOrange100: pureSoftOrange
+              ? Math.max(
+                  0,
+                  (Number(pureSoftOrange.stock_before) || 0) -
+                    (Number(pureSoftOrange.sales_qty) || 0),
+                )
+              : 0,
 
-          // 🎁 ตัดยอดของแถมส่งเข้า Server
-          giftOrangeBefore: isTops ? Number(giftOrangeBefore) || 0 : 0,
-          giftOrangeGiven: isTops ? autoOrangeGiftGiven : 0,
-          giftOrangeAfter: isTops ? giftOrangeAfter : 0,
-          giftNourishBefore: isTops ? Number(giftNourishBefore) || 0 : 0,
-          giftNourishGiven: isTops ? Number(giftNourishGiven) || 0 : 0,
-          giftNourishAfter: isTops ? giftNourishAfter : 0,
-        } as any);
+            giftOrangeBefore: isTops ? Number(giftOrangeBefore) || 0 : 0,
+            giftOrangeGiven: isTops ? autoOrangeGiftGiven : 0,
+            giftOrangeAfter: isTops ? giftOrangeAfter : 0,
+            giftNourishBefore: isTops ? Number(giftNourishBefore) || 0 : 0,
+            giftNourishGiven: isTops ? Number(giftNourishGiven) || 0 : 0,
+            giftNourishAfter: isTops ? giftNourishAfter : 0,
+          } as any);
 
-        Swal.close();
-        if (res.success) {
-          Swal.fire({
-            icon: "success",
-            title: "บันทึกรายงานกิจกรรมสำเร็จ",
-            confirmButtonColor: "#10b981",
-          }).then(() => router.push("/"));
-        } else {
-          Swal.fire("ส่งข้อมูลล้มเหลว", res.message, "error");
+          Swal.close();
+          if (res?.success) {
+            Swal.fire({
+              icon: "success",
+              title: "บันทึกรายงานกิจกรรมสำเร็จ",
+              confirmButtonColor: "#10b981",
+            }).then(() => router.push("/"));
+          } else {
+            Swal.fire(
+              "ส่งข้อมูลล้มเหลว",
+              res?.message || "เกิดข้อผิดพลาดในการบันทึก",
+              "error",
+            );
+          }
+        } catch (error: any) {
+          console.error("Submission Exception:", error);
+          Swal.close();
+          Swal.fire(
+            "การเชื่อมต่อขัดข้อง",
+            "ขนาดไฟล์รูปภาพอาจใหญ่เกินไป หรือสัญญาณอินเทอร์เน็ตหลุด กรุณาลองใหม่อีกครั้ง",
+            "error",
+          );
         }
       }
     });

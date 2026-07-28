@@ -92,7 +92,7 @@ async function uploadBase64File(
       base64Data.replace(/^data:image\/\w+;base64,/, ""),
       "base64",
     );
-    const fileName = `${userId}_${prefix}_${Date.now()}.jpg`;
+    const fileName = `${userId}_${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
 
     const { error } = await supabaseClient.storage
       .from("pg-attendance-photos")
@@ -170,7 +170,7 @@ export async function getTodayActiveAttendance(userId: number) {
   }
 }
 
-// 3. 🎁 ดึงยอดยกมาของแถมเริ่มต้นของสาขา (Auto Carryover จากรายงานล่าสุด)
+// 3. 🎁 ดึงยอดยกมาของแถมเริ่มต้นของสาขา
 export async function getStoreInitialGiftsAction(storeCode: string) {
   const supabase = getClientInstance();
   try {
@@ -188,7 +188,6 @@ export async function getStoreInitialGiftsAction(storeCode: string) {
     if (error) throw error;
 
     if (data) {
-      // คำนวณคงเหลือจริงจาก (before - given) ป้องกันค่าคงเหลือใน DB ผิดพลาด
       const orangeRemaining = Math.max(
         0,
         Number(data.gift_orange_before || 0) -
@@ -207,7 +206,6 @@ export async function getStoreInitialGiftsAction(storeCode: string) {
       };
     }
 
-    // กรณีสาขาใหม่ที่ยังไม่มีรายงานย้อนหลัง ให้ใช้ค่าเริ่มต้นมาตรฐาน Tops (480 และ 60)
     return {
       success: true,
       giftOrangeBefore: 480,
@@ -224,7 +222,7 @@ export async function getStoreInitialGiftsAction(storeCode: string) {
   }
 }
 
-// 📝 4. บันทึกรายงานกิจกรรมพร้อมอัปโหลดรูปภาพและคำนวณยอดคงเหลือของแถม (after) ถูกต้อง
+// 📝 4. บันทึกรายงานกิจกรรมพร้อมอัปโหลดรูปภาพแบบขนาน (Parallel Uploads Optimization)
 export async function submitFullDailyActivityReportAction(
   payload: FullActivityReportInput,
 ) {
@@ -232,7 +230,7 @@ export async function submitFullDailyActivityReportAction(
   try {
     const userId = payload.userId;
 
-    // 1. กำหนดวันที่รายงานตามเวลาประเทศไทย (Asia/Bangkok YYYY-MM-DD)
+    // 1. กำหนดวันที่รายงานตามเวลาประเทศไทย
     const now = new Date();
     const reportDate = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Bangkok",
@@ -241,7 +239,7 @@ export async function submitFullDailyActivityReportAction(
       day: "2-digit",
     }).format(now);
 
-    // 2. คำนวณยอดคงเหลือของแถมจริงป้องกันข้อมูลใน DB คลาดเคลื่อน
+    // 2. คำนวณยอดคงเหลือของแถม
     const giftOrangeBefore = Number(payload.giftOrangeBefore || 0);
     const giftOrangeGiven = Number(payload.giftOrangeGiven || 0);
     const giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
@@ -250,31 +248,41 @@ export async function submitFullDailyActivityReportAction(
     const giftNourishGiven = Number(payload.giftNourishGiven || 0);
     const giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
 
-    // 3. อัปโหลดรูปภาพกิจกรรม (Activity Photos) ขึ้น Storage
-    const processedActivityPhotos: Array<{
+    // 3. ⚡ อัปโหลดรูปภาพกิจกรรม (Activity Photos) แบบขนาน (Parallel)
+    let processedActivityPhotos: Array<{
       type: string;
       label: string;
       url: string;
     }> = [];
-    if (Array.isArray(payload.activityPhotos)) {
-      for (let i = 0; i < payload.activityPhotos.length; i++) {
-        const photo = payload.activityPhotos[i];
+
+    if (
+      Array.isArray(payload.activityPhotos) &&
+      payload.activityPhotos.length > 0
+    ) {
+      const uploadPromises = payload.activityPhotos.map(async (photo, idx) => {
         if (photo.base64 && photo.base64.startsWith("data:")) {
           const url = await uploadBase64File(
             photo.base64,
             userId,
-            `act_${photo.type || i}`,
+            `act_${photo.type || idx}`,
             supabase,
           );
           if (url) {
-            processedActivityPhotos.push({
+            return {
               type: photo.type,
               label: photo.label,
               url: url,
-            });
+            };
           }
         }
-      }
+        return null;
+      });
+
+      const results = await Promise.all(uploadPromises);
+      processedActivityPhotos = results.filter(
+        (item): item is { type: string; label: string; url: string } =>
+          item !== null,
+      );
     }
 
     // 4. เตรียม Record บันทึกลงตารางหลัก pg_daily_activity_reports
@@ -309,7 +317,6 @@ export async function submitFullDailyActivityReportAction(
       sales_qty_orange100: Number(payload.salesQtyOrange100 || 0),
       stock_after_orange100: Number(payload.stockAfterOrange100 || 0),
 
-      // บันทึกยอดของแถมที่คำนวณการตัดยอดถูกต้องแล้ว
       gift_orange_before: giftOrangeBefore,
       gift_orange_given: giftOrangeGiven,
       gift_orange_after: giftOrangeAfter,
@@ -326,51 +333,42 @@ export async function submitFullDailyActivityReportAction(
 
     if (reportError) throw reportError;
 
-    // 5. อัปโหลดรูปภาพผลิตภัณฑ์รายบาร์โค้ด & บันทึกลงตาราง pg_daily_report_products
+    // 5. ⚡ อัปโหลดรูปภาพผลิตภัณฑ์รายบาร์โค้ดแบบขนาน (Parallel Uploads)
     if (
       Array.isArray(payload.products) &&
       payload.products.length > 0 &&
       reportData?.id
     ) {
-      const productRecords = [];
-      for (let idx = 0; idx < payload.products.length; idx++) {
-        const prod = payload.products[idx];
+      const productPromises = payload.products.map(async (prod) => {
+        const [imgProductUrl, imgShelfUrl, imgStockScannerUrl] =
+          await Promise.all([
+            prod.img_product_base64
+              ? uploadBase64File(
+                  prod.img_product_base64,
+                  userId,
+                  `prod_${prod.barcode}_item`,
+                  supabase,
+                )
+              : Promise.resolve(""),
+            prod.img_shelf_base64
+              ? uploadBase64File(
+                  prod.img_shelf_base64,
+                  userId,
+                  `prod_${prod.barcode}_shelf`,
+                  supabase,
+                )
+              : Promise.resolve(""),
+            prod.img_stock_scanner_base64
+              ? uploadBase64File(
+                  prod.img_stock_scanner_base64,
+                  userId,
+                  `prod_${prod.barcode}_scan`,
+                  supabase,
+                )
+              : Promise.resolve(""),
+          ]);
 
-        let imgProductUrl = "";
-        let imgShelfUrl = "";
-        let imgStockScannerUrl = "";
-
-        if (prod.img_product_base64) {
-          imgProductUrl =
-            (await uploadBase64File(
-              prod.img_product_base64,
-              userId,
-              `prod_${prod.barcode}_item`,
-              supabase,
-            )) || "";
-        }
-
-        if (prod.img_shelf_base64) {
-          imgShelfUrl =
-            (await uploadBase64File(
-              prod.img_shelf_base64,
-              userId,
-              `prod_${prod.barcode}_shelf`,
-              supabase,
-            )) || "";
-        }
-
-        if (prod.img_stock_scanner_base64) {
-          imgStockScannerUrl =
-            (await uploadBase64File(
-              prod.img_stock_scanner_base64,
-              userId,
-              `prod_${prod.barcode}_scan`,
-              supabase,
-            )) || "";
-        }
-
-        productRecords.push({
+        return {
           report_id: reportData.id,
           barcode: prod.barcode,
           descriptions: prod.descriptions,
@@ -378,11 +376,13 @@ export async function submitFullDailyActivityReportAction(
           stock_before: Number(prod.stock_before || 0),
           sales_qty: Number(prod.sales_qty || 0),
           stock_after: Number(prod.stock_after || 0),
-          img_product: imgProductUrl,
-          img_shelf: imgShelfUrl,
-          img_stock_scanner: imgStockScannerUrl,
-        });
-      }
+          img_product: imgProductUrl || "",
+          img_shelf: imgShelfUrl || "",
+          img_stock_scanner: imgStockScannerUrl || "",
+        };
+      });
+
+      const productRecords = await Promise.all(productPromises);
 
       if (productRecords.length > 0) {
         const { error: prodInsertError } = await supabase
@@ -407,21 +407,24 @@ export async function submitFullDailyActivityReportAction(
 
 // 📌 ฟังก์ชันสำหรับ Admin: บันทึกใหม่หรือแก้ไขรายงานย้อนหลัง
 export async function adminUpsertDailyReportAction(
-  payload: FullActivityReportInput & { reportId?: number; reportDateInput?: string }
+  payload: FullActivityReportInput & {
+    reportId?: number;
+    reportDateInput?: string;
+  },
 ) {
   const supabase = getClientInstance();
   try {
     const userId = payload.userId;
 
-    // 1. กำหนดวันที่รายงาน (หากระบุวันย้อนหลังให้ใช้วันที่ส่งมา ถ้าไม่ระบุใช้ วันปัจจุบัน)
-    const reportDate = payload.reportDateInput || new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Bangkok",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
+    const reportDate =
+      payload.reportDateInput ||
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Bangkok",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
 
-    // 2. คำนวณยอดยกไปของแถม (After) ให้ถูกต้อง
     const giftOrangeBefore = Number(payload.giftOrangeBefore || 0);
     const giftOrangeGiven = Number(payload.giftOrangeGiven || 0);
     const giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
@@ -430,7 +433,6 @@ export async function adminUpsertDailyReportAction(
     const giftNourishGiven = Number(payload.giftNourishGiven || 0);
     const giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
 
-    // 3. เตรียมข้อมูลสำหรับ บันทึก / แก้ไข
     const recordToUpsert: any = {
       attendance_log_id: payload.attendanceLogId || null,
       user_id: userId,
@@ -471,7 +473,6 @@ export async function adminUpsertDailyReportAction(
 
     let resultData;
 
-    // กรณีแก้ไข (Update) ข้อมูลเดิมที่มี id อยู่แล้ว
     if (payload.reportId) {
       const { data, error } = await supabase
         .from("pg_daily_activity_reports")
@@ -483,7 +484,6 @@ export async function adminUpsertDailyReportAction(
       if (error) throw error;
       resultData = data;
     } else {
-      // กรณีคีย์ย้อนหลังใหม่ (Insert)
       const { data, error } = await supabase
         .from("pg_daily_activity_reports")
         .insert([recordToUpsert])
