@@ -305,7 +305,6 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
   const userId = Number(userIdInput);
 
   try {
-    // 1. กำหนดวันที่ตามโซนเวลาไทย YYYY-MM-DD
     const now = new Date();
     const yearMonthDay = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Bangkok",
@@ -316,7 +315,6 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
     const firstDayOfMonth = `${yearMonthDay.substring(0, 7)}-01`;
 
-    // 2. ดึงโปรไฟล์พนักงานแบบค้นหาครอบคลุมหลายตาราง
     let profile: any = null;
     const { data: p1 } = await supabase
       .from("user_profiles")
@@ -343,23 +341,16 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
       profile = p3;
     }
 
-    // 3. ดึง Log Check-in วันนี้
-    const startOfToday = `${yearMonthDay}T00:00:00+07:00`;
-    const endOfToday = `${yearMonthDay}T23:59:59+07:00`;
-
     const { data: attendance } = await supabase
       .from("pg_attendance_logs")
       .select("store_code, store_name")
       .eq("user_id", userId)
-      .gte("check_in_at", startOfToday)
-      .lte("check_in_at", endOfToday)
       .order("check_in_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     const activeStoreCode = attendance?.store_code || profile?.area || "";
 
-    // 4. ดึงเป้าหมายสาขา
     let storeTarget = null;
     if (activeStoreCode) {
       const { data: targetData } = await supabase
@@ -370,25 +361,28 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
       storeTarget = targetData;
     }
 
-    // 5. ดึงรายงานกิจกรรมขายของวันนี้
-    const { data: todayReport } = await supabase
+    const { data: recentReports } = await supabase
       .from("pg_daily_activity_reports")
       .select("*")
       .eq("user_id", userId)
-      .gte("report_date", yearMonthDay)
       .order("id", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(5);
 
-    // 6. คำนวณยอดขายสะสมทั้งเดือน (ตั้งแต่วันที่ 1 ถึงปัจจุบัน)
+    let todayReport =
+      (recentReports || []).find((r: any) => {
+        const rDate = r.report_date ? r.report_date.split("T")[0] : "";
+        return rDate === yearMonthDay;
+      }) ||
+      recentReports?.[0] ||
+      null;
+
     const { data: monthlyReports } = await supabase
       .from("pg_daily_activity_reports")
       .select(
         "sales_qty_green90, sales_qty_blue90, sales_qty_orange100, store_code, store_name",
       )
       .eq("user_id", userId)
-      .gte("report_date", firstDayOfMonth)
-      .lte("report_date", yearMonthDay);
+      .gte("report_date", firstDayOfMonth);
 
     let monthlyTotalPacks = 0;
     if (monthlyReports && monthlyReports.length > 0) {
@@ -399,9 +393,9 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
         const isBigCStore = checkIsBigC(r.store_code, r.store_name);
         if (isBigCStore) {
-          monthlyTotalPacks += g + b + o;
+          monthlyTotalPacks += (g + b) * 2;
         } else {
-          monthlyTotalPacks += (g + b + o) * 2;
+          monthlyTotalPacks += g + b + o * 2;
         }
       });
     }
@@ -448,7 +442,7 @@ export async function deleteStoreTargetAction(storeCode: string) {
   }
 }
 
-// 8. คำนวณ Commission ประจำสัปดาห์
+// 8. คำนวณ Commission ประจำรอบตามจำนวนวันทำงานจริง
 export interface CommissionResult {
   totalSetsSold: number;
   totalPacksSold: number;
@@ -477,10 +471,11 @@ export async function calculateBigCCommission(
     ? (Number(greenSets) + Number(blueSets)) * 2
     : Number(greenSets) + Number(blueSets) + Number(orangeSets) * 2;
 
-  const target80Sets = 45 * workingDays;
-  const target100Sets = 60 * workingDays;
+  const wDays = workingDays > 0 ? workingDays : 1;
+  const target80Sets = 45 * wDays;
+  const target100Sets = 60 * wDays;
 
-  const baseSalary = workingDays * 700;
+  const baseSalary = wDays * 700;
   let incentiveAmount = 0;
   let tierStatus = "";
   let nextTierDifference = 0;
@@ -1071,7 +1066,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   }
 }
 
-// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG
+// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (แก้ไขคำนวณคอมมิชชั่นตามจำนวนวันทำงานรวมของงวด)
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -1266,31 +1261,13 @@ export async function getAdminSalarySummaryReportAction(params?: {
             ? Array.from(item.storeNamesSet).join(" / ")
             : "-";
 
-        const sortedReports = item.dailyReportsList.sort(
-          (a: any, b: any) =>
-            new Date(a.created_at || a.report_date).getTime() -
-            new Date(b.created_at || b.report_date).getTime(),
-        );
-
         let totalGreenPacks = 0;
         let totalBluePacks = 0;
         let totalOrangePacks = 0;
-        let totalPacks = 0;
-        let totalSets = 0;
-        let totalCommission = 0;
 
-        const cycleChunkSize = 3;
-        for (let i = 0; i < sortedReports.length; i += cycleChunkSize) {
-          const chunk = sortedReports.slice(i, i + cycleChunkSize);
-
-          let cycleGreenPacks = 0;
-          let cycleBluePacks = 0;
-          let cycleOrangePacks = 0;
-          let chunkStoreName = storeNameDisplay;
-
-          chunk.forEach((rep: any) => {
-            if (rep.store_name) chunkStoreName = rep.store_name;
-            const prods = rep.products || [];
+        item.dailyReportsList.forEach((rep: any) => {
+          const prods = rep.products || [];
+          if (prods.length > 0) {
             prods.forEach((p: any) => {
               const qty = Number(p.sales_qty || 0);
               const bc = String(p.barcode || "").trim();
@@ -1302,53 +1279,52 @@ export async function getAdminSalarySummaryReportAction(params?: {
                 desc.includes("เขียว") ||
                 desc.includes("green")
               ) {
-                cycleGreenPacks += qty;
+                totalGreenPacks += qty;
               } else if (
                 bc === "8858678423339" ||
                 desc.includes("nourish") ||
                 desc.includes("ฟ้า") ||
                 desc.includes("blue")
               ) {
-                cycleBluePacks += qty;
+                totalBluePacks += qty;
               } else {
-                cycleOrangePacks += qty;
+                totalOrangePacks += qty;
               }
             });
-          });
-
-          const isBigC = checkIsBigC(chunkStoreName, chunkStoreName);
-
-          const cycleGSets = cycleGreenPacks;
-          const cycleBSets = cycleBluePacks;
-          const cycleOSets = isBigC ? 0 : cycleOrangePacks;
-
-          const cycleSetsTotal = cycleGSets + cycleBSets + cycleOSets;
-
-          let cycleComm = 0;
-          try {
-            const commRes = await calculateBigCCommission(
-              cycleGSets,
-              cycleBSets,
-              cycleOSets,
-              chunk.length,
-              chunkStoreName || item.empId,
-            );
-            cycleComm = commRes?.incentiveAmount ?? 0;
-          } catch {
-            cycleComm = 0;
+          } else {
+            totalGreenPacks += Number(rep.sales_qty_green90 || 0);
+            totalBluePacks += Number(rep.sales_qty_blue90 || 0);
+            totalOrangePacks += Number(rep.sales_qty_orange100 || 0);
           }
+        });
 
-          totalGreenPacks += cycleGreenPacks;
-          totalBluePacks += cycleBluePacks;
-          totalOrangePacks += cycleOrangePacks;
+        const isBigC = checkIsBigC(storeNameDisplay, storeNameDisplay);
 
-          totalPacks += isBigC
-            ? (cycleGreenPacks + cycleBluePacks) * 2
-            : cycleGreenPacks + cycleBluePacks + cycleOrangePacks * 2;
+        const totalSets = isBigC
+          ? totalGreenPacks + totalBluePacks
+          : totalGreenPacks + totalBluePacks + totalOrangePacks;
 
-          totalSets += cycleSetsTotal;
-          totalCommission += cycleComm;
-        }
+        const totalPacks = isBigC
+          ? (totalGreenPacks + totalBluePacks) * 2
+          : totalGreenPacks + totalBluePacks + totalOrangePacks * 2;
+
+        // คำนวณวันทำงานจริง (อย่างน้อย 1 วันเพื่อป้องกันการหารด้วย 0)
+        const effectiveWorkDays = Math.max(
+          item.workDaysCount,
+          item.dailyReportsList.length,
+          1,
+        );
+
+        // คำนวณคอมมิชชั่นตามจำนวนวันทำงานรวมของพนักงานท่านนั้นในงวดนี้
+        const commRes = await calculateBigCCommission(
+          totalGreenPacks,
+          totalBluePacks,
+          totalOrangePacks,
+          effectiveWorkDays,
+          storeNameDisplay || item.empId,
+        );
+
+        const totalCommission = commRes?.incentiveAmount ?? 0;
 
         return {
           userId: item.userId,
