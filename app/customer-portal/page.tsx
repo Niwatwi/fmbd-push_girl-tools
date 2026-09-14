@@ -1285,7 +1285,11 @@ export default function CustomerReportPortal() {
   };
 
   const handleExportExcel = async () => {
-    if (!reportData || reportData.length === 0) {
+    // ดึงข้อมูลจาก filteredData (ถ้าไม่มีให้ fallback ไปที่ reportData)
+    const dataToExport =
+      filteredData && filteredData.length > 0 ? filteredData : reportData;
+
+    if (!dataToExport || dataToExport.length === 0) {
       Swal.fire("เตือน", "ไม่มีข้อมูลสำหรับ Export", "warning");
       return;
     }
@@ -1293,7 +1297,7 @@ export default function CustomerReportPortal() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("PG Full Report");
 
-    // กำหนดความกว้างคอลัมน์ (ขยายคอลัมน์รูปเป็น 45 เพื่อรองรับหลายรูป)
+    // กำหนดความกว้างคอลัมน์
     worksheet.columns = [
       { header: "NO.", key: "no", width: 6 },
       { header: "สาขา", key: "storeName", width: 25 },
@@ -1317,9 +1321,17 @@ export default function CustomerReportPortal() {
       { header: "สต๊อกหลัง ฟ้า90", key: "stockAfterBlue", width: 14 },
       { header: "สต๊อกหลัง ส้ม100", key: "stockAfterOrange", width: 14 },
 
-      { header: "ของแถมก่อน (บำรุง)", key: "giftNourishBefore", width: 14 },
-      { header: "ของแถมแจก (บำรุง)", key: "giftNourishGiven", width: 14 },
-      { header: "ของแถมคงเหลือ (บำรุง)", key: "giftNourishRemain", width: 14 },
+      // --- กลุ่มของแถม (แยก เขียว 40 และ ส้ม 100 ตรงตามหน้าเว็บ) ---
+      { header: "ของแถมก่อน (เขียว40)", key: "giftNourishBefore", width: 15 },
+      { header: "ของแถมก่อน (ส้ม100)", key: "giftOrangeBefore", width: 15 },
+      { header: "ของแถมแจก (เขียว40)", key: "giftNourishGiven", width: 15 },
+      { header: "ของแถมแจก (ส้ม100)", key: "giftOrangeGiven", width: 15 },
+      {
+        header: "ของแถมคงเหลือ (เขียว40)",
+        key: "giftNourishRemain",
+        width: 15,
+      },
+      { header: "ของแถมคงเหลือ (ส้ม100)", key: "giftOrangeRemain", width: 15 },
 
       { header: "ราคา เขียว90", key: "priceGreen", width: 12 },
       { header: "ราคา ฟ้า90", key: "priceBlue", width: 12 },
@@ -1332,7 +1344,7 @@ export default function CustomerReportPortal() {
       { header: "โปรคู่แข่ง", key: "competitorPromo", width: 30 },
       { header: "หมายเหตุ", key: "remark", width: 25 },
 
-      // คอลัมน์รูปภาพ (Col 30 ถึง 35 หรือ Index 29 ถึง 34)
+      // คอลัมน์รูปภาพ (Col AG ถึง AL / Index 32 ถึง 37)
       { header: "รูปพนักงานถือสินค้า", key: "photo_staff_holding", width: 45 },
       {
         header: "รูปถ่ายคู่กับลูกค้า/ตะกร้า",
@@ -1345,58 +1357,181 @@ export default function CustomerReportPortal() {
       { header: "รูปสแกนสต๊อก", key: "photo_img_stock_scanner", width: 45 },
     ];
 
-    // แมป Index คอลัมน์รูปภาพ (0-indexed: Col AD = 29, AE = 30, AF = 31, AG = 32, AH = 33, AI = 34)
+    // แมป Index คอลัมน์รูปภาพ (ขยับเนื่องจากเพิ่มคอลัมน์ของแถม)
     const photoCategoryMap = [
-      { key: "staff_holding", colIndex: 29 },
-      { key: "customer_basket", colIndex: 30 },
-      { key: "atmosphere", colIndex: 31 },
-      { key: "img_product", colIndex: 32 },
-      { key: "img_shelf", colIndex: 33 },
-      { key: "img_stock_scanner", colIndex: 34 },
+      { key: "staff_holding", colIndex: 32 },
+      { key: "customer_basket", colIndex: 33 },
+      { key: "atmosphere", colIndex: 34 },
+      { key: "img_product", colIndex: 35 },
+      { key: "img_shelf", colIndex: 36 },
+      { key: "img_stock_scanner", colIndex: 37 },
     ];
 
-    for (let i = 0; i < reportData.length; i++) {
-      const item = reportData[i];
-      // แถวแรกของข้อมูลใน Excel อยู่ที่ Row 2 (0-indexed คือ index 1)
-      const excelRowIndex = i + 1;
+    for (let i = 0; i < dataToExport.length; i++) {
+      const item = dataToExport[i];
+      const excelRowIndex = i + 1; // Index สำหรับฝังรูปภาพใน Excel (Row 2 เป็นต้นไป)
 
+      // 1. เช็กว่าเป็น Big C หรือไม่
+      const accountName =
+        typeof getAccountName === "function"
+          ? getAccountName(item.storeName || item.store_code, item.storeCode)
+          : "";
+      const isBigC = accountName === "Big C";
+
+      // 2. ข้อมูล สต๊อกก่อน และ ยอดขาย
+      const stockBeforeGreen = Number(
+        item.stockBeforeGreen ?? item.stock_before_green90 ?? 0,
+      );
+      const stockBeforeBlue = Number(
+        item.stockBeforeBlue ?? item.stock_before_blue90 ?? 0,
+      );
+      const stockBeforeOrange = Number(
+        item.stockBeforeOrange ?? item.stock_before_orange100 ?? 0,
+      );
+
+      const salesGreen = Number(item.salesGreen ?? item.sales_qty_green90 ?? 0);
+      const salesBlue = Number(item.salesBlue ?? item.sales_qty_blue90 ?? 0);
+      const salesOrange = Number(
+        item.salesOrange ?? item.sales_qty_orange100 ?? 0,
+      );
+
+      // 3. สต๊อกหลังเลิก
+      const stockAfterGreen =
+        item.stockAfterGreen !== undefined &&
+        item.stockAfterGreen !== null &&
+        item.stockAfterGreen !== ""
+          ? Number(item.stockAfterGreen)
+          : item.stock_after_green90 !== undefined &&
+              item.stock_after_green90 !== null &&
+              item.stock_after_green90 !== ""
+            ? Number(item.stock_after_green90)
+            : Math.max(0, stockBeforeGreen - salesGreen * (isBigC ? 2 : 1));
+
+      const stockAfterBlue =
+        item.stockAfterBlue !== undefined &&
+        item.stockAfterBlue !== null &&
+        item.stockAfterBlue !== ""
+          ? Number(item.stockAfterBlue)
+          : item.stock_after_blue90 !== undefined &&
+              item.stock_after_blue90 !== null &&
+              item.stock_after_blue90 !== ""
+            ? Number(item.stock_after_blue90)
+            : Math.max(0, stockBeforeBlue - salesBlue * (isBigC ? 2 : 1));
+
+      const stockAfterOrange = isBigC
+        ? "-"
+        : item.stockAfterOrange !== undefined &&
+            item.stockAfterOrange !== null &&
+            item.stockAfterOrange !== ""
+          ? Number(item.stockAfterOrange)
+          : item.stock_after_orange100 !== undefined &&
+              item.stock_after_orange100 !== null &&
+              item.stock_after_orange100 !== ""
+            ? Number(item.stock_after_orange100)
+            : Math.max(0, stockBeforeOrange - salesOrange * 2);
+
+      // 4. ของแถม (ก่อนเริ่ม, แจกแถม, คงเหลือ)
+      const giftNourishBefore = Number(
+        item.giftNourishBefore ?? item.gift_nourish_before ?? 0,
+      );
+      const giftOrangeBefore = Number(
+        item.giftOrangeBefore ?? item.gift_orange_before ?? 0,
+      );
+
+      const giftNourishGiven = Number(
+        item.giftNourishGiven ?? item.gift_nourish_given ?? 0,
+      );
+      const giftOrangeGiven = Number(
+        item.giftOrangeGiven ?? item.gift_orange_given ?? 0,
+      );
+
+      const giftNourishRemain =
+        item.giftNourishAfter !== undefined &&
+        item.giftNourishAfter !== null &&
+        item.giftNourishAfter !== ""
+          ? Number(item.giftNourishAfter)
+          : item.gift_nourish_after !== undefined &&
+              item.gift_nourish_after !== null &&
+              item.gift_nourish_after !== ""
+            ? Number(item.gift_nourish_after)
+            : Math.max(0, giftNourishBefore - giftNourishGiven);
+
+      const giftOrangeRemain =
+        item.giftOrangeAfter !== undefined &&
+        item.giftOrangeAfter !== null &&
+        item.giftOrangeAfter !== ""
+          ? Number(item.giftOrangeAfter)
+          : item.gift_orange_after !== undefined &&
+              item.gift_orange_after !== null &&
+              item.gift_orange_after !== ""
+            ? Number(item.gift_orange_after)
+            : Math.max(0, giftOrangeBefore - giftOrangeGiven);
+
+      // 5. หมายเหตุ
+      const remarkDisplay =
+        item.remark ||
+        item.remark_store ||
+        item.remarkStore ||
+        item.remarks ||
+        item.note ||
+        item.notes ||
+        "-";
+
+      // สร้าง Row ลง Worksheet
       const row = worksheet.addRow({
         no: i + 1,
-        storeName: item.store_code || item.storeName || "-",
-        userName: item.user_id || item.userName || "-",
-        reportDate: item.report_date || item.reportDate || "-",
-        target: item.target || 0,
-        traffic: item.traffic_count ?? item.traffic ?? 0,
-        approach: item.approach_count ?? item.approach ?? 0,
-        closedSales: item.closed_sales_count ?? item.closedSales ?? 0,
+        storeName: item.storeName || item.store_code || "-",
+        userName: item.userName || item.user_id || "-",
+        reportDate: item.reportDate || item.report_date || "-",
+        target: Number(item.targetPacks ?? item.target ?? 0),
 
-        stockBeforeGreen: item.stock_before_green90 ?? 0,
-        salesGreen: item.sales_qty_green90 ?? 0,
-        stockAfterGreen: item.stock_after_green90 ?? 0,
+        traffic: Number(item.traffic ?? item.traffic_count ?? 0),
+        approach: Number(item.approach ?? item.approach_count ?? 0),
+        closedSales: Number(item.closedSales ?? item.closed_sales_count ?? 0),
 
-        stockBeforeBlue: item.stock_before_blue90 ?? 0,
-        salesBlue: item.sales_qty_blue90 ?? 0,
-        stockAfterBlue: item.stock_after_blue90 ?? 0,
+        stockBeforeGreen: stockBeforeGreen,
+        stockBeforeBlue: stockBeforeBlue,
+        stockBeforeOrange: isBigC ? "-" : stockBeforeOrange,
 
-        stockBeforeOrange: item.stock_before_orange100 ?? 0,
-        salesOrange: item.sales_qty_orange100 ?? 0,
-        stockAfterOrange: item.stock_after_orange100 ?? 0,
+        salesGreen: salesGreen,
+        salesBlue: salesBlue,
+        salesOrange: isBigC ? "-" : salesOrange,
 
-        giftNourishBefore: item.gift_nourish_before ?? 0,
-        giftNourishGiven: item.gift_nourish_given ?? 0,
-        giftNourishRemain: item.gift_nourish_after ?? 0,
+        stockAfterGreen: stockAfterGreen,
+        stockAfterBlue: stockAfterBlue,
+        stockAfterOrange: stockAfterOrange,
 
-        priceGreen: item.price_our_green90 ?? 0,
-        priceBlue: item.price_our_blue90 ?? 0,
-        priceOrange: item.price_our_orange100 ?? 0,
-        compCellox: item.price_comp_cellox ?? 0,
-        compKleenex: item.price_comp_kleenex ?? 0,
-        compPaseo: item.price_comp_paseo ?? 0,
+        // ของแถม
+        giftNourishBefore: giftNourishBefore,
+        giftOrangeBefore: giftOrangeBefore,
+        giftNourishGiven: giftNourishGiven,
+        giftOrangeGiven: giftOrangeGiven,
+        giftNourishRemain: giftNourishRemain,
+        giftOrangeRemain: giftOrangeRemain,
 
-        feedback: item.feedback_store || item.feedback || "-",
+        priceGreen: item.priceGreen ?? item.price_our_green90 ?? "-",
+        priceBlue: item.priceBlue ?? item.price_our_blue90 ?? "-",
+        priceOrange: isBigC
+          ? "-"
+          : (item.priceOrange ?? item.price_our_orange100 ?? "-"),
+
+        compCellox:
+          Number(item.compCellox ?? item.price_comp_cellox ?? 0) > 0
+            ? Number(item.compCellox ?? item.price_comp_cellox)
+            : "-",
+        compKleenex:
+          Number(item.compKleenex ?? item.price_comp_kleenex ?? 0) > 0
+            ? Number(item.compKleenex ?? item.price_comp_kleenex)
+            : "-",
+        compPaseo:
+          Number(item.compPaseo ?? item.price_comp_paseo ?? 0) > 0
+            ? Number(item.compPaseo ?? item.price_comp_paseo)
+            : "-",
+
+        feedback: item.feedback || item.feedback_store || "-",
         competitorPromo:
-          item.competitor_promotion || item.competitorPromo || "-",
-        remark: item.remark || "-",
+          item.competitorPromo || item.competitor_promotion || "-",
+        remark: remarkDisplay,
 
         photo_staff_holding: "",
         photo_customer_basket: "",
@@ -1434,13 +1569,11 @@ export default function CustomerReportPortal() {
                 extension: imageData.extension,
               });
 
-              // คำนวณตำแหน่งพิกเซลจริงจากขอบซ้ายช่อง (รูปแรกเริ่มที่ 10px / รูปที่สองเริ่มที่ 95px)
               const pixelLeft =
                 totalImgs === 1 ? 40 : 10 + imgIdx * (IMG_WIDTH + 30);
-              const pixelTop = 10; // ระยะเว้นจากขอบบน 10px
+              const pixelTop = 10;
 
               worksheet.addImage(imageId, {
-                // ใส่ `as any` เพื่อแก้ TypeScript Error 2353
                 tl: {
                   nativeCol: cat.colIndex,
                   nativeColOff: pixelLeft * EMU_PER_PX,
