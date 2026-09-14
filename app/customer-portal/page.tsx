@@ -1,5 +1,6 @@
 "use client";
 
+import { createClient } from "@supabase/supabase-js";
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Users,
@@ -46,6 +47,11 @@ import {
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import Swal from "sweetalert2";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // 📸 Helper สำหรับย่อขนาดรูปภาพ (Compress) และแปลงเป็น Base64
 const compressImage = (file: File): Promise<string> => {
@@ -1286,7 +1292,7 @@ export default function CustomerReportPortal() {
 
   const handleExportExcel = async () => {
     // ดึงข้อมูลจาก filteredData (ถ้าไม่มีให้ fallback ไปที่ reportData)
-    const dataToExport =
+    const dataToExport: any[] =
       filteredData && filteredData.length > 0 ? filteredData : reportData;
 
     if (!dataToExport || dataToExport.length === 0) {
@@ -1357,7 +1363,7 @@ export default function CustomerReportPortal() {
       { header: "รูปสแกนสต๊อก", key: "photo_img_stock_scanner", width: 45 },
     ];
 
-    // แมป Index คอลัมน์รูปภาพ (ขยับเนื่องจากเพิ่มคอลัมน์ของแถม)
+    // แมป Index คอลัมน์รูปภาพ
     const photoCategoryMap = [
       { key: "staff_holding", colIndex: 32 },
       { key: "customer_basket", colIndex: 33 },
@@ -1369,7 +1375,7 @@ export default function CustomerReportPortal() {
 
     for (let i = 0; i < dataToExport.length; i++) {
       const item = dataToExport[i];
-      const excelRowIndex = i + 1; // Index สำหรับฝังรูปภาพใน Excel (Row 2 เป็นต้นไป)
+      const excelRowIndex = i + 1; // Row Index ใน Excel
 
       // 1. เช็กว่าเป็น Big C หรือไม่
       const accountName =
@@ -1430,7 +1436,7 @@ export default function CustomerReportPortal() {
             ? Number(item.stock_after_orange100)
             : Math.max(0, stockBeforeOrange - salesOrange * 2);
 
-      // 4. ของแถม (ก่อนเริ่ม, แจกแถม, คงเหลือ)
+      // 4. ของแถม
       const giftNourishBefore = Number(
         item.giftNourishBefore ?? item.gift_nourish_before ?? 0,
       );
@@ -1477,7 +1483,7 @@ export default function CustomerReportPortal() {
         item.notes ||
         "-";
 
-      // สร้าง Row ลง Worksheet
+      // เพิ่ม Row ลง Worksheet
       const row = worksheet.addRow({
         no: i + 1,
         storeName: item.storeName || item.store_code || "-",
@@ -1541,26 +1547,32 @@ export default function CustomerReportPortal() {
         photo_img_stock_scanner: "",
       });
 
-      row.height = 65; // ความสูงแถว 65pt (~86px)
+      row.height = 65;
       row.alignment = {
         vertical: "middle",
         horizontal: "center",
         wrapText: true,
       };
 
-      const IMG_WIDTH = 55; // ความกว้างรูป (55px)
-      const IMG_HEIGHT = 55; // ความสูงรูป (55px)
-      const EMU_PER_PX = 9525; // มาตราส่วนแปลง Pixel เป็น EMU ในไฟล์ Excel
+      const IMG_WIDTH = 55;
+      const IMG_HEIGHT = 55;
+      const EMU_PER_PX = 9525;
 
-      // วนลูปวางรูปภาพลงในแต่ละ Cell
+      // แทรกรูปภาพลง Cell Excel
       for (const cat of photoCategoryMap) {
-        const urls = getPhotoUrlsArray(item, cat.key);
-        const validUrls = urls.slice(0, 10); // จำกัดไม่เกิน 10 รูปต่อ 1 ช่อง
+        const urls =
+          typeof getPhotoUrlsArray === "function"
+            ? getPhotoUrlsArray(item, cat.key)
+            : [];
+        const validUrls = urls.slice(0, 10);
         const totalImgs = validUrls.length;
 
         for (let imgIdx = 0; imgIdx < totalImgs; imgIdx++) {
           const url = validUrls[imgIdx];
-          const imageData = await fetchImageAsBuffer(url);
+          const imageData =
+            typeof fetchImageAsBuffer === "function"
+              ? await fetchImageAsBuffer(url)
+              : null;
 
           if (imageData) {
             try {
@@ -1591,7 +1603,7 @@ export default function CustomerReportPortal() {
       }
     }
 
-    // ปรับแต่ง Header
+    // แต่ง Header Excel
     const headerRow = worksheet.getRow(1);
     headerRow.height = 28;
     headerRow.font = { bold: true, color: { argb: "FFFFFF" } };
@@ -1602,6 +1614,7 @@ export default function CustomerReportPortal() {
     };
     headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
+    // บันทึกไฟล์ Excel ดาวน์โหลดลงเครื่อง
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1610,6 +1623,107 @@ export default function CustomerReportPortal() {
       blob,
       `PG_Report_Full_${new Date().toISOString().slice(0, 10)}.xlsx`,
     );
+
+    // --- 6. เคลียร์ข้อมูลและลบรูปภาพออกจาก Supabase หลัง Export ---
+    try {
+      const confirmResult = await Swal.fire({
+        title: "ส่งออกไฟล์เรียบร้อย",
+        text: "ต้องการเคลียร์ข้อมูลและลบไฟล์รูปภาพออกจาก Database (Supabase) หรือไม่?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#d33",
+        cancelButtonColor: "#3085d6",
+        confirmButtonText: "ลบข้อมูลทันที",
+        cancelButtonText: "เก็บข้อมูลไว้ก่อน",
+      });
+
+      if (confirmResult.isConfirmed) {
+        Swal.fire({
+          title: "กำลังเคลียร์ข้อมูล...",
+          text: "กรุณารอสักครู่",
+          allowOutsideClick: false,
+          didOpen: () => Swal.showLoading(),
+        });
+
+        // ดึง Record ID ของรายงานหลัก
+        const recordIds = dataToExport
+          .map((item: any) => item.id)
+          .filter(Boolean);
+
+        // ดึง File Paths สำหรับลบใน Storage
+        const filePathsToDelete: string[] = [];
+        const BUCKET_NAME = "pg-photos"; // **ตรวจสอบชื่อ Bucket ของคุณว่าตรงกันหรือไม่**
+
+        photoCategoryMap.forEach((cat: any) => {
+          dataToExport.forEach((item: any) => {
+            const urls =
+              typeof getPhotoUrlsArray === "function"
+                ? getPhotoUrlsArray(item, cat.key)
+                : [];
+            urls.forEach((url: string) => {
+              if (url && typeof url === "string") {
+                const path = url.includes(`/${BUCKET_NAME}/`)
+                  ? url.split(`/${BUCKET_NAME}/`)[1]
+                  : url;
+
+                if (path) {
+                  filePathsToDelete.push(decodeURIComponent(path));
+                }
+              }
+            });
+          });
+        });
+
+        // 1. ลบรูปภาพออกจาก Supabase Storage
+        if (filePathsToDelete.length > 0) {
+          const { error: storageError } = await supabase.storage
+            .from(BUCKET_NAME)
+            .remove(filePathsToDelete);
+
+          if (storageError) {
+            console.error("Storage delete error:", storageError);
+          }
+        }
+
+        // 2. ลบข้อมูลใน Database ทั้ง 2 ตาราง
+        if (recordIds.length > 0) {
+          // 2.1 ลบตารางรายละเอียดสินค้าก่อน (pg_daily_report_products)
+          const { error: productsError } = await supabase
+            .from("pg_daily_report_products")
+            .delete()
+            .in("report_id", recordIds); // ใช้คอลัมน์ report_id เชื่อมไปยังตารางหลัก (หรือ id หากชื่อตรงกัน)
+
+          if (productsError) {
+            console.warn("Products delete warning:", productsError);
+          }
+
+          // 2.2 ลบตารางหลัก (pg_daily_activity_reports)
+          const { error: mainReportError } = await supabase
+            .from("pg_daily_activity_reports")
+            .delete()
+            .in("id", recordIds);
+
+          if (mainReportError) throw mainReportError;
+        }
+
+        // เคลียร์ State หน้าเว็บ
+        if (typeof setFilteredData === "function") setFilteredData([]);
+        if (typeof setReportData === "function") setReportData([]);
+
+        Swal.fire(
+          "สำเร็จ!",
+          "เคลียร์ข้อมูลและรูปภาพออกจากระบบเรียบร้อยแล้ว",
+          "success",
+        );
+      }
+    } catch (error) {
+      console.error("Clear data error:", error);
+      Swal.fire(
+        "เกิดข้อผิดพลาด",
+        "ไม่สามารถเคลียร์ข้อมูลใน Database ได้",
+        "error",
+      );
+    }
   };
 
   return (
