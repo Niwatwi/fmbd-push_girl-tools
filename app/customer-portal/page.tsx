@@ -38,12 +38,14 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-import Swal from "sweetalert2";
 import {
   getCustomerFullActivityReport,
   adminSaveReportWithImagesAction,
   getAdminSalarySummaryReportAction,
 } from "../dashboard/actions";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
+import Swal from "sweetalert2";
 
 // 📸 Helper สำหรับย่อขนาดรูปภาพ (Compress) และแปลงเป็น Base64
 const compressImage = (file: File): Promise<string> => {
@@ -676,6 +678,12 @@ export default function CustomerReportPortal() {
       "Feedback หน้าร้าน",
       "โปรโมชันคู่แข่ง",
       "หมายเหตุ",
+      "พนักงานถือสินค้า",
+      "ถ่ายคู่กับลูกค้า/ตะกร้า",
+      "บรรยากาศหน้าร้าน",
+      "รูปสินค้า",
+      "รูปเชลฟ์ชั้นวาง",
+      "รูปสแกนสต๊อก",
     ];
 
     const csvRows = filteredData.map((row, idx) => {
@@ -763,6 +771,12 @@ export default function CustomerReportPortal() {
         `"${(row.feedback || "").replace(/"/g, '""')}"`,
         `"${(row.competitorPromo || "").replace(/"/g, '""')}"`,
         `"${remarkText.replace(/"/g, '""')}"`,
+        `"${(row.employeeHolding || "").replace(/"/g, '""')}"`,
+        `"${(row.customerPhoto || "").replace(/"/g, '""')}"`,
+        `"${(row.storeAtmosphere || "").replace(/"/g, '""')}"`,
+        `"${(row.productImage || "").replace(/"/g, '""')}"`,
+        `"${(row.shelfImage || "").replace(/"/g, '""')}"`,
+        `"${(row.stockScan || "").replace(/"/g, '""')}"`,
       ];
     });
 
@@ -1130,6 +1144,341 @@ export default function CustomerReportPortal() {
     }
   };
 
+  // Helper สำหรับโหลดรูปภาพและดึงข้อมูล Buffer
+  const fetchImageAsBuffer = async (
+    url: string,
+  ): Promise<{ buffer: ArrayBuffer; extension: "jpeg" | "png" } | null> => {
+    if (!url || !url.startsWith("http")) return null;
+
+    try {
+      const res = await fetch(url, { mode: "cors" });
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        const isPng = url.toLowerCase().includes(".png");
+        return { buffer, extension: isPng ? "png" : "jpeg" };
+      }
+    } catch (e) {
+      console.warn(
+        "Direct fetch failed for CORS, trying canvas fallback:",
+        url,
+      );
+    }
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(
+          async (blob) => {
+            if (!blob) return resolve(null);
+            const buffer = await blob.arrayBuffer();
+            resolve({ buffer, extension: "jpeg" });
+          },
+          "image/jpeg",
+          0.85,
+        );
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  };
+
+  const getPhotoUrlsArray = (item: any, category: string): string[] => {
+    if (!item) return [];
+    const urls: string[] = [];
+
+    let activityPhotos: any[] = [];
+    const rawActivityPhotos =
+      item.activity_photos || item.activityPhotos || item.photos;
+
+    if (rawActivityPhotos) {
+      if (typeof rawActivityPhotos === "string") {
+        try {
+          const parsed = JSON.parse(rawActivityPhotos);
+          activityPhotos =
+            typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+        } catch (e) {
+          activityPhotos = [];
+        }
+      } else if (Array.isArray(rawActivityPhotos)) {
+        activityPhotos = rawActivityPhotos;
+      }
+    }
+
+    if (Array.isArray(activityPhotos)) {
+      activityPhotos.forEach((p: any) => {
+        const type = (p.type || p.photoType || "").toLowerCase();
+        const url = p.url || p.path || "";
+        if (!url) return;
+
+        if (category === "staff_holding" && type.includes("staff_holding"))
+          urls.push(url);
+        else if (
+          category === "customer_basket" &&
+          type.includes("customer_basket")
+        )
+          urls.push(url);
+        else if (category === "atmosphere" && type.includes("atmosphere"))
+          urls.push(url);
+      });
+    }
+
+    const productsList =
+      item.pg_daily_report_products ||
+      item.products ||
+      item.report_products ||
+      item.items ||
+      [];
+
+    if (Array.isArray(productsList) && productsList.length > 0) {
+      productsList.forEach((prod: any) => {
+        if (category === "img_product" && prod.img_product)
+          urls.push(prod.img_product);
+        if (category === "img_shelf" && prod.img_shelf)
+          urls.push(prod.img_shelf);
+        if (
+          category === "img_stock_scanner" &&
+          (prod.img_stock_scanner || prod.img_scanner)
+        ) {
+          urls.push(prod.img_stock_scanner || prod.img_scanner);
+        }
+      });
+    } else {
+      if (category === "img_product" && item.img_product)
+        urls.push(item.img_product);
+      if (category === "img_shelf" && item.img_shelf) urls.push(item.img_shelf);
+      if (
+        category === "img_stock_scanner" &&
+        (item.img_stock_scanner || item.img_scanner)
+      ) {
+        urls.push(item.img_stock_scanner || item.img_scanner);
+      }
+    }
+
+    if (urls.length === 0) {
+      const itemString = JSON.stringify(item);
+      const urlMatches = itemString.match(/https?:\/\/[^\s"'\\]+/g) || [];
+      const keywordMap: Record<string, string[]> = {
+        staff_holding: ["staff_holding", "act_staff"],
+        customer_basket: ["customer_basket", "act_customer"],
+        atmosphere: ["atmosphere", "act_atmosphere"],
+        img_product: ["_item_", "_prod_"],
+        img_shelf: ["_shelf_"],
+        img_stock_scanner: ["_scanner_", "_stock_"],
+      };
+      const keywords = keywordMap[category] || [];
+      urlMatches.forEach((url) => {
+        const cleanUrl = url.replace(/\\"/g, "").replace(/"/g, "");
+        if (keywords.some((kw) => cleanUrl.toLowerCase().includes(kw))) {
+          urls.push(cleanUrl);
+        }
+      });
+    }
+
+    return Array.from(new Set(urls.filter(Boolean)));
+  };
+
+  const handleExportExcel = async () => {
+    if (!reportData || reportData.length === 0) {
+      Swal.fire("เตือน", "ไม่มีข้อมูลสำหรับ Export", "warning");
+      return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("PG Full Report");
+
+    // กำหนดความกว้างคอลัมน์ (ขยายคอลัมน์รูปเป็น 45 เพื่อรองรับหลายรูป)
+    worksheet.columns = [
+      { header: "NO.", key: "no", width: 6 },
+      { header: "สาขา", key: "storeName", width: 25 },
+      { header: "พนักงาน", key: "userName", width: 22 },
+      { header: "วันที่", key: "reportDate", width: 14 },
+      { header: "TARGET (แพ็ค)", key: "target", width: 14 },
+
+      { header: "TRAFFIC", key: "traffic", width: 10 },
+      { header: "APPROACH", key: "approach", width: 10 },
+      { header: "CLOSED", key: "closedSales", width: 10 },
+
+      { header: "สต๊อกก่อน เขียว90", key: "stockBeforeGreen", width: 14 },
+      { header: "สต๊อกก่อน ฟ้า90", key: "stockBeforeBlue", width: 14 },
+      { header: "สต๊อกก่อน ส้ม100", key: "stockBeforeOrange", width: 14 },
+
+      { header: "ขาย เขียว90", key: "salesGreen", width: 12 },
+      { header: "ขาย ฟ้า90", key: "salesBlue", width: 12 },
+      { header: "ขาย ส้ม100", key: "salesOrange", width: 12 },
+
+      { header: "สต๊อกหลัง เขียว90", key: "stockAfterGreen", width: 14 },
+      { header: "สต๊อกหลัง ฟ้า90", key: "stockAfterBlue", width: 14 },
+      { header: "สต๊อกหลัง ส้ม100", key: "stockAfterOrange", width: 14 },
+
+      { header: "ของแถมก่อน (บำรุง)", key: "giftNourishBefore", width: 14 },
+      { header: "ของแถมแจก (บำรุง)", key: "giftNourishGiven", width: 14 },
+      { header: "ของแถมคงเหลือ (บำรุง)", key: "giftNourishRemain", width: 14 },
+
+      { header: "ราคา เขียว90", key: "priceGreen", width: 12 },
+      { header: "ราคา ฟ้า90", key: "priceBlue", width: 12 },
+      { header: "ราคา ส้ม100", key: "priceOrange", width: 12 },
+      { header: "ราคา CELLOX", key: "compCellox", width: 12 },
+      { header: "ราคา KLEENEX", key: "compKleenex", width: 12 },
+      { header: "ราคา PASEO", key: "compPaseo", width: 12 },
+
+      { header: "FEEDBACK หน้าร้าน", key: "feedback", width: 30 },
+      { header: "โปรคู่แข่ง", key: "competitorPromo", width: 30 },
+      { header: "หมายเหตุ", key: "remark", width: 25 },
+
+      // คอลัมน์รูปภาพ (Col 30 ถึง 35 หรือ Index 29 ถึง 34)
+      { header: "รูปพนักงานถือสินค้า", key: "photo_staff_holding", width: 45 },
+      {
+        header: "รูปถ่ายคู่กับลูกค้า/ตะกร้า",
+        key: "photo_customer_basket",
+        width: 45,
+      },
+      { header: "รูปบรรยากาศหน้าร้าน", key: "photo_atmosphere", width: 45 },
+      { header: "รูปสินค้า", key: "photo_img_product", width: 45 },
+      { header: "รูปเชลฟ์ชั้นวาง", key: "photo_img_shelf", width: 45 },
+      { header: "รูปสแกนสต๊อก", key: "photo_img_stock_scanner", width: 45 },
+    ];
+
+    // แมป Index คอลัมน์รูปภาพ (0-indexed: Col AD = 29, AE = 30, AF = 31, AG = 32, AH = 33, AI = 34)
+    const photoCategoryMap = [
+      { key: "staff_holding", colIndex: 29 },
+      { key: "customer_basket", colIndex: 30 },
+      { key: "atmosphere", colIndex: 31 },
+      { key: "img_product", colIndex: 32 },
+      { key: "img_shelf", colIndex: 33 },
+      { key: "img_stock_scanner", colIndex: 34 },
+    ];
+
+    for (let i = 0; i < reportData.length; i++) {
+      const item = reportData[i];
+      // แถวแรกของข้อมูลใน Excel อยู่ที่ Row 2 (0-indexed คือ index 1)
+      const excelRowIndex = i + 1;
+
+      const row = worksheet.addRow({
+        no: i + 1,
+        storeName: item.store_code || item.storeName || "-",
+        userName: item.user_id || item.userName || "-",
+        reportDate: item.report_date || item.reportDate || "-",
+        target: item.target || 0,
+        traffic: item.traffic_count ?? item.traffic ?? 0,
+        approach: item.approach_count ?? item.approach ?? 0,
+        closedSales: item.closed_sales_count ?? item.closedSales ?? 0,
+
+        stockBeforeGreen: item.stock_before_green90 ?? 0,
+        salesGreen: item.sales_qty_green90 ?? 0,
+        stockAfterGreen: item.stock_after_green90 ?? 0,
+
+        stockBeforeBlue: item.stock_before_blue90 ?? 0,
+        salesBlue: item.sales_qty_blue90 ?? 0,
+        stockAfterBlue: item.stock_after_blue90 ?? 0,
+
+        stockBeforeOrange: item.stock_before_orange100 ?? 0,
+        salesOrange: item.sales_qty_orange100 ?? 0,
+        stockAfterOrange: item.stock_after_orange100 ?? 0,
+
+        giftNourishBefore: item.gift_nourish_before ?? 0,
+        giftNourishGiven: item.gift_nourish_given ?? 0,
+        giftNourishRemain: item.gift_nourish_after ?? 0,
+
+        priceGreen: item.price_our_green90 ?? 0,
+        priceBlue: item.price_our_blue90 ?? 0,
+        priceOrange: item.price_our_orange100 ?? 0,
+        compCellox: item.price_comp_cellox ?? 0,
+        compKleenex: item.price_comp_kleenex ?? 0,
+        compPaseo: item.price_comp_paseo ?? 0,
+
+        feedback: item.feedback_store || item.feedback || "-",
+        competitorPromo:
+          item.competitor_promotion || item.competitorPromo || "-",
+        remark: item.remark || "-",
+
+        photo_staff_holding: "",
+        photo_customer_basket: "",
+        photo_atmosphere: "",
+        photo_img_product: "",
+        photo_img_shelf: "",
+        photo_img_stock_scanner: "",
+      });
+
+      row.height = 65; // ความสูงแถว 65pt (~86px)
+      row.alignment = {
+        vertical: "middle",
+        horizontal: "center",
+        wrapText: true,
+      };
+
+      const IMG_WIDTH = 55; // ความกว้างรูป (55px)
+      const IMG_HEIGHT = 55; // ความสูงรูป (55px)
+      const EMU_PER_PX = 9525; // มาตราส่วนแปลง Pixel เป็น EMU ในไฟล์ Excel
+
+      // วนลูปวางรูปภาพลงในแต่ละ Cell
+      for (const cat of photoCategoryMap) {
+        const urls = getPhotoUrlsArray(item, cat.key);
+        const validUrls = urls.slice(0, 10); // จำกัดไม่เกิน 10 รูปต่อ 1 ช่อง
+        const totalImgs = validUrls.length;
+
+        for (let imgIdx = 0; imgIdx < totalImgs; imgIdx++) {
+          const url = validUrls[imgIdx];
+          const imageData = await fetchImageAsBuffer(url);
+
+          if (imageData) {
+            try {
+              const imageId = workbook.addImage({
+                buffer: imageData.buffer,
+                extension: imageData.extension,
+              });
+
+              // คำนวณตำแหน่งพิกเซลจริงจากขอบซ้ายช่อง (รูปแรกเริ่มที่ 10px / รูปที่สองเริ่มที่ 95px)
+              const pixelLeft =
+                totalImgs === 1 ? 40 : 10 + imgIdx * (IMG_WIDTH + 30);
+              const pixelTop = 10; // ระยะเว้นจากขอบบน 10px
+
+              worksheet.addImage(imageId, {
+                // ใส่ `as any` เพื่อแก้ TypeScript Error 2353
+                tl: {
+                  nativeCol: cat.colIndex,
+                  nativeColOff: pixelLeft * EMU_PER_PX,
+                  nativeRow: excelRowIndex,
+                  nativeRowOff: pixelTop * EMU_PER_PX,
+                } as any,
+                ext: { width: IMG_WIDTH, height: IMG_HEIGHT },
+                editAs: "oneCell",
+              });
+            } catch (err) {
+              console.error("Embed Image Error:", err);
+            }
+          }
+        }
+      }
+    }
+
+    // ปรับแต่ง Header
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 28;
+    headerRow.font = { bold: true, color: { argb: "FFFFFF" } };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "1E40AF" },
+    };
+    headerRow.alignment = { vertical: "middle", horizontal: "center" };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    saveAs(
+      blob,
+      `PG_Report_Full_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans antialiased flex flex-col justify-between">
       <style jsx global>{`
@@ -1217,13 +1566,11 @@ export default function CustomerReportPortal() {
 
               <div className="flex items-center gap-1 sm:gap-2">
                 <button
-                  onClick={exportToExcel}
-                  className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] sm:text-xs rounded-xl transition shadow-xs cursor-pointer whitespace-nowrap"
+                  onClick={handleExportExcel}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium transition-colors"
                 >
-                  <Download size={13} className="sm:w-3.5 sm:h-3.5" />
-                  <span>
-                    <span className="hidden sm:inline">Export </span>Excel
-                  </span>
+                  <Download className="w-4 h-4" />
+                  Export Excel
                 </button>
                 <button
                   onClick={() => window.print()}
