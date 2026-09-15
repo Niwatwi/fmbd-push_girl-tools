@@ -1028,332 +1028,131 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
         workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(1));
       }
 
-      const wageRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
-      const dailyWage = calculateDailyWage(workedHours, wageRate);
+      const baseSalaryRate = userObj?.base_salary
+        ? Number(userObj.base_salary)
+        : 700;
 
-      const lat = log.check_in_latitude || log.check_in_lat || null;
-      const lon = log.check_in_longitude || log.check_in_lon || null;
-      const checkInImg = log.check_in_image_url || log.check_in_photo || null;
-      const checkOutImg =
-        log.check_out_image_url || log.check_out_photo || null;
+      const dayValue = workedHours >= 9 ? 1 : workedHours >= 1 ? 0.5 : 0;
+      const dailyWage = calculateDailyWage(workedHours, baseSalaryRate);
 
       return {
         id: log.id,
         userId: log.user_id,
-        empId: empCode,
+        employeeId: empCode,
         displayName: empDisplayName,
-        storeCode: log.store_code || "-",
-        storeName: log.store_name || log.store_code || "-",
-        checkInAt: formatThaiDateTime(log.check_in_at),
-        checkOutAt: log.check_out_at
-          ? formatThaiDateTime(log.check_out_at)
-          : "ยังไม่เลิกงาน",
-        checkInDateRaw: log.check_in_at ? log.check_in_at.split("T")[0] : "-",
-        workedHours: workedHours > 0 ? workedHours : 0,
-        checkInLat: lat,
-        checkInLon: lon,
-        checkInPhoto: checkInImg,
-        checkOutPhoto: checkOutImg,
-        dailyWage: dailyWage,
-        totalExpense: dailyWage,
+        storeCode: log.store_code,
+        storeName: log.store_name,
+        checkInAt: log.check_in_at,
+        checkOutAt: log.check_out_at,
+        workedHours,
+        dayValue,
+        baseSalaryRate,
+        dailyWage,
+        checkInPhoto: log.check_in_image_url || log.check_in_photo || "",
+        checkOutPhoto: log.check_out_image_url || log.check_out_photo || "",
       };
     });
 
     return { success: true, data: formattedLogs };
   } catch (error: any) {
-    console.error("Fetch attendance expense report error:", error);
+    console.error("Get admin attendance report error:", error);
     return { success: false, data: [], message: error.message };
   }
 }
 
-// 11. 💰 สรุปรายได้เงินเดือนพนักงาน PG (แก้ไขคำนวณคอมมิชชั่นตามจำนวนวันทำงานรวมของงวด)
+// 11. 💰 ดึงรายงานสรุปเงินเดือน (Admin Salary Summary Report)
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
-  storeCode?: string;
 }) {
   const supabase = getClientInstance();
   try {
-    const { data: userProfiles, error: userError } = await supabase
-      .from("user_profiles")
-      .select(
-        "id, display_name, employee_id, username, base_salary, company_tag",
-      );
+    const expenseRes = await getAdminAttendanceExpenseReportAction(params);
+    if (!expenseRes.success) throw new Error(expenseRes.message);
 
-    if (userError) {
-      console.error("Error fetching user_profiles:", userError);
+    const attendanceLogs = expenseRes.data || [];
+
+    // ดึงรายงานยอดขายประจำวันเพื่อนำมาคำนวณค่าคอมมิชชั่น
+    let reportsQuery = supabase.from("pg_daily_activity_reports").select("*");
+
+    if (params?.startDate) {
+      reportsQuery = reportsQuery.gte("report_date", params.startDate);
+    }
+    if (params?.endDate) {
+      reportsQuery = reportsQuery.lte("report_date", params.endDate);
     }
 
-    const { data: storesData } = await supabase
-      .from("pg_stores")
-      .select("store_code, store_name");
+    const { data: dailyReports } = await reportsQuery;
 
-    const { data: targetsData } = await supabase
-      .from("store_targets")
-      .select("store_code, store_name");
-
-    const storeNameMap = new Map<string, string>();
-    (storesData || []).forEach((s: any) => {
-      if (s.store_code && s.store_name)
-        storeNameMap.set(s.store_code.trim(), s.store_name.trim());
-    });
-    (targetsData || []).forEach((t: any) => {
-      if (t.store_code && t.store_name)
-        storeNameMap.set(t.store_code.trim(), t.store_name.trim());
-    });
-
-    let attendanceQuery = supabase
-      .from("pg_attendance_logs")
-      .select("user_id, check_in_at, check_out_at, store_code, store_name");
-
-    if (params?.startDate && params.startDate.trim() !== "") {
-      attendanceQuery = attendanceQuery.gte(
-        "check_in_at",
-        `${params.startDate}T00:00:00+07:00`,
-      );
-    }
-    if (params?.endDate && params.endDate.trim() !== "") {
-      attendanceQuery = attendanceQuery.lte(
-        "check_in_at",
-        `${params.endDate}T23:59:59+07:00`,
-      );
-    }
-
-    const { data: attendanceLogs } = await attendanceQuery;
-
-    let dailyReportsQuery = supabase
-      .from("pg_daily_activity_reports")
-      .select("*")
-      .order("created_at", { ascending: true });
-
-    if (params?.startDate && params.startDate.trim() !== "") {
-      dailyReportsQuery = dailyReportsQuery.gte(
-        "created_at",
-        `${params.startDate}T00:00:00+07:00`,
-      );
-    }
-    if (params?.endDate && params.endDate.trim() !== "") {
-      dailyReportsQuery = dailyReportsQuery.lte(
-        "created_at",
-        `${params.endDate}T23:59:59+07:00`,
-      );
-    }
-
-    const { data: dailyReports } = await dailyReportsQuery;
-    const reportList: any[] = dailyReports || [];
-
-    let reportProductsMap = new Map<number, any[]>();
-    if (reportList.length > 0) {
-      const reportIds = reportList.map((r: any) => r.id);
-      const { data: productsData, error: prodErr } = await supabase
-        .from("pg_daily_report_products")
-        .select("*")
-        .in("report_id", reportIds);
-
-      if (prodErr) {
-        console.error("Error fetching pg_daily_report_products:", prodErr);
-      }
-
-      (productsData || []).forEach((prod: any) => {
-        const rId = Number(prod.report_id);
-        if (!reportProductsMap.has(rId)) {
-          reportProductsMap.set(rId, []);
-        }
-        reportProductsMap.get(rId)?.push(prod);
-      });
-    }
-
+    // สะสมข้อมูลแยกตาม User ID
     const userSummaryMap = new Map<number, any>();
 
-    (userProfiles || []).forEach((user: any) => {
-      const uId = Number(user.id);
-      userSummaryMap.set(uId, {
-        userId: uId,
-        empId: user.employee_id || user.username || `PG-${uId}`,
-        displayName: user.display_name || user.username || `PG-${uId}`,
-        storeNamesSet: new Set<string>(),
-        baseSalaryRate: user.base_salary ? Number(user.base_salary) : 700,
-        workDaysCount: 0,
-        totalDailyWage: 0,
-        dailyReportsList: [],
-      });
+    attendanceLogs.forEach((log: any) => {
+      const uId = Number(log.userId);
+      if (!userSummaryMap.has(uId)) {
+        userSummaryMap.set(uId, {
+          userId: uId,
+          empId: log.employeeId,
+          displayName: log.displayName,
+          storeCode: log.storeCode,
+          storeName: log.storeName,
+          workDaysCount: 0,
+          baseSalaryRate: log.baseSalaryRate,
+          totalDailyWage: 0,
+          greenSets: 0,
+          blueSets: 0,
+          orangeSets: 0,
+        });
+      }
+
+      const userGroup = userSummaryMap.get(uId)!;
+      userGroup.workDaysCount += log.dayValue; // บวกสะสม 0.5 หรือ 1 วันตามชั่วโมงจริง
+      userGroup.totalDailyWage += log.dailyWage;
     });
 
-    (attendanceLogs || []).forEach((log: any) => {
-      const uId = Number(log.user_id);
+    // รวมยอดขายสินค้าแต่ละประเภท
+    (dailyReports || []).forEach((rep: any) => {
+      const uId = Number(rep.user_id);
       if (userSummaryMap.has(uId)) {
-        const item = userSummaryMap.get(uId);
-        item.workDaysCount += 1;
-
-        const sCode = (log.store_code || "").trim();
-        const sName = log.store_name || storeNameMap.get(sCode) || sCode;
-        if (sName && sName !== "-") {
-          item.storeNamesSet.add(sName);
-        }
-
-        let workedHours = 0;
-        if (log.check_in_at && log.check_out_at) {
-          const checkIn = new Date(log.check_in_at).getTime();
-          const checkOut = new Date(log.check_out_at).getTime();
-          workedHours = Number(
-            ((checkOut - checkIn) / (1000 * 60 * 60)).toFixed(1),
-          );
-        }
-
-        const wageForShift = calculateDailyWage(
-          workedHours,
-          item.baseSalaryRate,
-        );
-        item.totalDailyWage += wageForShift;
+        const userGroup = userSummaryMap.get(uId)!;
+        userGroup.greenSets += Number(rep.sales_qty_green90 || 0);
+        userGroup.blueSets += Number(rep.sales_qty_blue90 || 0);
+        userGroup.orangeSets += Number(rep.sales_qty_orange100 || 0);
       }
     });
 
-    reportList.forEach((report: any) => {
-      const uId = Number(report.user_id);
-      if (userSummaryMap.has(uId)) {
-        const item = userSummaryMap.get(uId);
-
-        const sCode = (report.store_code || "").trim();
-        const sName = report.store_name || storeNameMap.get(sCode) || sCode;
-        if (sName && sName !== "-") {
-          item.storeNamesSet.add(sName);
-        }
-
-        let prods = reportProductsMap.get(Number(report.id)) || [];
-
-        if (prods.length === 0) {
-          const g = Number(report.sales_qty_green90 || 0);
-          const b = Number(report.sales_qty_blue90 || 0);
-          const o = Number(report.sales_qty_orange100 || 0);
-          if (g > 0)
-            prods.push({
-              barcode: "8858678423681",
-              descriptions: "Baby Soft Green",
-              sales_qty: g,
-            });
-          if (b > 0)
-            prods.push({
-              barcode: "8858678423339",
-              descriptions: "Nourish Soft Blue",
-              sales_qty: b,
-            });
-          if (o > 0)
-            prods.push({
-              barcode: "orange100",
-              descriptions: "Orange 100",
-              sales_qty: o,
-            });
-        }
-
-        item.dailyReportsList.push({
-          ...report,
-          products: prods,
-        });
-      }
-    });
-
-    const resultList = await Promise.all(
-      Array.from(userSummaryMap.values()).map(async (item: any) => {
-        const totalDailyWage = item.totalDailyWage;
-
-        const storeNameDisplay =
-          item.storeNamesSet.size > 0
-            ? Array.from(item.storeNamesSet).join(" / ")
-            : "-";
-
-        let totalGreenPacks = 0;
-        let totalBluePacks = 0;
-        let totalOrangePacks = 0;
-
-        item.dailyReportsList.forEach((rep: any) => {
-          const prods = rep.products || [];
-          if (prods.length > 0) {
-            prods.forEach((p: any) => {
-              const qty = Number(p.sales_qty || 0);
-              const bc = String(p.barcode || "").trim();
-              const desc = String(p.descriptions || "").toLowerCase();
-
-              if (
-                bc === "8858678423681" ||
-                desc.includes("baby") ||
-                desc.includes("เขียว") ||
-                desc.includes("green")
-              ) {
-                totalGreenPacks += qty;
-              } else if (
-                bc === "8858678423339" ||
-                desc.includes("nourish") ||
-                desc.includes("ฟ้า") ||
-                desc.includes("blue")
-              ) {
-                totalBluePacks += qty;
-              } else {
-                totalOrangePacks += qty;
-              }
-            });
-          } else {
-            totalGreenPacks += Number(rep.sales_qty_green90 || 0);
-            totalBluePacks += Number(rep.sales_qty_blue90 || 0);
-            totalOrangePacks += Number(rep.sales_qty_orange100 || 0);
-          }
-        });
-
-        const isBigC = checkIsBigC(storeNameDisplay, storeNameDisplay);
-
-        const totalSets = isBigC
-          ? totalGreenPacks + totalBluePacks
-          : totalGreenPacks + totalBluePacks + totalOrangePacks;
-
-        const totalPacks = isBigC
-          ? (totalGreenPacks + totalBluePacks) * 2
-          : totalGreenPacks + totalBluePacks + totalOrangePacks * 2;
-
-        // คำนวณวันทำงานจริง (อย่างน้อย 1 วันเพื่อป้องกันการหารด้วย 0)
-        const effectiveWorkDays = Math.max(
-          item.workDaysCount,
-          item.dailyReportsList.length,
-          1,
-        );
-
-        // คำนวณคอมมิชชั่นตามจำนวนวันทำงานรวมของพนักงานท่านนั้นในงวดนี้
+    // คำนวณคอมมิชชั่นและรวมค่าแรงสุทธิ
+    const summaryList = await Promise.all(
+      Array.from(userSummaryMap.values()).map(async (item) => {
         const commRes = await calculateBigCCommission(
-          totalGreenPacks,
-          totalBluePacks,
-          totalOrangePacks,
-          effectiveWorkDays,
-          storeNameDisplay || item.empId,
+          item.greenSets,
+          item.blueSets,
+          item.orangeSets,
+          item.workDaysCount,
+          item.storeCode,
         );
-
-        const totalCommission = commRes?.incentiveAmount ?? 0;
 
         return {
           userId: item.userId,
           empId: item.empId,
           displayName: item.displayName,
-          storeName: storeNameDisplay,
-          storeCode: Array.from(item.storeNamesSet).join(", "),
-          baseSalaryRate: item.baseSalaryRate,
+          storeCode: item.storeCode,
+          storeName: item.storeName,
           workDaysCount: item.workDaysCount,
-          totalDailyWage: totalDailyWage,
-          totalGreenPacks,
-          totalBluePacks,
-          totalOrangePacks,
-          totalPacks,
-          totalSets,
-          totalCommission,
-          totalNetSalary: totalDailyWage + totalCommission,
+          baseSalaryRate: item.baseSalaryRate,
+          totalDailyWage: item.totalDailyWage,
+          totalSets: commRes.totalSetsSold,
+          totalPacks: commRes.totalPacksSold,
+          totalCommission: commRes.incentiveAmount,
+          tierStatus: commRes.tierStatus,
+          totalNetSalary: item.totalDailyWage + commRes.incentiveAmount,
         };
       }),
     );
 
-    const filteredResult = resultList.filter(
-      (item: any) =>
-        item.workDaysCount > 0 || item.totalSets > 0 || item.totalPacks > 0,
-    );
-
-    return { success: true, data: filteredResult };
+    return { success: true, data: summaryList };
   } catch (error: any) {
-    console.error("Fetch salary summary report error:", error);
+    console.error("Get admin salary summary report error:", error);
     return { success: false, data: [], message: error.message };
   }
 }

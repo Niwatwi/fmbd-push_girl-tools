@@ -19,7 +19,6 @@ import {
   Barcode,
   Camera,
   Image as ImageIcon,
-  CheckCircle,
   Scan,
   X,
 } from "lucide-react";
@@ -29,6 +28,10 @@ import {
   getProductByBarcode,
   getStoreInitialGiftsAction,
 } from "./actions";
+import {
+  getPromotionByStoreAction,
+  type PromotionConfig,
+} from "../admin/promotions/actions";
 
 interface ProductFormState {
   barcode: string;
@@ -66,6 +69,13 @@ export default function DailyReportPage() {
     store_name: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [promotionData, setPromotionData] = useState<PromotionConfig | null>(
+    null,
+  );
+
+  // สถานะโปรโมชัน (ดึงแบบ Dynamic เมื่อมีการเปิดใช้งานแคมเปญ)
+  const [activePromotion, setActivePromotion] =
+    useState<PromotionConfig | null>(null);
 
   // ระบบบาร์โค้ดและการสแกนผ่านกล้อง
   const [searchBarcode, setSearchBarcode] = useState("");
@@ -78,9 +88,9 @@ export default function DailyReportPage() {
   const [approach, setApproach] = useState("");
   const [closedSales, setClosedSales] = useState("");
 
-  // สถานะการบันทึกคลังของแถมสำหรับห้าง Tops
-  const [giftOrangeBefore, setGiftOrangeBefore] = useState("480");
-  const [giftNourishBefore, setGiftNourishBefore] = useState("60");
+  // สถานะการบันทึกคลังของแถม
+  const [giftOrangeBefore, setGiftOrangeBefore] = useState("0");
+  const [giftNourishBefore, setGiftNourishBefore] = useState("0");
   const [giftNourishGiven, setGiftNourishGiven] = useState("");
 
   // 2. ฟอร์มราคาคู่แข่ง
@@ -140,23 +150,9 @@ export default function DailyReportPage() {
   const [feedback, setFeedback] = useState("");
   const [compPromo, setCompPromo] = useState("");
 
-  // 🏪 ตรวจสอบชื่อห้าง/รหัสสาขา
-  const storeName = attendanceLog?.store_name || "";
   const storeCode = attendanceLog?.store_code || "";
-  const isTops =
-    storeName.toLowerCase().includes("top") ||
-    storeName.includes("ท็อป") ||
-    storeName.includes("ทอป") ||
-    storeCode.toLowerCase().includes("top");
 
-  const isBigC =
-    storeName.toLowerCase().includes("big") ||
-    storeName.includes("บิ๊ก") ||
-    storeName.includes("บิ๊กซี") ||
-    storeCode.toLowerCase().includes("big") ||
-    storeCode.toLowerCase().includes("pgbc");
-
-  // 🔍 ตรวจสอบและโหลดข้อมูลสถานะการลงเวลาทำงาน + ดึงยอดยกมาของแถมสำหรับ Tops
+  // 🔍 โหลดข้อมูลสถานะการลงเวลา + ดึงยอดยกมาของของแถม
   useEffect(() => {
     const fetchAttendanceStatus = async () => {
       setLoading(true);
@@ -245,8 +241,8 @@ export default function DailyReportPage() {
         if (res.log.store_code) {
           const giftRes = await getStoreInitialGiftsAction(res.log.store_code);
           if (giftRes.success) {
-            setGiftOrangeBefore(giftRes.giftOrangeBefore.toString());
-            setGiftNourishBefore(giftRes.giftNourishBefore.toString());
+            setGiftOrangeBefore(giftRes.giftOrangeBefore?.toString() || "0");
+            setGiftNourishBefore(giftRes.giftNourishBefore?.toString() || "0");
           }
         }
       } else {
@@ -266,6 +262,20 @@ export default function DailyReportPage() {
   useEffect(() => {
     return () => stopBarcodeScanner();
   }, []);
+
+  // ดึงข้อมูลโปรโมชันประจำสาขา (หากมีการเซ็ตรายการไว้)
+  useEffect(() => {
+    const fetchPromotion = async () => {
+      if (attendanceLog?.store_code) {
+        const res = await getPromotionByStoreAction(storeCode);
+        if (res.success && res.promotions && res.promotions.length > 0) {
+          setPromotionData(res.promotions[0]);
+        }
+      }
+    };
+
+    fetchPromotion();
+  }, [attendanceLog, storeCode]);
 
   const startBarcodeScanner = async () => {
     if (!("BarcodeDetector" in window)) {
@@ -336,7 +346,6 @@ export default function DailyReportPage() {
     }
   };
 
-  // ⚡ ปรับบีบอัดรูปภาพ: ย่อเหลือ 800px และคุณภาพ JPEG 0.50 เพื่อให้ไฟล์ขนาดเล็กลงมาก (~70-90KB)
   const processFileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -495,7 +504,6 @@ export default function DailyReportPage() {
     (Number(giftNourishBefore) || 0) - (Number(giftNourishGiven) || 0),
   );
 
-  // 📝 บันทึกข้อมูลพร้อม Try-Catch ดักจับ Exception ป้องกันหมุนค้าง
   const onFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!attendanceLog) return;
@@ -612,12 +620,19 @@ export default function DailyReportPage() {
                 )
               : 0,
 
-            giftOrangeBefore: isTops ? Number(giftOrangeBefore) || 0 : 0,
-            giftOrangeGiven: isTops ? autoOrangeGiftGiven : 0,
-            giftOrangeAfter: isTops ? giftOrangeAfter : 0,
-            giftNourishBefore: isTops ? Number(giftNourishBefore) || 0 : 0,
-            giftNourishGiven: isTops ? Number(giftNourishGiven) || 0 : 0,
-            giftNourishAfter: isTops ? giftNourishAfter : 0,
+            // ส่งข้อมูลของแถม dynamic ตามรายการโปรโมชันที่มีการเปิดใช้งาน
+            giftOrangeBefore: activePromotion
+              ? Number(giftOrangeBefore) || 0
+              : 0,
+            giftOrangeGiven: activePromotion ? autoOrangeGiftGiven : 0,
+            giftOrangeAfter: activePromotion ? giftOrangeAfter : 0,
+            giftNourishBefore: activePromotion
+              ? Number(giftNourishBefore) || 0
+              : 0,
+            giftNourishGiven: activePromotion
+              ? Number(giftNourishGiven) || 0
+              : 0,
+            giftNourishAfter: activePromotion ? giftNourishAfter : 0,
           } as any);
 
           Swal.close();
@@ -721,86 +736,65 @@ export default function DailyReportPage() {
           </div>
         </div>
 
-        {/* 🏪 การ์ดแสดงเงื่อนไขโปรโมชันประจำสาขา */}
-        {(isBigC || isTops) && (
+        {/* 🏪 การ์ดแสดงเงื่อนไขโปรโมชันประจำสาขา (Dynamic เมื่อมีการตั้งค่าโปรโมชัน) */}
+        {activePromotion && (
           <div
             className={`p-4 rounded-xl border text-left text-xs ${
-              isBigC
-                ? "bg-lime-50 border-lime-200"
+              activePromotion.target_type === "COMPANY_TAG"
+                ? "bg-amber-50 border-amber-200"
                 : "bg-orange-50 border-orange-200"
             }`}
           >
             <div className="flex items-center gap-1.5 font-black text-slate-800 border-b border-black/5 pb-2 mb-2">
               <Tag
                 size={14}
-                className={isBigC ? "text-lime-600" : "text-orange-600"}
+                className={
+                  activePromotion.target_type === "COMPANY_TAG"
+                    ? "text-amber-600"
+                    : "text-orange-600"
+                }
               />
               <span>
-                คู่มือตรวจสอบโปรโมชันหน้าร้าน (
-                {isBigC ? "Big C Campaign" : "Tops Campaign"})
+                คู่มือตรวจสอบโปรโมชันหน้าร้าน ({activePromotion.campaign_title})
               </span>
             </div>
 
-            {isBigC && (
-              <ul className="space-y-1.5 font-bold text-slate-700">
-                <li className="flex items-start gap-1">
-                  <span className="text-lime-600">•</span>
-                  <span>สีเขียว 90 แผ่น: ราคา 150 บาท (ซื้อ 1 แถม 1)</span>
+            <ul className="space-y-1.5 font-bold text-slate-700">
+              {activePromotion.items?.map((item, idx) => (
+                <li key={idx} className="flex items-start gap-1">
+                  <span
+                    className={
+                      activePromotion.target_type === "COMPANY_TAG"
+                        ? "text-amber-600"
+                        : "text-orange-600"
+                    }
+                  >
+                    •
+                  </span>
+                  <span>
+                    {item.label}: ราคา {item.price} บ.{" "}
+                    <span
+                      className={
+                        activePromotion.target_type === "COMPANY_TAG"
+                          ? "text-amber-700"
+                          : "text-orange-700"
+                      }
+                    >
+                      ({item.condition})
+                    </span>
+                  </span>
                 </li>
-                <li className="flex items-start gap-1">
-                  <span className="text-lime-600">•</span>
-                  <span>สีฟ้า 90 แผ่น: ราคา 142 บาท (ซื้อ 1 แถม 1)</span>
-                </li>
-              </ul>
-            )}
+              ))}
+            </ul>
 
-            {isTops && (
-              <div className="space-y-3">
-                <ul className="space-y-1.5 font-bold text-slate-700">
-                  <li className="flex items-start gap-1">
-                    <span className="text-orange-600">•</span>
-                    <span>
-                      สีเขียว 90 แผ่น: ราคา 150 บ.{" "}
-                      <span className="text-orange-700">
-                        (ซื้อ 1 แพ็ค ฟรี! สีส้ม 100 แผ่น 1 แพ็ค)
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-1">
-                    <span className="text-orange-600">•</span>
-                    <span>
-                      สีฟ้า 90 แผ่น: ราคา 142 บ.{" "}
-                      <span className="text-orange-700">
-                        (ซื้อ 1 แพ็ค ฟรี! สีส้ม 100 แผ่น 1 แพ็ค)
-                      </span>
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-1">
-                    <span className="text-orange-600">•</span>
-                    <span>
-                      สีส้ม 100 แผ่น: ราคา 100 บ.{" "}
-                      <span className="text-orange-700">
-                        (ซื้อ 1 แพ็ค ฟรี! สีส้ม 100 แผ่น 1 แพ็ค)
-                      </span>
-                    </span>
-                  </li>
-                </ul>
-                <div className="bg-white/80 border border-orange-200 p-2 rounded-lg">
-                  <p className="font-black text-rose-700 text-[10px] mb-0.5">
-                    🔥 รายการพิเศษขั้นบันได:
-                  </p>
-                  <p className="text-[10px] text-slate-700 font-bold leading-normal">
-                    ซื้อสินค้า Mild Luxury ครบ{" "}
-                    <span className="text-slate-950 font-black underline">
-                      339 บาท
-                    </span>{" "}
-                    ขึ้นไป/บิล
-                    <span className="block text-emerald-700 font-black mt-0.5">
-                      🎁 แจกฟรี! Nourish Soft 6 Ply 40's Pack 4 (มูลค่า 89.-)
-                      จำนวน 1 แพ็ค
-                    </span>
-                  </p>
-                </div>
+            {activePromotion.special_tier_text && (
+              <div className="mt-3 bg-white/80 border border-orange-200 p-2 rounded-lg">
+                <p className="font-black text-rose-700 text-[10px] mb-0.5">
+                  🔥 รายการพิเศษขั้นบันได:
+                </p>
+                <p className="text-[10px] text-slate-700 font-bold leading-normal">
+                  {activePromotion.special_tier_text}
+                </p>
               </div>
             )}
           </div>
@@ -899,6 +893,7 @@ export default function DailyReportPage() {
               </button>
             </div>
 
+            {/* คีย์ลัดผลิตภัณฑ์ Mild Luxury */}
             <div className="text-left pt-0.5">
               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">
                 คีย์ลัดผลิตภัณฑ์ Mild Luxury:
@@ -928,526 +923,365 @@ export default function DailyReportPage() {
               </div>
             </div>
 
-            {/* รายการฟอร์มข้อมูลรายตัวสินค้า */}
-            <div className="space-y-3 pt-2 border-t border-slate-100">
-              {productsForm.length === 0 ? (
-                <div className="py-6 text-center text-slate-400 flex flex-col items-center justify-center gap-1.5">
-                  <Barcode size={24} className="text-slate-300" />
-                  <p className="text-[10px] font-bold">
-                    กดสแกนด้วยกล้องหรือใช้คีย์ลัดเพื่อเริ่มคีย์ยอด
-                  </p>
-                </div>
-              ) : (
-                productsForm.map((prod) => {
-                  const stockAfter = Math.max(
-                    0,
-                    (Number(prod.stock_before) || 0) -
-                      (Number(prod.sales_qty) || 0),
-                  );
-                  return (
-                    <div
-                      key={prod.barcode}
-                      className="p-3 bg-slate-50/50 rounded-xl border border-slate-200 flex flex-col gap-2.5 text-left"
-                    >
-                      <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 bg-white border border-slate-200 rounded-md overflow-hidden flex items-center justify-center">
-                            {prod.imageurl ? (
-                              <img
-                                src={prod.imageurl}
-                                alt="pic"
-                                className="w-full h-full object-contain"
-                              />
-                            ) : (
-                              <ImageIcon size={14} className="text-slate-300" />
-                            )}
-                          </div>
-                          <div className="leading-tight">
-                            {(() => {
-                              if (prod.barcode === "8858678423339")
-                                return (
-                                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-emerald-600">
-                                    สีเขียว 90
-                                  </span>
-                                );
-                              if (prod.barcode === "8858678423681")
-                                return (
-                                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-blue-600">
-                                    สีฟ้า 90
-                                  </span>
-                                );
-                              if (prod.barcode === "8858678422875")
-                                return (
-                                  <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-orange-600">
-                                    สีส้ม 100
-                                  </span>
-                                );
-                              return (
-                                <span className="text-[8px] font-black px-1.5 py-0.5 rounded text-white bg-slate-600">
-                                  สินค้าแคมเปญ
-                                </span>
-                              );
-                            })()}
-                            <h5 className="text-[11px] font-black text-slate-800 mt-0.5 line-clamp-1">
-                              {prod.descriptions}
-                            </h5>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setProductsForm((prev) =>
-                              prev.filter((p) => p.barcode !== prod.barcode),
-                            )
-                          }
-                          className="p-1 text-red-500 cursor-pointer"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-4 gap-1.5">
-                        <div>
-                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">
-                            ราคาขาย
-                          </label>
-                          <input
-                            type="number"
-                            value={prod.price_our}
-                            onChange={(e) =>
-                              handleProductFieldChange(
-                                prod.barcode,
-                                "price_our",
-                                e.target.value,
-                              )
-                            }
-                            className="w-full bg-white border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-blue-500"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">
-                            Stock เช้า
-                          </label>
-                          <input
-                            type="number"
-                            placeholder="0"
-                            value={prod.stock_before}
-                            onChange={(e) =>
-                              handleProductFieldChange(
-                                prod.barcode,
-                                "stock_before",
-                                e.target.value,
-                              )
-                            }
-                            className="w-full bg-white border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-blue-500"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">
-                            จำนวนขาย
-                          </label>
-                          <input
-                            type="number"
-                            placeholder="0"
-                            value={prod.sales_qty}
-                            onChange={(e) =>
-                              handleProductFieldChange(
-                                prod.barcode,
-                                "sales_qty",
-                                e.target.value,
-                              )
-                            }
-                            className="w-full bg-white border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-blue-500"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">
-                            Stock เย็น
-                          </label>
-                          <div className="w-full bg-slate-100 border border-slate-200 rounded-lg p-1 text-[11px] font-black text-center text-slate-700">
-                            {stockAfter}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-dashed border-slate-200 grid grid-cols-3 gap-2">
-                        <div className="space-y-1">
-                          <p className="text-[8px] font-bold text-slate-500">
-                            1. รูปตัวสินค้า
-                          </p>
-                          <label className="cursor-pointer relative flex flex-col items-center justify-center aspect-square border border-dashed border-slate-300 rounded-lg bg-white hover:bg-slate-50 overflow-hidden">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) =>
-                                handleProductPhotoChange(
-                                  prod.barcode,
-                                  "img_product_base64",
-                                  e.target.files?.[0] || null,
-                                )
-                              }
-                            />
-                            {prod.img_product_base64 ? (
-                              <div className="relative w-full h-full">
-                                <img
-                                  src={prod.img_product_base64}
-                                  alt="p"
-                                  className="w-full h-full object-cover"
-                                />
-                                <div className="absolute top-0 right-0 p-0.5 bg-emerald-600 text-white rounded-bl-lg">
-                                  <CheckCircle size={10} />
-                                </div>
-                              </div>
-                            ) : (
-                              <Camera size={14} className="text-slate-400" />
-                            )}
-                          </label>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[8px] font-bold text-slate-500">
-                            2. รูปชั้นวาง (Shelf)
-                          </p>
-                          <label className="cursor-pointer relative flex flex-col items-center justify-center aspect-square border border-dashed border-slate-300 rounded-lg bg-white hover:bg-slate-50 overflow-hidden">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) =>
-                                handleProductPhotoChange(
-                                  prod.barcode,
-                                  "img_shelf_base64",
-                                  e.target.files?.[0] || null,
-                                )
-                              }
-                            />
-                            {prod.img_shelf_base64 ? (
-                              <div className="relative w-full h-full">
-                                <img
-                                  src={prod.img_shelf_base64}
-                                  alt="s"
-                                  className="w-full h-full object-cover"
-                                />
-                                <div className="absolute top-0 right-0 p-0.5 bg-emerald-600 text-white rounded-bl-lg">
-                                  <CheckCircle size={10} />
-                                </div>
-                              </div>
-                            ) : (
-                              <Camera size={14} className="text-slate-400" />
-                            )}
-                          </label>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[8px] font-bold text-slate-500">
-                            3. หน้าจอสแกนเนอร์
-                          </p>
-                          <label className="cursor-pointer relative flex flex-col items-center justify-center aspect-square border border-dashed border-slate-300 rounded-lg bg-white hover:bg-slate-50 overflow-hidden">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) =>
-                                handleProductPhotoChange(
-                                  prod.barcode,
-                                  "img_stock_scanner_base64",
-                                  e.target.files?.[0] || null,
-                                )
-                              }
-                            />
-                            {prod.img_stock_scanner_base64 ? (
-                              <div className="relative w-full h-full">
-                                <img
-                                  src={prod.img_stock_scanner_base64}
-                                  alt="sc"
-                                  className="w-full h-full object-cover"
-                                />
-                                <div className="absolute top-0 right-0 p-0.5 bg-emerald-600 text-white rounded-bl-lg">
-                                  <CheckCircle size={10} />
-                                </div>
-                              </div>
-                            ) : (
-                              <Camera size={14} className="text-slate-400" />
-                            )}
-                          </label>
-                        </div>
-                      </div>
+            {/* รายการสินค้าที่เลือก */}
+            {productsForm.map((product) => (
+              <div
+                key={product.barcode}
+                className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-left space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    {product.imageurl && (
+                      <img
+                        src={product.imageurl}
+                        alt={product.descriptions}
+                        className="w-10 h-10 object-cover rounded-lg border"
+                      />
+                    )}
+                    <div>
+                      <p className="text-xs font-black text-slate-800 line-clamp-1">
+                        {product.descriptions}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-bold">
+                        บาร์โค้ด: {product.barcode}
+                      </p>
                     </div>
-                  );
-                })
-              )}
-            </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProductsForm((prev) =>
+                        prev.filter((p) => p.barcode !== product.barcode),
+                      )
+                    }
+                    className="text-red-500 p-1 hover:bg-red-50 rounded-lg"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                      ราคาขาย (บ.)
+                    </label>
+                    <input
+                      type="number"
+                      value={product.price_our}
+                      onChange={(e) =>
+                        handleProductFieldChange(
+                          product.barcode,
+                          "price_our",
+                          e.target.value,
+                        )
+                      }
+                      className="w-full bg-white border border-slate-300 rounded-md p-1.5 text-xs font-bold text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                      สต๊อกยกมา
+                    </label>
+                    <input
+                      type="number"
+                      value={product.stock_before}
+                      onChange={(e) =>
+                        handleProductFieldChange(
+                          product.barcode,
+                          "stock_before",
+                          e.target.value,
+                        )
+                      }
+                      className="w-full bg-white border border-slate-300 rounded-md p-1.5 text-xs font-bold text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                      จำนวนขาย
+                    </label>
+                    <input
+                      type="number"
+                      value={product.sales_qty}
+                      onChange={(e) =>
+                        handleProductFieldChange(
+                          product.barcode,
+                          "sales_qty",
+                          e.target.value,
+                        )
+                      }
+                      className="w-full bg-white border border-slate-300 rounded-md p-1.5 text-xs font-bold text-center"
+                    />
+                  </div>
+                </div>
+
+                {/* ส่วนการอัปโหลดรูปภาพ 3 รูปของสินค้า */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  <div>
+                    <label className="text-[8px] font-bold text-slate-500 block mb-1 truncate">
+                      1. รูปสินค้า
+                    </label>
+                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-2 text-center flex flex-col items-center justify-center cursor-pointer h-16">
+                      {product.img_product_base64 ? (
+                        <img
+                          src={product.img_product_base64}
+                          alt="preview"
+                          className="h-full w-full object-cover rounded-md"
+                        />
+                      ) : (
+                        <Camera size={14} className="text-slate-400" />
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleProductPhotoChange(
+                            product.barcode,
+                            "img_product_base64",
+                            e.target.files?.[0] || null,
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-bold text-slate-500 block mb-1 truncate">
+                      2. รูปเชลฟ์
+                    </label>
+                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-2 text-center flex flex-col items-center justify-center cursor-pointer h-16">
+                      {product.img_shelf_base64 ? (
+                        <img
+                          src={product.img_shelf_base64}
+                          alt="preview"
+                          className="h-full w-full object-cover rounded-md"
+                        />
+                      ) : (
+                        <Camera size={14} className="text-slate-400" />
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleProductPhotoChange(
+                            product.barcode,
+                            "img_shelf_base64",
+                            e.target.files?.[0] || null,
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-bold text-slate-500 block mb-1 truncate">
+                      3. สแกนสต๊อก
+                    </label>
+                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-2 text-center flex flex-col items-center justify-center cursor-pointer h-16">
+                      {product.img_stock_scanner_base64 ? (
+                        <img
+                          src={product.img_stock_scanner_base64}
+                          alt="preview"
+                          className="h-full w-full object-cover rounded-md"
+                        />
+                      ) : (
+                        <Camera size={14} className="text-slate-400" />
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleProductPhotoChange(
+                            product.barcode,
+                            "img_stock_scanner_base64",
+                            e.target.files?.[0] || null,
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {/* 🎁 3. ระบบบันทึกและตัดยอดของแถมประจำวัน (เปิดเฉพาะ Tops) */}
-          {isTops && (
-            <div className="bg-white p-4 rounded-xl border border-orange-300 shadow-xs space-y-3 bg-gradient-to-br from-white to-orange-50/10">
-              <h4 className="text-xs font-black text-slate-800 flex items-center justify-between border-b border-orange-100 pb-2 text-left">
-                <span className="flex items-center gap-1.5">
-                  <Package size={14} className="text-orange-600" /> 3.
-                  บันทึกและตัดยอดคลังของแถมประจำวัน (เฉพาะ Tops)
-                </span>
-                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                  ✓ ยกยอดจากวันก่อนหน้า
-                </span>
+          {/* Section: บันทึกสต๊อกของแถมแคมเปญ (แสดงผลแบบ Dynamic เมื่อมีการเปิดใช้งานโปรโมชัน) */}
+          {activePromotion && (
+            <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 shadow-xs space-y-3 text-left">
+              <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5 border-b border-amber-200/60 pb-2">
+                <Package size={14} /> บันทึกสต๊อกของแถมแคมเปญ
               </h4>
-
-              <div className="space-y-3">
-                {/* 1. สต๊อกของแถมสีส้ม 100 แผ่น */}
-                <div className="p-3 bg-slate-50/60 rounded-lg border border-slate-200 text-left space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-black text-slate-800">
-                      🎁 [8858678422875] ของแถม Mild Luxury สีส้ม 100 แผ่น
-                    </span>
-                    <span className="text-[8px] bg-orange-100 text-orange-800 px-1.5 py-0.2 rounded font-mono font-bold">
-                      แถม 1:1
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        สต๊อกแถมเช้า (Auto)
-                      </label>
-                      <input
-                        type="number"
-                        value={giftOrangeBefore}
-                        onChange={(e) => setGiftOrangeBefore(e.target.value)}
-                        className="w-full bg-slate-100 border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-orange-500"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        ตัดยอดแจก (Auto)
-                      </label>
-                      <div className="w-full bg-slate-100 border border-slate-200 rounded-lg p-1 text-[11px] font-black text-center text-slate-600">
-                        {autoOrangeGiftGiven}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        คงเหลือเย็น (ยกยอด)
-                      </label>
-                      <div className="w-full bg-orange-50 border border-orange-200 rounded-lg p-1 text-[11px] font-black text-center text-orange-700">
-                        {giftOrangeAfter}
-                      </div>
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-white p-2.5 rounded-lg border border-amber-200 text-xs">
+                  <p className="font-bold text-slate-700 text-[10px]">
+                    กระเป๋าส้ม (แจกอัตโนมัติ)
+                  </p>
+                  <p className="text-[10px] text-slate-500 font-medium mt-1">
+                    ยกมา: {giftOrangeBefore} | แจกไป: {autoOrangeGiftGiven} |
+                    คงเหลือ: {giftOrangeAfter}
+                  </p>
                 </div>
-
-                {/* 2. สต๊อกของแถมพิเศษ Nourish Soft 6 Ply */}
-                <div className="p-3 bg-slate-50/60 rounded-lg border border-slate-200 text-left space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-black text-slate-800">
-                      🎁 [8858678423544] ของแถมพิเศษ Nourish Soft 6 Ply (ยอด
-                      339.-)
-                    </span>
-                    <span className="text-[8px] bg-rose-100 text-rose-800 px-1.5 py-0.2 rounded font-mono font-bold">
-                      ตามใบเสร็จ
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        สต๊อกแถมเช้า (Auto)
-                      </label>
-                      <input
-                        type="number"
-                        value={giftNourishBefore}
-                        onChange={(e) => setGiftNourishBefore(e.target.value)}
-                        className="w-full bg-slate-100 border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-orange-500"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        คีย์จำนวนที่แจก
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="0"
-                        value={giftNourishGiven}
-                        onChange={(e) => setGiftNourishGiven(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-center outline-none focus:border-orange-500"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[8px] font-bold text-slate-400 block mb-0.5">
-                        คงเหลือเย็น (ยกยอด)
-                      </label>
-                      <div className="w-full bg-orange-50 border border-orange-200 rounded-lg p-1 text-[11px] font-black text-center text-orange-700">
-                        {giftNourishAfter}
-                      </div>
-                    </div>
-                  </div>
+                <div className="bg-white p-2.5 rounded-lg border border-amber-200 text-xs">
+                  <p className="font-bold text-slate-700 text-[10px]">
+                    Nourish Premium (ระบุจำนวนแจก)
+                  </p>
+                  <input
+                    type="number"
+                    placeholder="จำนวนแจก..."
+                    value={giftNourishGiven}
+                    onChange={(e) => setGiftNourishGiven(e.target.value)}
+                    className="w-full mt-1 bg-amber-50/50 border border-slate-300 rounded p-1 text-xs font-bold"
+                  />
+                  <p className="text-[9px] text-slate-500 font-medium mt-1">
+                    คงเหลือ: {giftNourishAfter}
+                  </p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Section 4: 6 Activity Photos */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-            <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2 text-left">
-              <Camera size={14} className="text-rose-600" />{" "}
-              {isTops ? "4" : "3"}. ภาพรวมการทำกิจกรรมประจำวัน (อัปโหลด 6 รูป)
+          {/* Section 3: ราคาคู่แข่ง และข้อมูลการตลาด */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3 text-left">
+            <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+              <Tag size={14} className="text-rose-600" /> 3.
+              ราคาเปรียบเทียบแบรนด์คู่แข่ง
             </h4>
-            <div className="grid grid-cols-2 gap-3 text-left">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  Cellox (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompCellox}
+                  onChange={(e) => setPriceCompCellox(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  Kleenex (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompKleenex}
+                  onChange={(e) => setPriceCompKleenex(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  Paseo (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompPaseo}
+                  onChange={(e) => setPriceCompPaseo(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <div>
+                <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                  โปรโมชันคู่แข่งหน้าร้าน
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="รายละเอียดโปรโมชันคู่แข่ง..."
+                  value={compPromo}
+                  onChange={(e) => setCompPromo(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-medium outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                  ข้อเสนอแนะ / ความคิดเห็นลูกค้า
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="คำติชม หรือข้อเสนอแนะจากลูกค้า..."
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-medium outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: รูปภาพบรรยากาศและกิจกรรม 6 รูป */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3 text-left">
+            <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+              <Camera size={14} className="text-indigo-600" /> 4.
+              รูปภาพการทำงานประจำวัน (รวม 6 รายการ)
+            </h4>
+            <div className="grid grid-cols-2 gap-2.5">
               {activityPhotos.map((photo) => (
-                <div key={photo.type} className="flex flex-col gap-1">
-                  <p className="text-[10px] font-bold text-slate-700 leading-tight">
+                <div
+                  key={photo.type}
+                  className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1.5"
+                >
+                  <p className="text-[10px] font-black text-slate-800 truncate">
                     {photo.label}
                   </p>
-                  <label className="cursor-pointer relative flex flex-col items-center justify-center h-24 border border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100/60 transition overflow-hidden">
+                  <p className="text-[8px] text-slate-500 font-medium truncate">
+                    {photo.description}
+                  </p>
+                  <label className="border-2 border-dashed border-slate-300 bg-white rounded-lg p-2 text-center flex flex-col items-center justify-center cursor-pointer h-24 hover:bg-slate-100 transition relative overflow-hidden">
+                    {photo.base64 ? (
+                      <img
+                        src={photo.base64}
+                        alt={photo.label}
+                        className="w-full h-full object-cover rounded-md"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center text-slate-400 gap-1">
+                        <ImageIcon size={20} />
+                        <span className="text-[9px] font-bold">แนบรูปถ่าย</span>
+                      </div>
+                    )}
                     <input
                       type="file"
                       accept={photo.accept}
                       className="hidden"
-                      onChange={async (e) =>
+                      onChange={(e) =>
                         handleActivityPhotoChange(
                           photo.type,
                           e.target.files?.[0] || null,
                         )
                       }
                     />
-                    {photo.base64 ? (
-                      <div className="relative w-full h-full">
-                        <img
-                          src={photo.base64}
-                          alt="act"
-                          className="w-full h-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleActivityPhotoChange(photo.type, null);
-                          }}
-                          className="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded-full hover:bg-red-700 transition cursor-pointer"
-                        >
-                          <Trash2 size={10} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center text-slate-400 gap-1 p-2 text-center">
-                        <Camera size={18} className="text-slate-300" />
-                        <span className="text-[9px] font-bold leading-normal text-slate-400">
-                          {photo.description}
-                        </span>
-                      </div>
-                    )}
                   </label>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Section 5: Competitor Pricing */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-            <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2 text-left">
-              <Tag size={14} className="text-indigo-600" /> {isTops ? "5" : "4"}
-              . ตรวจสอบราคาคู่แข่งประจำวัน (บาท)
+          {/* Section 5: หมายเหตุเพิ่มเติม */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-2 text-left">
+            <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+              <MessageSquare size={14} className="text-slate-600" /> 5.
+              หมายเหตุเพิ่มเติม
             </h4>
-            <div className="grid grid-cols-3 gap-2 text-left">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  Cellox satin
-                </label>
-                <input
-                  type="number"
-                  placeholder="ราคา"
-                  value={priceCompCellox}
-                  onChange={(e) => setPriceCompCellox(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-1.5 text-xs text-center font-bold outline-none focus:bg-white"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  คลีเน็กซ์ แอคเน่
-                </label>
-                <input
-                  type="number"
-                  placeholder="ราคา"
-                  value={priceCompKleenex}
-                  onChange={(e) => setPriceCompKleenex(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-1.5 text-xs text-center font-bold outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  Paseo baby
-                </label>
-                <input
-                  type="number"
-                  placeholder="ราคา"
-                  value={priceCompPaseo}
-                  onChange={(e) => setPriceCompPaseo(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-1.5 text-xs text-center font-bold outline-none focus:bg-white"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Section 6: Customer Feedback */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-            <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2 text-left">
-              <MessageSquare size={14} className="text-amber-600" />{" "}
-              {isTops ? "6" : "5"}. บันทึกเพิ่มเติมจากหน้าร้าน
-            </h4>
-            <div className="space-y-3 text-left">
-              <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                  Feedback จากลูกค้า
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="เช่น ลูกค้าบ่นเรื่องราคาสินค้าคู่แข่ง..."
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs outline-none focus:bg-white focus:border-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                  โปรโมชันของทางคู่แข่ง
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="เช่น Cellox จัดโปรโมชั่นแถมของแถมพรีเมี่ยม..."
-                  value={compPromo}
-                  onChange={(e) => setCompPromo(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs outline-none focus:bg-white focus:border-blue-500"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* ช่องคีย์หมายเหตุเพิ่มเติม */}
-          <div>
-            <label className="text-[11px] font-bold text-slate-600 block mb-1">
-              หมายเหตุเพิ่มเติม (เช่น สต๊อกสีเขียว 90 เหลือน้อย / สินค้าชำรุด)
-            </label>
             <textarea
               rows={2}
-              placeholder="ระบุเหตุผลอื่นๆ หรือหมายเหตุแจ้งฝ่ายบริหาร..."
+              placeholder="ข้อความหมายเหตุอื่นๆ..."
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs outline-none focus:bg-white focus:border-blue-500"
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-medium outline-none focus:bg-white focus:border-blue-500"
             />
           </div>
 
+          {/* ปุ่มส่งรายงาน */}
           <button
             type="submit"
-            className="w-full bg-[#1e3a8a] hover:bg-blue-800 text-white p-3.5 rounded-xl transition font-black text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
+            className="w-full bg-blue-900 text-white font-black py-3.5 rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-blue-800 transition shadow-lg cursor-pointer"
           >
-            <Save size={16} /> บันทึกและนำส่งรายงานฉบับสมบูรณ์
+            <Save size={16} /> บันทึกและนำส่งรายงานกิจกรรมประจำวัน
           </button>
         </form>
       </main>

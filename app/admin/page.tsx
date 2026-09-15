@@ -11,6 +11,7 @@ import {
   ExternalLink,
   ArrowLeft,
   LayoutDashboard,
+  Tag, // 🟢 เพิ่ม icon สำหรับโปรโมชั่น/สินค้า
 } from "lucide-react";
 
 export default function AdminHubPage() {
@@ -51,6 +52,19 @@ export default function AdminHubPage() {
       iconBg: "bg-amber-600 text-white",
       hoverBorder: "hover:border-amber-400 hover:shadow-md",
     },
+    // 🟢 เมนูใหม่: ตั้งค่าเซ็ตโปรโมชั่น & รายการสินค้าประจำรอบ
+    {
+      title: "ตั้งค่าเซ็ตโปรโมชั่น & สินค้าประจำรอบ",
+      subtitle: "Promotion Set & Product SKU Config",
+      description:
+        "กำหนดรอบโปรโมชั่น, จัดการรายการสินค้าที่ร่วมรายการ (กลุ่มเขียว/ฟ้า/ส้ม), ของแถม และเงื่อนไขราคาสำหรับการขายแต่ละรอบ",
+      href: "/admin/promotions",
+      icon: Tag,
+      badge: "โปรโมชั่น/สินค้า",
+      badgeColor: "bg-rose-50 text-rose-700 border-rose-200",
+      iconBg: "bg-rose-600 text-white",
+      hoverBorder: "hover:border-rose-400 hover:shadow-md",
+    },
     {
       title: "Customer Portal & Activity Overview",
       subtitle: "Customer Sales & Field Report",
@@ -66,10 +80,10 @@ export default function AdminHubPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-orange-300 text-slate-800 font-sans antialiased p-6 md:p-10">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans antialiased p-6 md:p-10">
+      <div className="max-w-7xl mx-auto space-y-8">
         {/* 🛡️ HEADER BAR */}
-        <div className="bg-green-300 p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="p-3.5 bg-slate-900 text-white rounded-2xl shadow-xs">
               <Shield size={28} />
@@ -84,8 +98,8 @@ export default function AdminHubPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium mt-1">
-                ศูนย์รวมเครื่องมือจัดการข้อมูลพนักงาน PG, การลงเวลา, ค่าตอบแทน
-                และเป้าหมายการขาย
+                ศูนย์รวมเครื่องมือจัดการข้อมูลพนักงาน PG, การลงเวลา,
+                โปรโมชั่นสินค้า และเป้าหมายการขาย
               </p>
             </div>
           </div>
@@ -111,8 +125,8 @@ export default function AdminHubPage() {
           </div>
         </div>
 
-        {/* 📌 MODULE CARDS GRID (2x2 Grid) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* 📌 MODULE CARDS GRID (ปรับเป็น Responsive 1 -> 2 -> 3 Cols เพื่อความสมดุล) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {adminModules.map((item) => {
             const IconComponent = item.icon;
             return (

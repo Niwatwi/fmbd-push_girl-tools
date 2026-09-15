@@ -100,7 +100,7 @@ export default function AdminSalarySummaryPage() {
       item.empId,
       `"${item.displayName}"`,
       `"${item.storeName}"`,
-      item.workDaysCount,
+      item.workDaysCount, // ค่าจะส่งออกเป็น 0.5, 1, 1.5 ตามจริง
       item.baseSalaryRate,
       item.totalDailyWage,
       item.totalSets,
@@ -371,8 +371,13 @@ export default function AdminSalarySummaryPage() {
                     <td className="p-2.5 border border-slate-200 font-bold text-slate-700">
                       {item.storeName}
                     </td>
+                    {/* ปรับให้รองรับทศนิยมสวยงาม */}
                     <td className="p-2.5 border border-slate-200 text-center font-mono font-bold text-blue-600">
-                      {item.workDaysCount} วัน
+                      {Number(item.workDaysCount).toLocaleString("th-TH", {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 1,
+                      })}{" "}
+                      วัน
                     </td>
                     <td className="p-2.5 border border-slate-200 text-right font-mono">
                       {item.baseSalaryRate.toLocaleString()} ฿
