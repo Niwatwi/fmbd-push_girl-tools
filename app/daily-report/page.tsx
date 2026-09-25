@@ -1350,7 +1350,7 @@ export default function DailyReportPage() {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  ซแม๊กโม่ อเนกประสงค์ 6+2 เขียว (บ.)
+                  แม๊กซ์โม่ อเนกประสงค์ 6+2 เขียว (บ.)
                 </label>
                 <input
                   type="number"
