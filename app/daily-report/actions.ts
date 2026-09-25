@@ -27,9 +27,9 @@ export interface ProductReportPayload {
   stock_before: number;
   sales_qty: number;
   stock_after: number;
-  img_product_base64: string;
-  img_shelf_base64: string;
-  img_stock_scanner_base64: string;
+  img_product_base64?: string;
+  img_shelf_base64?: string;
+  img_stock_scanner_base64?: string;
 }
 
 export interface DbProductItem {
@@ -56,20 +56,7 @@ export interface FullActivityReportInput {
   competitorPromotion: string;
   remark?: string;
   activityPhotos: ActivityPhotoPayload[];
-  products: ProductReportPayload[];
-
-  priceOurGreen90?: number;
-  stockBeforeGreen90?: number;
-  salesQtyGreen90?: number;
-  stockAfterGreen90?: number;
-  priceOurBlue90?: number;
-  stockBeforeBlue90?: number;
-  salesQtyBlue90?: number;
-  stockAfterBlue90?: number;
-  priceOurOrange100?: number;
-  stockBeforeOrange100?: number;
-  salesQtyOrange100?: number;
-  stockAfterOrange100?: number;
+  products: ProductReportPayload[]; // 👈 รายการสินค้าแบบ Dynamic (รองรับทุก SKU)
 
   giftOrangeBefore?: number;
   giftOrangeGiven?: number;
@@ -79,7 +66,7 @@ export interface FullActivityReportInput {
   giftNourishAfter?: number;
 }
 
-// 📸 ฟังก์ชันภายใน: แปลง Base64 และอัปโหลดไฟล์รูปขึ้น Storage Bucket (pg-attendance-photos)
+// 📸 อัปโหลดรูปภาพขึ้น Storage Bucket
 async function uploadBase64File(
   base64Data: string,
   userId: number,
@@ -222,7 +209,7 @@ export async function getStoreInitialGiftsAction(storeCode: string) {
   }
 }
 
-// 📝 4. บันทึกรายงานกิจกรรมพร้อมอัปโหลดรูปภาพแบบขนาน (Parallel Uploads Optimization)
+// 📝 4. บันทึกรายงานกิจกรรมประจำวัน (แยกคอลัมน์รูปภาพกิจกรรม)
 export async function submitFullDailyActivityReportAction(
   payload: FullActivityReportInput,
 ) {
@@ -230,7 +217,6 @@ export async function submitFullDailyActivityReportAction(
   try {
     const userId = payload.userId;
 
-    // 1. กำหนดวันที่รายงานตามเวลาประเทศไทย
     const now = new Date();
     const reportDate = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Bangkok",
@@ -239,7 +225,6 @@ export async function submitFullDailyActivityReportAction(
       day: "2-digit",
     }).format(now);
 
-    // 2. คำนวณยอดคงเหลือของแถม
     const giftOrangeBefore = Number(payload.giftOrangeBefore || 0);
     const giftOrangeGiven = Number(payload.giftOrangeGiven || 0);
     const giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
@@ -248,44 +233,47 @@ export async function submitFullDailyActivityReportAction(
     const giftNourishGiven = Number(payload.giftNourishGiven || 0);
     const giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
 
-    // 3. ⚡ อัปโหลดรูปภาพกิจกรรม (Activity Photos) แบบขนาน (Parallel)
-    let processedActivityPhotos: Array<{
-      type: string;
-      label: string;
-      url: string;
-    }> = [];
+    // อัปโหลดรูปภาพกิจกรรมแยกตามประเภท
+    let photoStaffHolding = "";
+    let photoCheerSales = "";
+    let photoCustomerBasket1 = "";
+    let photoCustomerBasket2 = "";
+    let photoAtmosphere1 = "";
+    let photoAtmosphere2 = "";
 
     if (
       Array.isArray(payload.activityPhotos) &&
       payload.activityPhotos.length > 0
     ) {
-      const uploadPromises = payload.activityPhotos.map(async (photo, idx) => {
+      const uploadPromises = payload.activityPhotos.map(async (photo) => {
         if (photo.base64 && photo.base64.startsWith("data:")) {
           const url = await uploadBase64File(
             photo.base64,
             userId,
-            `act_${photo.type || idx}`,
+            `act_${photo.type}`,
             supabase,
           );
-          if (url) {
-            return {
-              type: photo.type,
-              label: photo.label,
-              url: url,
-            };
-          }
+          return { type: photo.type, url: url || "" };
         }
         return null;
       });
 
       const results = await Promise.all(uploadPromises);
-      processedActivityPhotos = results.filter(
-        (item): item is { type: string; label: string; url: string } =>
-          item !== null,
-      );
+
+      for (const res of results) {
+        if (!res) continue;
+        if (res.type === "staff_holding") photoStaffHolding = res.url;
+        else if (res.type === "cheer_sales") photoCheerSales = res.url;
+        else if (res.type === "customer_basket_1")
+          photoCustomerBasket1 = res.url;
+        else if (res.type === "customer_basket_2")
+          photoCustomerBasket2 = res.url;
+        else if (res.type === "atmosphere_1") photoAtmosphere1 = res.url;
+        else if (res.type === "atmosphere_2") photoAtmosphere2 = res.url;
+      }
     }
 
-    // 4. เตรียม Record บันทึกลงตารางหลัก pg_daily_activity_reports
+    // บันทึกตารางหลัก pg_daily_activity_reports พร้อมคอลัมน์รูปภาพใหม่
     const recordToInsert = {
       attendance_log_id: payload.attendanceLogId,
       user_id: userId,
@@ -300,22 +288,14 @@ export async function submitFullDailyActivityReportAction(
       feedback_store: payload.feedbackStore || "",
       remark: payload.remark || "",
       competitor_promotion: payload.competitorPromotion || "",
-      activity_photos: JSON.stringify(processedActivityPhotos),
 
-      price_our_green90: Number(payload.priceOurGreen90 || 0),
-      stock_before_green90: Number(payload.stockBeforeGreen90 || 0),
-      sales_qty_green90: Number(payload.salesQtyGreen90 || 0),
-      stock_after_green90: Number(payload.stockAfterGreen90 || 0),
-
-      price_our_blue90: Number(payload.priceOurBlue90 || 0),
-      stock_before_blue90: Number(payload.stockBeforeBlue90 || 0),
-      sales_qty_blue90: Number(payload.salesQtyBlue90 || 0),
-      stock_after_blue90: Number(payload.stockAfterBlue90 || 0),
-
-      price_our_orange100: Number(payload.priceOurOrange100 || 0),
-      stock_before_orange100: Number(payload.stockBeforeOrange100 || 0),
-      sales_qty_orange100: Number(payload.salesQtyOrange100 || 0),
-      stock_after_orange100: Number(payload.stockAfterOrange100 || 0),
+      // 📌 บันทึกลงคอลัมน์แยกแต่ละประเภท
+      photo_staff_holding: photoStaffHolding,
+      photo_cheer_sales: photoCheerSales,
+      photo_customer_basket_1: photoCustomerBasket1,
+      photo_customer_basket_2: photoCustomerBasket2,
+      photo_atmosphere_1: photoAtmosphere1,
+      photo_atmosphere_2: photoAtmosphere2,
 
       gift_orange_before: giftOrangeBefore,
       gift_orange_given: giftOrangeGiven,
@@ -333,7 +313,7 @@ export async function submitFullDailyActivityReportAction(
 
     if (reportError) throw reportError;
 
-    // 5. ⚡ อัปโหลดรูปภาพผลิตภัณฑ์รายบาร์โค้ดแบบขนาน (Parallel Uploads)
+    // บันทึกรายการสินค้าเข้าตาราง pg_daily_report_products (Dynamic)
     if (
       Array.isArray(payload.products) &&
       payload.products.length > 0 &&
@@ -405,98 +385,34 @@ export async function submitFullDailyActivityReportAction(
   }
 }
 
-// 📌 ฟังก์ชันสำหรับ Admin: บันทึกใหม่หรือแก้ไขรายงานย้อนหลัง
-export async function adminUpsertDailyReportAction(
-  payload: FullActivityReportInput & {
-    reportId?: number;
-    reportDateInput?: string;
-  },
+// 📌 5. ดึงข้อมูลรายงานประจำวันพร้อมรายการสินค้าแบบ Dynamic สำหรับแสดงผลตาราง
+export async function getDailyReportWithProductsAction(
+  startDate?: string,
+  endDate?: string,
+  storeCode?: string,
 ) {
   const supabase = getClientInstance();
   try {
-    const userId = payload.userId;
+    let query = supabase
+      .from("pg_daily_activity_reports")
+      .select(
+        `
+        *,
+        pg_daily_report_products (*)
+      `,
+      )
+      .order("report_date", { ascending: false });
 
-    const reportDate =
-      payload.reportDateInput ||
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Bangkok",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date());
+    if (startDate) query = query.gte("report_date", startDate);
+    if (endDate) query = query.lte("report_date", endDate);
+    if (storeCode) query = query.eq("store_code", storeCode);
 
-    const giftOrangeBefore = Number(payload.giftOrangeBefore || 0);
-    const giftOrangeGiven = Number(payload.giftOrangeGiven || 0);
-    const giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
+    const { data, error } = await query;
+    if (error) throw error;
 
-    const giftNourishBefore = Number(payload.giftNourishBefore || 0);
-    const giftNourishGiven = Number(payload.giftNourishGiven || 0);
-    const giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
-
-    const recordToUpsert: any = {
-      attendance_log_id: payload.attendanceLogId || null,
-      user_id: userId,
-      store_code: payload.storeCode,
-      report_date: reportDate,
-      traffic_count: Number(payload.trafficCount || 0),
-      approach_count: Number(payload.approachCount || 0),
-      closed_sales_count: Number(payload.closedSalesCount || 0),
-      price_comp_cellox: Number(payload.priceCompCellox || 0),
-      price_comp_kleenex: Number(payload.priceCompKleenex || 0),
-      price_comp_paseo: Number(payload.priceCompPaseo || 0),
-      feedback_store: payload.feedbackStore || "",
-      competitor_promotion: payload.competitorPromotion || "",
-      remark: payload.remark || "",
-
-      price_our_green90: Number(payload.priceOurGreen90 || 0),
-      stock_before_green90: Number(payload.stockBeforeGreen90 || 0),
-      sales_qty_green90: Number(payload.salesQtyGreen90 || 0),
-      stock_after_green90: Number(payload.stockAfterGreen90 || 0),
-
-      price_our_blue90: Number(payload.priceOurBlue90 || 0),
-      stock_before_blue90: Number(payload.stockBeforeBlue90 || 0),
-      sales_qty_blue90: Number(payload.salesQtyBlue90 || 0),
-      stock_after_blue90: Number(payload.stockAfterBlue90 || 0),
-
-      price_our_orange100: Number(payload.priceOurOrange100 || 0),
-      stock_before_orange100: Number(payload.stockBeforeOrange100 || 0),
-      sales_qty_orange100: Number(payload.salesQtyOrange100 || 0),
-      stock_after_orange100: Number(payload.stockAfterOrange100 || 0),
-
-      gift_orange_before: giftOrangeBefore,
-      gift_orange_given: giftOrangeGiven,
-      gift_orange_after: giftOrangeAfter,
-      gift_nourish_before: giftNourishBefore,
-      gift_nourish_given: giftNourishGiven,
-      gift_nourish_after: giftNourishAfter,
-    };
-
-    let resultData;
-
-    if (payload.reportId) {
-      const { data, error } = await supabase
-        .from("pg_daily_activity_reports")
-        .update(recordToUpsert)
-        .eq("id", payload.reportId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      resultData = data;
-    } else {
-      const { data, error } = await supabase
-        .from("pg_daily_activity_reports")
-        .insert([recordToUpsert])
-        .select()
-        .single();
-
-      if (error) throw error;
-      resultData = data;
-    }
-
-    return { success: true, data: resultData };
+    return { success: true, data };
   } catch (error: any) {
-    console.error("adminUpsertDailyReportAction error:", error);
-    return { success: false, message: error.message };
+    console.error("getDailyReportWithProductsAction error:", error);
+    return { success: false, data: [], message: error.message };
   }
 }

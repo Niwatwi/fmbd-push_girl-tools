@@ -896,7 +896,7 @@ export default function DailyReportPage() {
             {/* คีย์ลัดผลิตภัณฑ์ Mild Luxury */}
             <div className="text-left pt-0.5">
               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">
-                คีย์ลัดผลิตภัณฑ์ Mild Luxury:
+                คีย์ลัดผลิตภัณฑ์ :
               </p>
               <div className="flex flex-wrap gap-1.5">
                 <button
@@ -904,21 +904,70 @@ export default function DailyReportPage() {
                   onClick={() => handleSearchAndAddProduct("8858678423339")}
                   className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
                 >
-                  <Plus size={8} /> สีเขียว 90
+                  <Plus size={8} /> มายด์ลักซูรี่ สีเขียว 90
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSearchAndAddProduct("8858678423681")}
                   className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
                 >
-                  <Plus size={8} /> สีฟ้า 90
+                  <Plus size={8} /> มายด์ลักซูรี่ สีฟ้า 90
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSearchAndAddProduct("8858678422875")}
                   className="bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
                 >
-                  <Plus size={8} /> สีส้ม 100
+                  <Plus size={8} /> มายด์ลักซูรี่ สีส้ม 100
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSearchAndAddProduct("8858678423407")}
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
+                >
+                  <Plus size={8} /> มายด์โดราเอมอน แพ็ค 5
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSearchAndAddProduct("8858678423063")}
+                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
+                >
+                  <Plus size={8} /> เทนเดอร์ เช็ดหน้า 4+1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSearchAndAddProduct("8851020101213")}
+                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
+                >
+                  <Plus size={8} /> เทนเดอร์ ชำระ 6+2
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSearchAndAddProduct("8851020101220")}
+                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
+                >
+                  <Plus size={8} /> เทนเดอร์ ชำระ 24+6
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSearchAndAddProduct("8858678422769")}
+                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
+                >
+                  <Plus size={8} /> เทนเดอร์ อเนกประสงค์ 200
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSearchAndAddProduct("8858678422752")}
+                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
+                >
+                  <Plus size={8} /> เทนเดอร์ อเนกประสงค์ 3+1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSearchAndAddProduct("8858678421304")}
+                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
+                >
+                  <Plus size={8} /> เทนเดอร์ อเนกประสงค์ 6+2
                 </button>
               </div>
             </div>
@@ -1149,7 +1198,7 @@ export default function DailyReportPage() {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  Cellox (บ.)
+                  เซลล็อกซ์ ซาติน แพ็ค 4 (บ.)
                 </label>
                 <input
                   type="number"
@@ -1161,7 +1210,7 @@ export default function DailyReportPage() {
               </div>
               <div>
                 <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  Kleenex (บ.)
+                  คลีเน็กซ์ ซิลค์กี้สมูท แพ็ค 4 (บ.)
                 </label>
                 <input
                   type="number"
@@ -1173,7 +1222,159 @@ export default function DailyReportPage() {
               </div>
               <div>
                 <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  Paseo (บ.)
+                  สก็อตต์เซฟซอฟท์บ๊อกซ์แพ็ค4 (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompPaseo}
+                  onChange={(e) => setPriceCompPaseo(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  ซิลค์ คอตตอน ชำระแพ็ค 6 (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompCellox}
+                  onChange={(e) => setPriceCompCellox(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 6 (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompKleenex}
+                  onChange={(e) => setPriceCompKleenex(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 6 (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompPaseo}
+                  onChange={(e) => setPriceCompPaseo(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  ซิลค์ คอตตอน ชำระแพ็ค 24 (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompCellox}
+                  onChange={(e) => setPriceCompCellox(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 24 (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompKleenex}
+                  onChange={(e) => setPriceCompKleenex(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 24 (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompPaseo}
+                  onChange={(e) => setPriceCompPaseo(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  แม๊กโม่แบบแขวน 200 แผ่น (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompCellox}
+                  onChange={(e) => setPriceCompCellox(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  แม๊กซ์โม่อเนกประสงค์ แพ็ค 3 (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompKleenex}
+                  onChange={(e) => setPriceCompKleenex(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  สก็อตต์ อเนกประสงค์ 3+1 (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompPaseo}
+                  onChange={(e) => setPriceCompPaseo(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  ซแม๊กโม่ อเนกประสงค์ 6+2 เขียว (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompCellox}
+                  onChange={(e) => setPriceCompCellox(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  แม๊กซ์โม่ อเนกประสงค์ 6+2 แดง (บ.)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={priceCompKleenex}
+                  onChange={(e) => setPriceCompKleenex(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                  สก็อตต์ อเนกประสงค์ 6+2 แดง (บ.)
                 </label>
                 <input
                   type="number"
