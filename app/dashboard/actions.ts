@@ -281,18 +281,18 @@ export async function saveStoreTargetAction(payload: {
   }
 }
 
-// 5. ดึงรายชื่อร้านค้าเปิดใช้งานทั้งหมดจากตาราง pg_stores
+// 5. ดึงรายชื่อร้านค้าทั้งหมด
 export async function getAvailableStores() {
   const supabase = getClientInstance();
   try {
+    // ลองดึงแบบไม่จำกัด is_active ก่อน เพื่อป้องกันกรณีข้อมูลในฐานข้อมูลไม่ได้เซ็ตค่าไว้
     const { data, error } = await supabase
       .from("pg_stores")
-      .select("id, store_code, store_name, area, company_tag")
-      .eq("is_active", true)
+      .select("id, store_code, store_name, area, company_tag, is_active")
       .order("store_name", { ascending: true });
 
     if (error) throw error;
-    return { success: true, data };
+    return { success: true, data: data || [] };
   } catch (error: any) {
     console.error("Fetch available stores error:", error);
     return { success: false, data: [], message: error.message };
@@ -1295,5 +1295,70 @@ export async function adminSaveReportWithImagesAction(payload: any) {
   } catch (error: any) {
     console.error("Admin save report error:", error);
     return { success: false, message: error.message };
+  }
+}
+
+// 14. 📌 ดึงรายชื่อสาขาที่ User ได้รับมอบหมายตามรอบจัดเชียร์ขายใน pg_user_store_schedules
+export async function getAssignedStoresByUserAction(userId: number) {
+  const supabase = getClientInstance();
+  try {
+    const today = new Date().toISOString().split("T")[0];
+
+    // 1. ค้นหารายชื่อ store_code ที่พนักงานได้รับมอบหมายตามรอบการเข้าเชียร์ขายในปัจจุบัน
+    const { data: schedules } = await supabase
+      .from("pg_user_store_schedules")
+      .select("store_code, round_name")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .lte("start_date", today)
+      .gte("end_date", today);
+
+    let assignedCodes = schedules?.map((s) => s.store_code) || [];
+
+    // 2. Query ดึงข้อมูลรายละเอียดสาขาจาก pg_stores
+    let query = supabase
+      .from("pg_stores")
+      .select("id, store_code, store_name, area, company_tag, is_active")
+      .eq("is_active", true);
+
+    if (assignedCodes.length > 0) {
+      query = query.in("store_code", assignedCodes);
+    }
+
+    const { data: stores, error } = await query.order("store_name", {
+      ascending: true,
+    });
+    if (error) throw error;
+
+    return { success: true, data: stores || [] };
+  } catch (error: any) {
+    console.error("getAssignedStoresByUserAction error:", error);
+    return { success: false, data: [], message: error.message };
+  }
+}
+
+// 15. 📦 ดึงรายการสินค้าทั้งหมดจากตาราง products (รองรับทั้งตาราง products และ pg_products)
+export async function getProducts() {
+  const supabase = getClientInstance();
+  try {
+    let { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .order("id", { ascending: true });
+
+    if (error || !data || data.length === 0) {
+      // Fallback ไปตาราง pg_products หากตารางแรกไม่มีข้อมูล
+      const res2 = await supabase
+        .from("pg_products")
+        .select("*")
+        .order("id", { ascending: true });
+      if (res2.error) throw res2.error;
+      data = res2.data;
+    }
+
+    return { success: true, data: data || [] };
+  } catch (error: any) {
+    console.error("Get products error:", error);
+    return { success: false, data: [], message: error.message };
   }
 }

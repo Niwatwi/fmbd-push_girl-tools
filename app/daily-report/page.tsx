@@ -1,7 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-// cspell:ignore Cellox
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
@@ -54,6 +53,81 @@ interface ActivityPhotoState {
   accept: string;
 }
 
+// 📦 รายการสินค้าคีย์ลัดหลักของแบรนด์ (Quick Products)
+const QUICK_PRODUCTS = [
+  {
+    barcode: "8858678423339",
+    label: "มายด์ลักซูรี่ สีเขียว 90",
+    className:
+      "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200",
+  },
+  {
+    barcode: "8858678423681",
+    label: "มายด์ลักซูรี่ สีฟ้า 90",
+    className: "bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200",
+  },
+  {
+    barcode: "8858678422875",
+    label: "มายด์ลักซูรี่ สีส้ม 100",
+    className:
+      "bg-orange-50 hover:bg-orange-100 text-orange-800 border-orange-200",
+  },
+  {
+    barcode: "8858678423407",
+    label: "มายด์โดราเอมอน แพ็ค 5",
+    className: "bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200",
+  },
+  {
+    barcode: "8858678423063",
+    label: "เทนเดอร์ เช็ดหน้า 4+1",
+    className: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
+  },
+  {
+    barcode: "8851020101213",
+    label: "เทนเดอร์ ชำระ 6+2",
+    className: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
+  },
+  {
+    barcode: "8851020101220",
+    label: "เทนเดอร์ ชำระ 24+6",
+    className: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
+  },
+  {
+    barcode: "8858678422769",
+    label: "เทนเดอร์ อเนกประสงค์ 200",
+    className: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
+  },
+  {
+    barcode: "8858678422752",
+    label: "เทนเดอร์ อเนกประสงค์ 3+1",
+    className: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
+  },
+  {
+    barcode: "8858678421304",
+    label: "เทนเดอร์ อเนกประสงค์ 6+2",
+    className: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
+  },
+];
+
+// 🏷️ รายการราคาเปรียบเทียบแบรนด์คู่แข่ง (Competitor Items)
+const COMPETITOR_ITEMS = [
+  { key: "cellox_satin_4", label: "เซลล็อกซ์ ซาติน แพ็ค 4 (บ.)" },
+  { key: "kleenex_silky_4", label: "คลีเน็กซ์ ซิลค์กี้สมูท แพ็ค 4 (บ.)" },
+  { key: "scott_safesoft_4", label: "สก็อตต์เซฟซอฟท์บ๊อกซ์แพ็ค4 (บ.)" },
+  { key: "zilk_cotton_6", label: "ซิลค์ คอตตอน ชำระแพ็ค 6 (บ.)" },
+  { key: "cellox_2ply_6", label: "เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 6 (บ.)" },
+  { key: "scott_extra_6", label: "สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 6 (บ.)" },
+  { key: "zilk_cotton_24", label: "ซิลค์ คอตตอน ชำระแพ็ค 24 (บ.)" },
+  { key: "cellox_2ply_24", label: "เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 24 (บ.)" },
+  { key: "scott_extra_24", label: "สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 24 (บ.)" },
+  { key: "maxmo_hang_200", label: "แม๊กโม่แบบแขวน 200 แผ่น (บ.)" },
+  { key: "maxmo_3", label: "แม๊กซ์โม่อเนกประสงค์ แพ็ค 3 (บ.)" },
+  { key: "scott_3_1", label: "สก็อตต์ อเนกประสงค์ 3+1 (บ.)" },
+  { key: "maxmo_6_2_green", label: "แม๊กซ์โม่ อเนกประสงค์ 6+2 เขียว (บ.)" },
+  { key: "maxmo_6_2_red", label: "แม๊กซ์โม่ อเนกประสงค์ 6+2 แดง (บ.)" },
+  { key: "scott_6_2_red", label: "สก็อตต์ อเนกประสงค์ 6+2 แดง (บ.)" },
+];
+
 export default function DailyReportPage() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -73,7 +147,7 @@ export default function DailyReportPage() {
     null,
   );
 
-  // สถานะโปรโมชัน (ดึงแบบ Dynamic เมื่อมีการเปิดใช้งานแคมเปญ)
+  // สถานะโปรโมชัน
   const [activePromotion, setActivePromotion] =
     useState<PromotionConfig | null>(null);
 
@@ -93,10 +167,10 @@ export default function DailyReportPage() {
   const [giftNourishBefore, setGiftNourishBefore] = useState("0");
   const [giftNourishGiven, setGiftNourishGiven] = useState("");
 
-  // 2. ฟอร์มราคาคู่แข่ง
-  const [priceCompCellox, setPriceCompCellox] = useState("");
-  const [priceCompKleenex, setPriceCompKleenex] = useState("");
-  const [priceCompPaseo, setPriceCompPaseo] = useState("");
+  // 2. ฟอร์มราคาคู่แข่ง (Dynamic State)
+  const [competitorPrices, setCompetitorPrices] = useState<
+    Record<string, string>
+  >({});
 
   const [remark, setRemark] = useState("");
 
@@ -263,13 +337,14 @@ export default function DailyReportPage() {
     return () => stopBarcodeScanner();
   }, []);
 
-  // ดึงข้อมูลโปรโมชันประจำสาขา (หากมีการเซ็ตรายการไว้)
+  // ดึงข้อมูลโปรโมชันประจำสาขา
   useEffect(() => {
     const fetchPromotion = async () => {
       if (attendanceLog?.store_code) {
         const res = await getPromotionByStoreAction(storeCode);
         if (res.success && res.promotions && res.promotions.length > 0) {
           setPromotionData(res.promotions[0]);
+          setActivePromotion(res.promotions[0]);
         }
       }
     };
@@ -481,6 +556,10 @@ export default function DailyReportPage() {
     );
   };
 
+  const handleCompetitorPriceChange = (key: string, value: string) => {
+    setCompetitorPrices((prev) => ({ ...prev, [key]: value }));
+  };
+
   const salesQtyGreen =
     Number(
       productsForm.find((p) => p.barcode === "8858678423339")?.sales_qty,
@@ -552,9 +631,12 @@ export default function DailyReportPage() {
             trafficCount: Number(traffic) || 0,
             approachCount: Number(approach) || 0,
             closedSalesCount: Number(closedSales) || 0,
-            priceCompCellox: Number(priceCompCellox) || 0,
-            priceCompKleenex: Number(priceCompKleenex) || 0,
-            priceCompPaseo: Number(priceCompPaseo) || 0,
+            priceCompCellox:
+              Number(competitorPrices["cellox_satin_4"] || 0) || 0,
+            priceCompKleenex:
+              Number(competitorPrices["kleenex_silky_4"] || 0) || 0,
+            priceCompPaseo:
+              Number(competitorPrices["scott_safesoft_4"] || 0) || 0,
             feedbackStore: feedback,
             competitorPromotion: compPromo,
             remark: remark,
@@ -620,7 +702,6 @@ export default function DailyReportPage() {
                 )
               : 0,
 
-            // ส่งข้อมูลของแถม dynamic ตามรายการโปรโมชันที่มีการเปิดใช้งาน
             giftOrangeBefore: activePromotion
               ? Number(giftOrangeBefore) || 0
               : 0,
@@ -669,7 +750,7 @@ export default function DailyReportPage() {
           <button
             type="button"
             onClick={() => router.push("/")}
-            className="p-1 hover:bg-blue-800 rounded-lg transition"
+            className="p-1 hover:bg-blue-800 rounded-lg transition cursor-pointer"
           >
             <ArrowLeft size={20} />
           </button>
@@ -700,7 +781,7 @@ export default function DailyReportPage() {
             <button
               type="button"
               onClick={stopBarcodeScanner}
-              className="p-2 bg-slate-800 rounded-full text-slate-200 hover:text-white"
+              className="p-2 bg-slate-800 rounded-full text-slate-200 hover:text-white cursor-pointer"
             >
               <X size={18} />
             </button>
@@ -736,7 +817,7 @@ export default function DailyReportPage() {
           </div>
         </div>
 
-        {/* 🏪 การ์ดแสดงเงื่อนไขโปรโมชันประจำสาขา (Dynamic เมื่อมีการตั้งค่าโปรโมชัน) */}
+        {/* 🏪 การ์ดแสดงเงื่อนไขโปรโมชันประจำสาขา */}
         {activePromotion && (
           <div
             className={`p-4 rounded-xl border text-left text-xs ${
@@ -893,86 +974,26 @@ export default function DailyReportPage() {
               </button>
             </div>
 
-            {/* คีย์ลัดผลิตภัณฑ์ Mild Luxury */}
+            {/* คีย์ลัดผลิตภัณฑ์ RVI ครบถ้วน */}
             <div className="text-left pt-0.5">
               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">
-                คีย์ลัดผลิตภัณฑ์ :
+                คีย์ลัดเลือกสินค้าเพิ่มรวดเร็ว :
               </p>
               <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8858678423339")}
-                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> มายด์ลักซูรี่ สีเขียว 90
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8858678423681")}
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> มายด์ลักซูรี่ สีฟ้า 90
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8858678422875")}
-                  className="bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> มายด์ลักซูรี่ สีส้ม 100
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8858678423407")}
-                  className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> มายด์โดราเอมอน แพ็ค 5
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8858678423063")}
-                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> เทนเดอร์ เช็ดหน้า 4+1
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8851020101213")}
-                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> เทนเดอร์ ชำระ 6+2
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8851020101220")}
-                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> เทนเดอร์ ชำระ 24+6
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8858678422769")}
-                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> เทนเดอร์ อเนกประสงค์ 200
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8858678422752")}
-                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> เทนเดอร์ อเนกประสงค์ 3+1
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSearchAndAddProduct("8858678421304")}
-                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer"
-                >
-                  <Plus size={8} /> เทนเดอร์ อเนกประสงค์ 6+2
-                </button>
+                {QUICK_PRODUCTS.map((prod) => (
+                  <button
+                    key={prod.barcode}
+                    type="button"
+                    onClick={() => handleSearchAndAddProduct(prod.barcode)}
+                    className={`border rounded-full px-2.5 py-1 text-[9px] font-black flex items-center gap-1 transition active:scale-95 cursor-pointer ${prod.className}`}
+                  >
+                    <Plus size={8} /> {prod.label}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* รายการสินค้าที่เลือก */}
+            {/* รายการสินค้าที่ถูกเพิ่มเข้าฟอร์ม */}
             {productsForm.map((product) => (
               <div
                 key={product.barcode}
@@ -1003,7 +1024,7 @@ export default function DailyReportPage() {
                         prev.filter((p) => p.barcode !== product.barcode),
                       )
                     }
-                    className="text-red-500 p-1 hover:bg-red-50 rounded-lg"
+                    className="text-red-500 p-1 hover:bg-red-50 rounded-lg cursor-pointer"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -1154,7 +1175,7 @@ export default function DailyReportPage() {
             ))}
           </div>
 
-          {/* Section: บันทึกสต๊อกของแถมแคมเปญ (แสดงผลแบบ Dynamic เมื่อมีการเปิดใช้งานโปรโมชัน) */}
+          {/* Section: บันทึกสต๊อกของแถมแคมเปญ */}
           {activePromotion && (
             <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 shadow-xs space-y-3 text-left">
               <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5 border-b border-amber-200/60 pb-2">
@@ -1193,200 +1214,30 @@ export default function DailyReportPage() {
           <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3 text-left">
             <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2">
               <Tag size={14} className="text-rose-600" /> 3.
-              ราคาเปรียบเทียบแบรนด์คู่แข่ง
+              ราคาเปรียบเทียบแบรนด์คู่แข่ง (รวม 15 รายการ)
             </h4>
+
+            {/* ตารางกรอกราคาคู่แข่งแบบ 3 คอลัมน์ ครบถ้วนทุกรายการ */}
             <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  เซลล็อกซ์ ซาติน แพ็ค 4 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompCellox}
-                  onChange={(e) => setPriceCompCellox(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  คลีเน็กซ์ ซิลค์กี้สมูท แพ็ค 4 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompKleenex}
-                  onChange={(e) => setPriceCompKleenex(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  สก็อตต์เซฟซอฟท์บ๊อกซ์แพ็ค4 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompPaseo}
-                  onChange={(e) => setPriceCompPaseo(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  ซิลค์ คอตตอน ชำระแพ็ค 6 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompCellox}
-                  onChange={(e) => setPriceCompCellox(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 6 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompKleenex}
-                  onChange={(e) => setPriceCompKleenex(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 6 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompPaseo}
-                  onChange={(e) => setPriceCompPaseo(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  ซิลค์ คอตตอน ชำระแพ็ค 24 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompCellox}
-                  onChange={(e) => setPriceCompCellox(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 24 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompKleenex}
-                  onChange={(e) => setPriceCompKleenex(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 24 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompPaseo}
-                  onChange={(e) => setPriceCompPaseo(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  แม๊กโม่แบบแขวน 200 แผ่น (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompCellox}
-                  onChange={(e) => setPriceCompCellox(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  แม๊กซ์โม่อเนกประสงค์ แพ็ค 3 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompKleenex}
-                  onChange={(e) => setPriceCompKleenex(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  สก็อตต์ อเนกประสงค์ 3+1 (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompPaseo}
-                  onChange={(e) => setPriceCompPaseo(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  แม๊กซ์โม่ อเนกประสงค์ 6+2 เขียว (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompCellox}
-                  onChange={(e) => setPriceCompCellox(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  แม๊กซ์โม่ อเนกประสงค์ 6+2 แดง (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompKleenex}
-                  onChange={(e) => setPriceCompKleenex(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                  สก็อตต์ อเนกประสงค์ 6+2 แดง (บ.)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={priceCompPaseo}
-                  onChange={(e) => setPriceCompPaseo(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                />
-              </div>
+              {COMPETITOR_ITEMS.map((item) => (
+                <div key={item.key}>
+                  <label className="text-[9px] font-bold text-slate-600 block mb-1 truncate">
+                    {item.label}
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={competitorPrices[item.key] || ""}
+                    onChange={(e) =>
+                      handleCompetitorPriceChange(item.key, e.target.value)
+                    }
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
+                  />
+                </div>
+              ))}
             </div>
 
-            <div className="space-y-2 pt-1">
+            <div className="space-y-2 pt-2 border-t border-slate-100">
               <div>
                 <label className="text-[10px] font-bold text-slate-600 block mb-1">
                   โปรโมชันคู่แข่งหน้าร้าน

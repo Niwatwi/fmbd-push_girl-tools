@@ -29,6 +29,30 @@ export default function AdminAttendanceExpensePage() {
   const [endDate, setEndDate] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  // 🇹🇭 ฟังก์ชันแปลงเวลา ISO เป็นเวลาประเทศไทย (Asia/Bangkok) สำหรับแสดงในตาราง
+  const formatThaiDateTime = (dateStr: string | null | undefined) => {
+    if (!dateStr || dateStr === "ยังไม่เลิกงาน" || dateStr === "-")
+      return dateStr || "-";
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Bangkok",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      })
+        .format(d)
+        .replace(",", "");
+    } catch {
+      return dateStr;
+    }
+  };
+
   const loadAttendanceData = async () => {
     setLoading(true);
     const res = await getAdminAttendanceExpenseReportAction({
@@ -66,22 +90,32 @@ export default function AdminAttendanceExpensePage() {
 
   // ✏️ ฟังก์ชันเปิด Modal แก้ไขข้อมูล Check-In / Check-Out
   const handleEditLog = (log: any) => {
+    // ฟังก์ชันแปลงเวลาจาก DB ให้เป็นรูปแบบ YYYY-MM-DDTHH:mm สำหรับ <input type="datetime-local"> ตามเวลาไทย
     const formatForInput = (dateStr: string) => {
       if (!dateStr || dateStr === "ยังไม่เลิกงาน" || dateStr === "-") return "";
       try {
         const d = new Date(dateStr);
         if (isNaN(d.getTime())) return "";
-        const tzOffset = 7 * 60 * 60 * 1000;
-        const localDate = new Date(d.getTime() + tzOffset);
-        return localDate.toISOString().slice(0, 16);
+        const thaiDateStr = d.toLocaleString("en-US", {
+          timeZone: "Asia/Bangkok",
+        });
+        const thaiDate = new Date(thaiDateStr);
+        const year = thaiDate.getFullYear();
+        const month = String(thaiDate.getMonth() + 1).padStart(2, "0");
+        const day = String(thaiDate.getDate()).padStart(2, "0");
+        const hours = String(thaiDate.getHours()).padStart(2, "0");
+        const minutes = String(thaiDate.getMinutes()).padStart(2, "0");
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
       } catch {
         return "";
       }
     };
 
     const initialIn = formatForInput(
-      log.checkInDateRaw ? `${log.checkInDateRaw}T10:00` : "",
+      log.checkInAt ||
+        (log.checkInDateRaw ? `${log.checkInDateRaw}T10:00` : ""),
     );
+    const initialOut = formatForInput(log.checkOutAt);
 
     Swal.fire({
       title: `✏️ แก้ไขบันทึกเวลา: ${log.displayName}`,
@@ -97,7 +131,7 @@ export default function AdminAttendanceExpensePage() {
           </div>
           <div class="mt-2">
             <label class="font-bold block mb-1">เวลา Check-OUT (ออกงาน):</label>
-            <input id="swal-check-out" type="datetime-local" class="swal2-input !mt-0 !w-full !text-xs" placeholder="ปล่อยว่างหากยังไม่เลิกงาน" />
+            <input id="swal-check-out" type="datetime-local" class="swal2-input !mt-0 !w-full !text-xs" value="${initialOut}" placeholder="ปล่อยว่างหากยังไม่เลิกงาน" />
           </div>
         </div>
       `,
@@ -122,11 +156,17 @@ export default function AdminAttendanceExpensePage() {
           return false;
         }
 
+        // แปลงเวลาจาก Input ในเวลาไทย (+07:00) กลับเป็น ISO String
+        const parseThaiInputToISO = (val: string) => {
+          if (!val) return null;
+          return new Date(`${val}:00+07:00`).toISOString();
+        };
+
         return {
           id: log.id,
           storeName: storeName.trim(),
-          checkInAt: new Date(checkInVal).toISOString(),
-          checkOutAt: checkOutVal ? new Date(checkOutVal).toISOString() : null,
+          checkInAt: parseThaiInputToISO(checkInVal),
+          checkOutAt: parseThaiInputToISO(checkOutVal),
         };
       },
     }).then(async (result) => {
@@ -431,11 +471,13 @@ export default function AdminAttendanceExpensePage() {
                           {log.storeCode}
                         </div>
                       </td>
+                      {/* 🇹🇭 แสดงเวลา CHECK-IN ในเวลาประเทศไทย */}
                       <td className="p-3 font-mono text-emerald-600 font-bold">
-                        {log.checkInAt}
+                        {formatThaiDateTime(log.checkInAt)}
                       </td>
+                      {/* 🇹🇭 แสดงเวลา CHECK-OUT ในเวลาประเทศไทย */}
                       <td className="p-3 font-mono text-blue-600 font-bold">
-                        {log.checkOutAt}
+                        {formatThaiDateTime(log.checkOutAt)}
                       </td>
                       <td className="p-3 text-center font-mono font-bold">
                         {typeof log.workedHours === "number"

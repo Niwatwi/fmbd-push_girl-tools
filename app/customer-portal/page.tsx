@@ -25,6 +25,7 @@ import {
   Save,
   Image as ImageIcon,
   Upload,
+  Tag,
 } from "lucide-react";
 import {
   BarChart,
@@ -53,7 +54,180 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 📸 Helper สำหรับย่อขนาดรูปภาพ (Compress) และแปลงเป็น Base64
+// 📦 รายการสินค้าหลัก 10 รายการ (พร้อมโครงสร้างสีสำหรับกราฟ)
+const REPORT_PRODUCTS = [
+  {
+    barcode: "8858678423339",
+    label: "มายด์ลักซูรี่ สีเขียว 90",
+    shortLabel: "เขียว 90",
+    bgClass: "bg-green-100 min-w-[180px] max-w-[300px]",
+    color: "#10b981",
+    gradStart: "#34d399",
+    gradEnd: "#059669",
+  },
+  {
+    barcode: "8858678423681",
+    label: "มายด์ลักซูรี่ สีฟ้า 90",
+    shortLabel: "ฟ้า 90",
+    bgClass: "bg-blue-200 min-w-[180px] max-w-[300px]",
+    color: "#3b82f6",
+    gradStart: "#60a5fa",
+    gradEnd: "#1d4ed8",
+  },
+  {
+    barcode: "8858678422875",
+    label: "มายด์ลักซูรี่ สีส้ม 100",
+    shortLabel: "ส้ม 100",
+    bgClass: "bg-orange-100 min-w-[180px] max-w-[300px]",
+    color: "#f97316",
+    gradStart: "#fb923c",
+    gradEnd: "#c2410c",
+  },
+  {
+    barcode: "8858678423407",
+    label: "มายด์โดราเอม่อน แพ็ค 5",
+    shortLabel: "โดราเอม่อน 5",
+    bgClass: "bg-blue-100 min-w-[180px] max-w-[300px]",
+    color: "#06b6d4",
+    gradStart: "#22d3ee",
+    gradEnd: "#0891b2",
+  },
+  {
+    barcode: "8858678423063",
+    label: "เทนเดอร์ เช็ดหน้า แพ็ค 4+1",
+    shortLabel: "เช็ดหน้า 4+1",
+    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
+    color: "#ef4444",
+    gradStart: "#f87171",
+    gradEnd: "#dc2626",
+  },
+  {
+    barcode: "8851020101213",
+    label: "เทนเดอร์ ชำระ 6+2",
+    shortLabel: "ชำระ 6+2",
+    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
+    color: "#ec4899",
+    gradStart: "#f472b6",
+    gradEnd: "#db2777",
+  },
+  {
+    barcode: "8851020101220",
+    label: "เทนเดอร์ ชำระ 24+6",
+    shortLabel: "ชำระ 24+6",
+    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
+    color: "#a855f7",
+    gradStart: "#c084fc",
+    gradEnd: "#7e22ce",
+  },
+  {
+    barcode: "8858678422769",
+    label: "เทนเดอร์ อเนกประสงค์แบบแขวน 200",
+    shortLabel: "แขวน 200",
+    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
+    color: "#6366f1",
+    gradStart: "#818cf8",
+    gradEnd: "#4338ca",
+  },
+  {
+    barcode: "8858678422752",
+    label: "เทนเดอร์ อเนกประสงค์ 3+1",
+    shortLabel: "อเนกประสงค์ 3+1",
+    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
+    color: "#eab308",
+    gradStart: "#fde047",
+    gradEnd: "#ca8a04",
+  },
+  {
+    barcode: "8858678421304",
+    label: "เทนเดอร์ อเนกประสงค์ 6+2",
+    shortLabel: "อเนกประสงค์ 6+2",
+    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
+    color: "#14b8a6",
+    gradStart: "#2dd4bf",
+    gradEnd: "#0f766e",
+  },
+];
+
+// 🏷️ รายการสินค้าคู่แข่ง 15 รายการ
+const COMPETITOR_ITEMS = [
+  {
+    key: "cellox_satin_4",
+    label: "เซลล็อกซ์ ซาติน แพ็ค 4 (บ.)",
+    bgClass: "bg-blue-200",
+  },
+  {
+    key: "kleenex_silky_4",
+    label: "คลีเน็กซ์ ซิลค์กี้สมุท แพ็ค 4 (บ.)",
+    bgClass: "bg-green-100/60",
+  },
+  {
+    key: "scott_safesoft_4",
+    label: "สก็อดด์เซฟซอฟท์บ๊อกซ์ แพ็ค 4 (บ.)",
+    bgClass: "bg-red-100/60",
+  },
+  {
+    key: "zilk_cotton_6",
+    label: "ซิลค์ คอดตอน ชำระแพ็ค 6 (บ.)",
+    bgClass: "bg-green-800/60 text-white",
+  },
+  {
+    key: "cellox_2ply_6",
+    label: "เชลล็อกซ์ 2 ชั้น ชำระแพ็ค 6 (บ.)",
+    bgClass: "bg-blue-400/40",
+  },
+  {
+    key: "scott_extra_6",
+    label: "สก็อตต์ เอ็กซ์ตร้า ชำระ แพ็ค 6 (บ.)",
+    bgClass: "bg-green-200/40",
+  },
+  {
+    key: "zilk_cotton_24",
+    label: "ซิลค์ คอดตอน ชำระแพ็ค 24 (บ.)",
+    bgClass: "bg-green-800/60 text-white",
+  },
+  {
+    key: "cellox_2ply_24",
+    label: "เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 24 (บ.)",
+    bgClass: "bg-blue-400/40",
+  },
+  {
+    key: "scott_extra_24",
+    label: "สก็อตต์ เอ็กซ์ตร้า ชำระ แพ็ค 24 (บ.)",
+    bgClass: "bg-blue-200",
+  },
+  {
+    key: "maxmo_hang_200",
+    label: "แม็กซ์โม่ แบบแขวน 200 (บ.)",
+    bgClass: "bg-green-200/80",
+  },
+  {
+    key: "maxmo_3",
+    label: "แม็กซ์โม่ อเนกประสงค์ แพ็ค 3 (บ.)",
+    bgClass: "bg-green-800/40 text-white",
+  },
+  {
+    key: "scott_3_1",
+    label: "สก็อตต์ อเนกประสงค์ แพ็ค 3+1 (บ.)",
+    bgClass: "bg-red-600 text-white",
+  },
+  {
+    key: "maxmo_6_2_green",
+    label: "แม็กซ์โม่ อเนกประสงค์ แพ็ค 6+2 เขียว (บ.)",
+    bgClass: "bg-green-800 text-white",
+  },
+  {
+    key: "maxmo_6_2_red",
+    label: "แม็กซ์โม่ อเนกประสงค์ แพ็ค 6+2 แดง (บ.)",
+    bgClass: "bg-red-600 text-white",
+  },
+  {
+    key: "scott_6_2_red",
+    label: "สก็อตต์ อเนกประสงค์ แพ็ค 6+2 แดง (บ.)",
+    bgClass: "bg-red-600 text-white",
+  },
+];
+
+// 📸 Helper ย่อขนาดรูปภาพ
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -85,7 +259,73 @@ const compressImage = (file: File): Promise<string> => {
   });
 };
 
-// 🔍 Helper เช็คชื่อ Account จากชื่อสาขาหรือรหัสสาขา
+// 📸 Helper สำหรับแสดง Pop-up ดูรูปภาพขนาดใหญ่ด้วย Swal
+const handleViewImage = (url: string, label: string) => {
+  Swal.fire({
+    title: label || "รูปภาพกิจกรรม PG หน้าร้าน",
+    imageUrl: url,
+    imageAlt: label || "Activity Photo",
+    imageWidth: 600,
+    imageHeight: "auto",
+    confirmButtonColor: "#1e3a8a",
+    confirmButtonText: "ปิดหน้าต่าง",
+    customClass: {
+      popup: "rounded-2xl",
+      image: "rounded-xl shadow-md",
+    },
+  });
+};
+
+// 📸 กำหนดโครงสร้างคอลัมน์รูปภาพแบบแยก 1 รูปต่อ 1 คอลัมน์
+const PHOTO_COLUMNS_CONFIG = [
+  { key: "staffHolding", label: "พนักงานถือสินค้า", max: 1 },
+  { key: "customerBasket", label: "ถ่ายคู่กับลูกค้า/ตะกร้า", max: 2 },
+  { key: "atmosphere", label: "บรรยากาศหน้าร้าน", max: 2 },
+  { key: "product", label: "รูปสินค้า", max: 4 },
+  { key: "shelf", label: "รูปเชลฟ์ชั้นวาง", max: 4 },
+  { key: "stockScanner", label: "รูปสแกนสต๊อก", max: 2 },
+];
+
+// คำนวณจำนวนคอลัมน์รูปภาพรวมทั้งหมด (1 + 2 + 2 + 4 + 4 + 2 = 15 คอลัมน์)
+const TOTAL_PHOTO_COLS = PHOTO_COLUMNS_CONFIG.reduce(
+  (sum, item) => sum + item.max,
+  0,
+);
+
+// 📸 Helper แสดงผลรูปภาพแบบขยายขนาดใหญ่ พร้อมระบบ Hover Zoom
+const renderPhotoCell = (photos: any[], defaultLabel: string) => {
+  if (!photos || photos.length === 0) {
+    return <span className="text-slate-300 font-mono text-[10px]">-</span>;
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 p-1 justify-center min-w-[110px]">
+      {photos.map((photo: any, pIdx: number) => (
+        <div
+          key={pIdx}
+          onClick={() =>
+            handleViewImage(
+              photo.url,
+              photo.label || `${defaultLabel} ที่ ${pIdx + 1}`,
+            )
+          }
+          className="relative group cursor-pointer"
+          title={photo.label || "คลิกเพื่อเปิดดูรูปขนาดเต็ม"}
+        >
+          <img
+            src={photo.url}
+            alt={photo.label || defaultLabel}
+            className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-xl border-2 border-slate-200 group-hover:border-blue-500 group-hover:scale-150 group-hover:z-30 transition-all duration-200 shadow-sm group-hover:shadow-xl bg-slate-100"
+          />
+          <span className="absolute -top-1.5 -right-1.5 bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md z-10 border border-white group-hover:scale-110 transition">
+            {pIdx + 1}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// 🔍 Helper เช็คชื่อ Account
 function getAccountName(storeName: string = "", storeCode: string = "") {
   const name = (storeName || "").toLowerCase().replace(/\s+/g, "");
   const code = (storeCode || "").toLowerCase().replace(/\s+/g, "");
@@ -101,7 +341,112 @@ function getAccountName(storeName: string = "", storeCode: string = "") {
   return "อื่นๆ";
 }
 
-// 📌 Helper สำหรับแสดงผล สต๊อกหลังเลิก
+// 📦 Helper ดึงข้อมูลสินค้าแต่ละบาร์โค้ด
+function getProductInfo(row: any, barcode: string, isBigC: boolean = false) {
+  const prods = row.products || row.pg_daily_report_products || row.items;
+  if (Array.isArray(prods) && prods.length > 0) {
+    const found = prods.find((p: any) => p.barcode === barcode);
+    if (found) {
+      const sb = Number(found.stock_before ?? found.stockBefore ?? 0);
+      const sq = Number(found.sales_qty ?? found.salesQty ?? 0);
+      let sa = found.stock_after ?? found.stockAfter;
+      if (sa === undefined || sa === null || sa === "") {
+        sa = Math.max(0, sb - sq);
+      } else {
+        sa = Number(sa);
+      }
+      const pr = Number(found.price_our ?? found.priceOur ?? 0);
+      return { stockBefore: sb, salesQty: sq, stockAfter: sa, priceOur: pr };
+    }
+  }
+
+  if (barcode === "8858678423339") {
+    const sb = Number(row.stockBeforeGreen ?? row.stock_before_green90 ?? 0);
+    const sq = Number(row.salesGreen ?? row.sales_qty_green90 ?? 0);
+    const sa =
+      row.stockAfterGreen ??
+      row.stock_after_green90 ??
+      Math.max(0, sb - sq * (isBigC ? 2 : 1));
+    const pr = Number(row.priceGreen ?? row.price_our_green90 ?? 150);
+    return { stockBefore: sb, salesQty: sq, stockAfter: sa, priceOur: pr };
+  }
+  if (barcode === "8858678423681") {
+    const sb = Number(row.stockBeforeBlue ?? row.stock_before_blue90 ?? 0);
+    const sq = Number(row.salesBlue ?? row.sales_qty_blue90 ?? 0);
+    const sa =
+      row.stockAfterBlue ??
+      row.stock_after_blue90 ??
+      Math.max(0, sb - sq * (isBigC ? 2 : 1));
+    const pr = Number(row.priceBlue ?? row.price_our_blue90 ?? 142);
+    return { stockBefore: sb, salesQty: sq, stockAfter: sa, priceOur: pr };
+  }
+  if (barcode === "8858678422875") {
+    if (isBigC)
+      return {
+        stockBefore: "-",
+        salesQty: "-",
+        stockAfter: "-",
+        priceOur: "-",
+      };
+    const sb = Number(row.stockBeforeOrange ?? row.stock_before_orange100 ?? 0);
+    const sq = Number(row.salesOrange ?? row.sales_qty_orange100 ?? 0);
+    const sa =
+      row.stockAfterOrange ??
+      row.stock_after_orange100 ??
+      Math.max(0, sb - sq * 2);
+    const pr = Number(row.priceOrange ?? row.price_our_orange100 ?? 100);
+    return { stockBefore: sb, salesQty: sq, stockAfter: sa, priceOur: pr };
+  }
+
+  return { stockBefore: "-", salesQty: "-", stockAfter: "-", priceOur: "-" };
+}
+
+// 💰 Helper คำนวณยอดขายรวมทุก SKU ต่อแถว (ชิ้น/แพ็ค)
+function getRowTotalSalesPcs(row: any): number {
+  const accountName = getAccountName(row.storeName, row.storeCode);
+  const isBigC = accountName === "Big C";
+  let totalPcs = 0;
+
+  REPORT_PRODUCTS.forEach((prod) => {
+    const info = getProductInfo(row, prod.barcode, isBigC);
+    if (typeof info.salesQty === "number" && !isNaN(info.salesQty)) {
+      totalPcs += info.salesQty;
+    }
+  });
+
+  return totalPcs;
+}
+
+// 💵 Helper คำนวณ Commission รายวันจากยอดขายรวมทุก SKU
+function calculateDailyCommission(totalSalesPcs: number): number {
+  if (totalSalesPcs >= 40) {
+    return 200 + Math.floor((totalSalesPcs - 40) / 10) * 100;
+  }
+  if (totalSalesPcs >= 30) {
+    return 100;
+  }
+  return 0;
+}
+
+// 🏷️ Helper ดึงราคาคู่แข่ง
+function getCompetitorVal(row: any, key: string) {
+  const compObj = row.competitorPrices || row.compPrices;
+  if (
+    compObj &&
+    typeof compObj === "object" &&
+    compObj[key] !== undefined &&
+    compObj[key] !== ""
+  ) {
+    return Number(compObj[key]) || "-";
+  }
+  if (key === "cellox_satin_4" && row.compCellox) return Number(row.compCellox);
+  if (key === "kleenex_silky_4" && row.compKleenex)
+    return Number(row.compKleenex);
+  if (key === "scott_safesoft_4" && row.compPaseo) return Number(row.compPaseo);
+  return "-";
+}
+
+// 📌 Helper แสดงผลสต๊อก
 const renderStockCell = (stockValue: number | string | null | undefined) => {
   if (
     stockValue === null ||
@@ -134,24 +479,27 @@ const renderStockCell = (stockValue: number | string | null | undefined) => {
 const CustomSalesTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-slate-900/95 text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs z-50 backdrop-blur-md">
+      <div className="bg-slate-900/95 text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs z-50 backdrop-blur-md max-h-60 overflow-y-auto">
         <p className="font-black text-blue-400 mb-1 border-b border-slate-700 pb-1">
           {label}
         </p>
-        {payload.map((entry: any, index: number) => (
-          <div
-            key={`item-${index}`}
-            className="flex justify-between gap-4 py-0.5"
-          >
-            <span
-              style={{ color: entry.color || entry.fill }}
-              className="font-bold"
+        {payload.map((entry: any, index: number) => {
+          if (Number(entry.value) === 0) return null;
+          return (
+            <div
+              key={`item-${index}`}
+              className="flex justify-between gap-4 py-0.5"
             >
-              {entry.name}:
-            </span>
-            <span className="font-mono font-black">{entry.value} ห่อ</span>
-          </div>
-        ))}
+              <span
+                style={{ color: entry.color || entry.fill }}
+                className="font-bold"
+              >
+                {entry.name}:
+              </span>
+              <span className="font-mono font-black">{entry.value} ห่อ</span>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -210,30 +558,24 @@ const CustomPieTooltip = ({ active, payload }: any) => {
 export default function CustomerReportPortal() {
   const [reportData, setReportData] = useState<any[]>([]);
   const [attendanceWages, setAttendanceWages] = useState<any[]>([]);
+  const [promotions, setPromotions] = useState<any[]>([]);
   const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ⏰ Real-time State
   const [currentTime, setCurrentTime] = useState<string>("");
-
-  const [adminSalaryTotal, setAdminSalaryTotal] = useState({
-    baseWage: 0,
-    commission: 0,
-    netTotal: 0,
-  });
 
   // Filter States
   const [selectedAccount, setSelectedAccount] = useState<string>("ALL");
   const [selectedStore, setSelectedStore] = useState<string>("ALL");
   const [selectedUser, setSelectedUser] = useState<string>("ALL");
+  const [selectedPromotion, setSelectedPromotion] = useState<string>("ALL");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
-  // Modal State สำหรับแก้ไข/คีย์ย้อนหลัง
+  // Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [savingAdmin, setSavingAdmin] = useState(false);
 
-  // State สำหรับรูปภาพย้อนหลังใน Modal
   const [photoFiles, setPhotoFiles] = useState<{
     staffHolding: string[];
     customerBasket: string[];
@@ -255,6 +597,7 @@ export default function CustomerReportPortal() {
     reportDate: new Date().toISOString().split("T")[0],
     userId: "",
     storeCode: "",
+    promotionId: "",
     traffic: 0,
     approach: 0,
     closedSales: 0,
@@ -270,13 +613,10 @@ export default function CustomerReportPortal() {
     stockBeforeOrange: 0,
     salesOrange: 0,
     stockAfterOrange: 0,
-    giftNourishBefore: 0,
-    giftNourishGiven: 0,
-    giftOrangeBefore: 0,
-    giftOrangeGiven: 0,
     compCellox: 0,
     compKleenex: 0,
     compPaseo: 0,
+    competitorPrices: {},
     feedback: "",
     competitorPromo: "",
     remark: "",
@@ -303,14 +643,30 @@ export default function CustomerReportPortal() {
     return () => clearInterval(timer);
   }, []);
 
-  // 1. เพิ่ม State เก็บ Raw Data จาก salary summary
   const [salarySummaryData, setSalarySummaryData] = useState<any[]>([]);
 
-  // 2. ปรับฟังก์ชัน loadPortalData
+  // 🏷️ ดึงรอบโปรโมชั่นจาก Supabase โดยตรง
+  const fetchPromotionsData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("promotions")
+        .select("*")
+        .order("start_date", { ascending: false });
+
+      if (!error && data) {
+        return { success: true, data };
+      }
+    } catch (e) {
+      console.warn("Unable to fetch promotions:", e);
+    }
+    return { success: false, data: [] };
+  };
+
   const loadPortalData = async () => {
     setLoading(true);
     const res = await getCustomerFullActivityReport();
     const salaryRes = await getAdminSalarySummaryReportAction();
+    const promoRes = await fetchPromotionsData();
 
     if (res.success) {
       setReportData(res.data || []);
@@ -319,8 +675,11 @@ export default function CustomerReportPortal() {
     }
 
     if (salaryRes.success) {
-      // เก็บตัว Array ไว้ใช้กรองตาม Filter
       setSalarySummaryData(salaryRes.data || []);
+    }
+
+    if (promoRes.success) {
+      setPromotions(promoRes.data || []);
     }
 
     setLoading(false);
@@ -330,7 +689,7 @@ export default function CustomerReportPortal() {
     loadPortalData();
   }, []);
 
-  // Filter Logic
+  // 🔍 กรองข้อมูลตาม Account, สาขา, พนักงาน, รอบโปรโมชั่น และวันที่
   useEffect(() => {
     let result = [...reportData];
 
@@ -354,6 +713,20 @@ export default function CustomerReportPortal() {
       );
     }
 
+    // 🏷️ กรองตามรอบโปรโมชั่น
+    if (selectedPromotion !== "ALL") {
+      const promoObj = promotions.find(
+        (p) => String(p.id) === String(selectedPromotion),
+      );
+      if (promoObj && promoObj.start_date && promoObj.end_date) {
+        result = result.filter(
+          (item) =>
+            item.reportDate >= promoObj.start_date &&
+            item.reportDate <= promoObj.end_date,
+        );
+      }
+    }
+
     if (startDate) {
       result = result.filter((item) => item.reportDate >= startDate);
     }
@@ -367,54 +740,11 @@ export default function CustomerReportPortal() {
     selectedAccount,
     selectedStore,
     selectedUser,
+    selectedPromotion,
     startDate,
     endDate,
     reportData,
-  ]);
-
-  const filteredAttendanceWages = useMemo(() => {
-    let result = [...attendanceWages];
-
-    if (selectedUser !== "ALL") {
-      result = result.filter(
-        (item) => String(item.userId).trim() === String(selectedUser).trim(),
-      );
-    }
-
-    if (selectedStore !== "ALL") {
-      result = result.filter(
-        (item) =>
-          String(item.storeCode).trim() === String(selectedStore).trim(),
-      );
-    }
-
-    if (selectedAccount !== "ALL") {
-      result = result.filter((item) => {
-        const storeObj = reportData.find((r) => r.storeCode === item.storeCode);
-        const acc = storeObj
-          ? getAccountName(storeObj.storeName, storeObj.storeCode)
-          : getAccountName("", item.storeCode);
-        return acc === selectedAccount;
-      });
-    }
-
-    if (startDate) {
-      result = result.filter((item) => item.date >= startDate);
-    }
-
-    if (endDate) {
-      result = result.filter((item) => item.date <= endDate);
-    }
-
-    return result;
-  }, [
-    attendanceWages,
-    selectedAccount,
-    selectedStore,
-    selectedUser,
-    startDate,
-    endDate,
-    reportData,
+    promotions,
   ]);
 
   const accountOptions = useMemo(() => {
@@ -441,6 +771,7 @@ export default function CustomerReportPortal() {
     );
   }, [reportData]);
 
+  // 📊 ประมวลผลข้อมูลสำหรับ กราฟที่ 1 (ยอดขายครบทุก 10 SKU) และ กราฟที่ 2 (Funnel)
   const chart1And2Data = useMemo(() => {
     if (!filteredData || filteredData.length === 0) return [];
 
@@ -448,48 +779,65 @@ export default function CustomerReportPortal() {
       const map = new Map<string, any>();
       filteredData.forEach((row) => {
         const acc = getAccountName(row.storeName, row.storeCode);
+        const isBigC = acc === "Big C";
+
         if (!map.has(acc)) {
-          map.set(acc, {
+          const initObj: any = {
             displayName: acc,
-            salesGreen: 0,
-            salesBlue: 0,
-            salesOrange: 0,
             traffic: 0,
             approach: 0,
             closedSales: 0,
+          };
+          REPORT_PRODUCTS.forEach((p) => {
+            initObj[`sales_${p.barcode}`] = 0;
           });
+          map.set(acc, initObj);
         }
+
         const item = map.get(acc);
-        item.salesGreen += Number(row.salesGreen || 0);
-        item.salesBlue += Number(row.salesBlue || 0);
-        item.salesOrange += Number(row.salesOrange || 0);
         item.traffic += Number(row.traffic || 0);
         item.approach += Number(row.approach || 0);
         item.closedSales += Number(row.closedSales || 0);
+
+        REPORT_PRODUCTS.forEach((prod) => {
+          const info = getProductInfo(row, prod.barcode, isBigC);
+          if (typeof info.salesQty === "number" && !isNaN(info.salesQty)) {
+            item[`sales_${prod.barcode}`] += info.salesQty;
+          }
+        });
       });
       return Array.from(map.values());
     } else {
       const map = new Map<string, any>();
       filteredData.forEach((row) => {
         const dateKey = row.reportDate || "ไม่ระบุวัน";
+        const accountName = getAccountName(row.storeName, row.storeCode);
+        const isBigC = accountName === "Big C";
+
         if (!map.has(dateKey)) {
-          map.set(dateKey, {
+          const initObj: any = {
             displayName: dateKey,
-            salesGreen: 0,
-            salesBlue: 0,
-            salesOrange: 0,
             traffic: 0,
             approach: 0,
             closedSales: 0,
+          };
+          REPORT_PRODUCTS.forEach((p) => {
+            initObj[`sales_${p.barcode}`] = 0;
           });
+          map.set(dateKey, initObj);
         }
+
         const item = map.get(dateKey);
-        item.salesGreen += Number(row.salesGreen || 0);
-        item.salesBlue += Number(row.salesBlue || 0);
-        item.salesOrange += Number(row.salesOrange || 0);
         item.traffic += Number(row.traffic || 0);
         item.approach += Number(row.approach || 0);
         item.closedSales += Number(row.closedSales || 0);
+
+        REPORT_PRODUCTS.forEach((prod) => {
+          const info = getProductInfo(row, prod.barcode, isBigC);
+          if (typeof info.salesQty === "number" && !isNaN(info.salesQty)) {
+            item[`sales_${prod.barcode}`] += info.salesQty;
+          }
+        });
       });
       return Array.from(map.values()).sort((a, b) =>
         a.displayName.localeCompare(b.displayName),
@@ -497,6 +845,7 @@ export default function CustomerReportPortal() {
     }
   }, [filteredData, selectedStore]);
 
+  // 📊 ประมวลผลข้อมูลสำหรับ กราฟที่ 3 (เปรียบเทียบราคาเฉลี่ย สินค้าเรา 10 SKU vs คู่แข่ง 15 รายการ)
   const chart3Data = useMemo(() => {
     if (!filteredData || filteredData.length === 0)
       return { latestDate: "-", slices: [] };
@@ -509,37 +858,65 @@ export default function CustomerReportPortal() {
     if (latestRows.length === 0) return { latestDate: "-", slices: [] };
 
     const avg = (arr: number[]) => {
-      const valid = arr.filter((v) => v > 0);
+      const valid = arr.filter(
+        (v) => typeof v === "number" && !isNaN(v) && v > 0,
+      );
       return valid.length > 0
         ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length)
         : 0;
     };
 
-    const priceGreenAvg = avg(latestRows.map((r) => Number(r.priceGreen || 0)));
-    const priceBlueAvg = avg(latestRows.map((r) => Number(r.priceBlue || 0)));
-    const priceOrangeAvg = avg(
-      latestRows.map((r) => Number(r.priceOrange || 0)),
-    );
-    const celloxAvg = avg(latestRows.map((r) => Number(r.compCellox || 0)));
-    const kleenexAvg = avg(latestRows.map((r) => Number(r.compKleenex || 0)));
-    const paseoAvg = avg(latestRows.map((r) => Number(r.compPaseo || 0)));
+    const slices: any[] = [];
 
-    const slices = [
-      {
-        name: "เขียว 90 (เรา)",
-        value: priceGreenAvg,
-        fill: "url(#c3-3dGreen)",
-      },
-      { name: "ฟ้า 90 (เรา)", value: priceBlueAvg, fill: "url(#c3-3dBlue)" },
-      {
-        name: "ส้ม 100 (เรา)",
-        value: priceOrangeAvg,
-        fill: "url(#c3-3dOrange)",
-      },
-      { name: "Cellox", value: celloxAvg, fill: "url(#c3-3dCellox)" },
-      { name: "Kleenex", value: kleenexAvg, fill: "url(#c3-3dKleenex)" },
-      { name: "Paseo", value: paseoAvg, fill: "url(#c3-3dPaseo)" },
-    ].filter((s) => s.value > 0);
+    // 1. ดึงราคาเฉลี่ยสินค้าเราครบทั้ง 10 SKU
+    REPORT_PRODUCTS.forEach((prod) => {
+      const prices = latestRows.map((r) => {
+        const acc = getAccountName(r.storeName, r.storeCode);
+        const info = getProductInfo(r, prod.barcode, acc === "Big C");
+        return typeof info.priceOur === "number" ? info.priceOur : 0;
+      });
+      const avgVal = avg(prices);
+      if (avgVal > 0) {
+        slices.push({
+          name: `${prod.shortLabel} (เรา)`,
+          value: avgVal,
+          fill: prod.color,
+        });
+      }
+    });
+
+    // 2. ดึงราคาเฉลี่ยสินค้าคู่แข่งทั้ง 15 รายการ
+    const compColors = [
+      "#e11d48",
+      "#be123c",
+      "#9f1239",
+      "#881337",
+      "#b91c1c",
+      "#c2410c",
+      "#d97706",
+      "#b45309",
+      "#78350f",
+      "#4d7c0f",
+      "#15803d",
+      "#047857",
+      "#0f766e",
+      "#1d4ed8",
+      "#6b21a8",
+    ];
+
+    COMPETITOR_ITEMS.forEach((comp, idx) => {
+      const compPrices = latestRows.map(
+        (r) => Number(getCompetitorVal(r, comp.key)) || 0,
+      );
+      const compAvg = avg(compPrices);
+      if (compAvg > 0) {
+        slices.push({
+          name: comp.label.replace(" (บ.)", ""),
+          value: compAvg,
+          fill: compColors[idx % compColors.length],
+        });
+      }
+    });
 
     return { latestDate: maxDate, slices };
   }, [filteredData]);
@@ -643,166 +1020,6 @@ export default function CustomerReportPortal() {
     );
   };
 
-  const exportToExcel = () => {
-    if (!filteredData || filteredData.length === 0) return;
-
-    const headers = [
-      "No.",
-      "Account",
-      "รหัสสาขา",
-      "ชื่อสาขา",
-      "รหัสพนักงาน",
-      "ชื่อพนักงาน",
-      "วันที่",
-      "Target (แพ็ค)",
-      "Traffic",
-      "Approach",
-      "Closed Sales",
-      "Closing Rate (%)",
-      "Stock ก่อนเริ่ม (เขียว 90)",
-      "Stock ก่อนเริ่ม (ฟ้า 90)",
-      "Stock ก่อนเริ่ม (ส้ม 100)",
-      "ยอดขาย (เขียว 90)",
-      "ยอดขาย (ฟ้า 90)",
-      "ยอดขาย (ส้ม 100)",
-      "ยอดขายรวม (แพ็ค)",
-      "Stock หลังเลิก (เขียว 90)",
-      "Stock หลังเลิก (ฟ้า 90)",
-      "Stock หลังเลิก (ส้ม 100)",
-      "ของแถมก่อนเริ่ม (เขียว 40)",
-      "ของแถมก่อนเริ่ม (ส้ม 100)",
-      "จำนวนแถม (เขียว 40)",
-      "จำนวนแถม (ส้ม 100)",
-      "ของแถมคงเหลือ (เขียว 40)",
-      "ของแถมคงเหลือ (ส้ม 100)",
-      "ราคาเขียว 90 (บาท)",
-      "ราคาฟ้า 90 (บาท)",
-      "ราคาส้ม 100 (บาท)",
-      "ราคา Cellox (บาท)",
-      "ราคา Kleenex (บาท)",
-      "ราคา Paseo (บาท)",
-      "Feedback หน้าร้าน",
-      "โปรโมชันคู่แข่ง",
-      "หมายเหตุ",
-      "พนักงานถือสินค้า",
-      "ถ่ายคู่กับลูกค้า/ตะกร้า",
-      "บรรยากาศหน้าร้าน",
-      "รูปสินค้า",
-      "รูปเชลฟ์ชั้นวาง",
-      "รูปสแกนสต๊อก",
-    ];
-
-    const csvRows = filteredData.map((row, idx) => {
-      const accountName = getAccountName(row.storeName, row.storeCode);
-      const isBigC = accountName === "Big C";
-
-      const stockAfterGreen =
-        row.stockAfterGreen !== undefined &&
-        row.stockAfterGreen !== null &&
-        row.stockAfterGreen !== ""
-          ? Number(row.stockAfterGreen)
-          : Math.max(
-              0,
-              Number(row.stockBeforeGreen || 0) -
-                Number(row.salesGreen || 0) * (isBigC ? 2 : 1),
-            );
-
-      const stockAfterBlue =
-        row.stockAfterBlue !== undefined &&
-        row.stockAfterBlue !== null &&
-        row.stockAfterBlue !== ""
-          ? Number(row.stockAfterBlue)
-          : Math.max(
-              0,
-              Number(row.stockBeforeBlue || 0) -
-                Number(row.salesBlue || 0) * (isBigC ? 2 : 1),
-            );
-
-      const stockAfterOrange = isBigC
-        ? 0
-        : row.stockAfterOrange !== undefined &&
-            row.stockAfterOrange !== null &&
-            row.stockAfterOrange !== ""
-          ? Number(row.stockAfterOrange)
-          : Math.max(
-              0,
-              Number(row.stockBeforeOrange || 0) -
-                Number(row.salesOrange || 0) * 2,
-            );
-
-      const remarkText =
-        row.remark ||
-        row.remark_store ||
-        row.remarkStore ||
-        row.remarks ||
-        row.note ||
-        row.notes ||
-        "";
-
-      return [
-        idx + 1,
-        accountName,
-        row.storeCode,
-        `"${row.storeName}"`,
-        row.userEmpId,
-        `"${row.userName}"`,
-        row.reportDate,
-        row.targetPacks,
-        row.traffic,
-        row.approach,
-        row.closedSales,
-        `${row.closingRate}%`,
-        row.stockBeforeGreen,
-        row.stockBeforeBlue,
-        isBigC ? "-" : row.stockBeforeOrange,
-        row.salesGreen,
-        row.salesBlue,
-        isBigC ? "-" : row.salesOrange,
-        row.actualPacksTotal,
-        stockAfterGreen,
-        stockAfterBlue,
-        stockAfterOrange,
-        row.giftNourishBefore || 0,
-        row.giftOrangeBefore || 0,
-        row.giftNourishGiven || 0,
-        row.giftOrangeGiven || 0,
-        row.giftNourishAfter || 0,
-        row.giftOrangeAfter || 0,
-        row.priceGreen,
-        row.priceBlue,
-        row.priceOrange,
-        row.compCellox || 0,
-        row.compKleenex || 0,
-        row.compPaseo || 0,
-        `"${(row.feedback || "").replace(/"/g, '""')}"`,
-        `"${(row.competitorPromo || "").replace(/"/g, '""')}"`,
-        `"${remarkText.replace(/"/g, '""')}"`,
-        `"${(row.employeeHolding || "").replace(/"/g, '""')}"`,
-        `"${(row.customerPhoto || "").replace(/"/g, '""')}"`,
-        `"${(row.storeAtmosphere || "").replace(/"/g, '""')}"`,
-        `"${(row.productImage || "").replace(/"/g, '""')}"`,
-        `"${(row.shelfImage || "").replace(/"/g, '""')}"`,
-        `"${(row.stockScan || "").replace(/"/g, '""')}"`,
-      ];
-    });
-
-    const csvContent =
-      "\uFEFF" +
-      [headers.join(","), ...csvRows.map((e) => e.join(","))].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `PG_Activity_Report_${
-      new Date().toISOString().split("T")[0]
-    }.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   const totalPacks = filteredData.reduce(
     (s, r) => s + Number(r.actualPacksTotal || 0),
     0,
@@ -822,24 +1039,27 @@ export default function CustomerReportPortal() {
   const avgClosingRate =
     totalApproach > 0 ? Math.round((totalClosed / totalApproach) * 100) : 0;
 
-  const totalGreenRevenue = filteredData.reduce(
-    (sum, r) => sum + Number(r.salesGreen || 0) * Number(r.priceGreen || 150),
-    0,
-  );
-  const totalBlueRevenue = filteredData.reduce(
-    (sum, r) => sum + Number(r.salesBlue || 0) * Number(r.priceBlue || 142),
-    0,
-  );
-  const totalOrangeRevenue = filteredData.reduce(
-    (sum, r) => sum + Number(r.salesOrange || 0) * Number(r.priceOrange || 100),
-    0,
-  );
+  // 💰 ยอดขายรวมคำนวณจากทุก 10 SKU
+  const totalRevenue = useMemo(() => {
+    return filteredData.reduce((sum, row) => {
+      const accountName = getAccountName(row.storeName, row.storeCode);
+      const isBigC = accountName === "Big C";
+      let rowRev = 0;
+      REPORT_PRODUCTS.forEach((prod) => {
+        const info = getProductInfo(row, prod.barcode, isBigC);
+        if (
+          typeof info.salesQty === "number" &&
+          typeof info.priceOur === "number" &&
+          !isNaN(info.salesQty) &&
+          !isNaN(info.priceOur)
+        ) {
+          rowRev += info.salesQty * info.priceOur;
+        }
+      });
+      return sum + rowRev;
+    }, 0);
+  }, [filteredData]);
 
-  const totalRevenue =
-    totalGreenRevenue + totalBlueRevenue + totalOrangeRevenue;
-
-  // 💵 คำนวณค่าแรงฐาน (Base Wage) มีระบบ Fallback 3 ชั้น (ถ้ารวมค่าแรงจาก log ได้ 0 จะไปคิดจากวันทำงานในรายงานแทน)
-  // 🔍 กรองข้อมูล Salary Summary ตาม Filter ที่เลือกหน้าเว็บ
   const filteredSalarySummary = useMemo(() => {
     let result = [...salarySummaryData];
 
@@ -861,7 +1081,6 @@ export default function CustomerReportPortal() {
     return result;
   }, [salarySummaryData, selectedUser, selectedStore]);
 
-  // 💵 ดึง ค่าแรงฐาน (Base Wage) จาก Salary Summary ที่กรองแล้ว
   const totalBaseWage = useMemo(() => {
     if (filteredSalarySummary.length > 0) {
       return filteredSalarySummary.reduce(
@@ -870,7 +1089,6 @@ export default function CustomerReportPortal() {
       );
     }
 
-    // Fallback: หากไม่มีข้อมูลจาก salary summary ให้ใช้การคำนวณเดิม
     const uniqueUserDays = new Set<string>();
     let fallbackWage = 0;
     filteredData.forEach((r) => {
@@ -883,7 +1101,6 @@ export default function CustomerReportPortal() {
     return fallbackWage;
   }, [filteredSalarySummary, filteredData]);
 
-  // 🏆 ดึง คอมมิชชัน (Commission) จาก Salary Summary ที่กรองแล้ว
   const totalCommission = useMemo(() => {
     if (filteredSalarySummary.length > 0) {
       return filteredSalarySummary.reduce(
@@ -893,31 +1110,15 @@ export default function CustomerReportPortal() {
       );
     }
 
-    // Fallback: หากไม่มีข้อมูลจาก salary summary ให้ใช้การคำนวณเดิม
-    const userSalesMap = new Map<string, number>();
-    filteredData.forEach((r) => {
-      const uId = String(r.userId || r.userEmpId || "unknown");
-      const accName = getAccountName(r.storeName, r.storeCode);
-      const isBigC = accName === "Big C";
-      const green = Number(r.salesGreen || 0);
-      const blue = Number(r.salesBlue || 0);
-      const orange = isBigC ? 0 : Number(r.salesOrange || 0);
-      userSalesMap.set(
-        uId,
-        (userSalesMap.get(uId) || 0) + (green + blue + orange),
-      );
+    let totalComm = 0;
+    filteredData.forEach((row) => {
+      const rowTotalSales = getRowTotalSalesPcs(row);
+      totalComm += calculateDailyCommission(rowTotalSales);
     });
 
-    let totalComm = 0;
-    userSalesMap.forEach((totalSets) => {
-      if (totalSets >= 180) {
-        totalComm += 500 + Math.floor((totalSets - 180) / 15) * 100;
-      } else if (totalSets >= 135) {
-        totalComm += 200;
-      }
-    });
     return totalComm;
   }, [filteredSalarySummary, filteredData]);
+
   const totalStaffExpense = totalBaseWage + totalCommission;
   const netProfit = totalRevenue - totalStaffExpense;
   const profitMarginPercent =
@@ -930,7 +1131,6 @@ export default function CustomerReportPortal() {
     }));
   };
 
-  // 📸 Handler สำหรับจัดการ อัปโหลดไฟล์รูปภาพ
   const handleFileUpload = async (
     type: keyof typeof photoFiles,
     files: FileList | null,
@@ -952,7 +1152,6 @@ export default function CustomerReportPortal() {
     }
   };
 
-  // ✏️ แก้ไขแถวเดิม
   const handleEditRow = (row: any) => {
     const photos = categorizePhotos(row.activityPhotos);
     setPhotoFiles({
@@ -969,6 +1168,7 @@ export default function CustomerReportPortal() {
       reportDate: row.reportDate || new Date().toISOString().split("T")[0],
       userId: row.userId || "",
       storeCode: row.storeCode || "",
+      promotionId: row.promotionId || "",
       traffic: row.traffic || 0,
       approach: row.approach || 0,
       closedSales: row.closedSales || 0,
@@ -984,13 +1184,10 @@ export default function CustomerReportPortal() {
       stockBeforeOrange: row.stockBeforeOrange || 0,
       salesOrange: row.salesOrange || 0,
       stockAfterOrange: row.stockAfterOrange || 0,
-      giftNourishBefore: row.giftNourishBefore || 0,
-      giftNourishGiven: row.giftNourishGiven || 0,
-      giftOrangeBefore: row.giftOrangeBefore || 0,
-      giftOrangeGiven: row.giftOrangeGiven || 0,
       compCellox: row.compCellox || 0,
       compKleenex: row.compKleenex || 0,
       compPaseo: row.compPaseo || 0,
+      competitorPrices: row.competitorPrices || {},
       feedback: row.feedback || "",
       competitorPromo: row.competitorPromo || "",
       remark:
@@ -1005,7 +1202,6 @@ export default function CustomerReportPortal() {
     setIsEditModalOpen(true);
   };
 
-  // ➕ คีย์ย้อนหลังใหม่
   const handleCreateBackdate = () => {
     setPhotoFiles({
       staffHolding: [],
@@ -1021,6 +1217,7 @@ export default function CustomerReportPortal() {
       reportDate: new Date().toISOString().split("T")[0],
       userId: userOptions[0]?.[0] || "",
       storeCode: storeOptions[0]?.[0] || "",
+      promotionId: promotions[0]?.id || "",
       traffic: 0,
       approach: 0,
       closedSales: 0,
@@ -1036,13 +1233,10 @@ export default function CustomerReportPortal() {
       stockBeforeOrange: 0,
       salesOrange: 0,
       stockAfterOrange: 0,
-      giftNourishBefore: 0,
-      giftNourishGiven: 0,
-      giftOrangeBefore: 0,
-      giftOrangeGiven: 0,
       compCellox: 0,
       compKleenex: 0,
       compPaseo: 0,
+      competitorPrices: {},
       feedback: "",
       competitorPromo: "",
       remark: "",
@@ -1103,6 +1297,9 @@ export default function CustomerReportPortal() {
       reportDateInput: editForm.reportDate,
       userId: Number(editForm.userId),
       storeCode: editForm.storeCode,
+      promotionId: editForm.promotionId
+        ? Number(editForm.promotionId)
+        : undefined,
       trafficCount: Number(editForm.traffic || 0),
       approachCount: Number(editForm.approach || 0),
       closedSalesCount: Number(editForm.closedSales || 0),
@@ -1128,11 +1325,6 @@ export default function CustomerReportPortal() {
       stockBeforeOrange100: Number(editForm.stockBeforeOrange || 0),
       salesQtyOrange100: Number(editForm.salesOrange || 0),
       stockAfterOrange100: Number(editForm.stockAfterOrange || 0),
-
-      giftOrangeBefore: Number(editForm.giftOrangeBefore || 0),
-      giftOrangeGiven: Number(editForm.giftOrangeGiven || 0),
-      giftNourishBefore: Number(editForm.giftNourishBefore || 0),
-      giftNourishGiven: Number(editForm.giftNourishGiven || 0),
     });
 
     setSavingAdmin(false);
@@ -1150,7 +1342,6 @@ export default function CustomerReportPortal() {
     }
   };
 
-  // Helper สำหรับโหลดรูปภาพและดึงข้อมูล Buffer
   const fetchImageAsBuffer = async (
     url: string,
   ): Promise<{ buffer: ArrayBuffer; extension: "jpeg" | "png" } | null> => {
@@ -1267,31 +1458,10 @@ export default function CustomerReportPortal() {
       }
     }
 
-    if (urls.length === 0) {
-      const itemString = JSON.stringify(item);
-      const urlMatches = itemString.match(/https?:\/\/[^\s"'\\]+/g) || [];
-      const keywordMap: Record<string, string[]> = {
-        staff_holding: ["staff_holding", "act_staff"],
-        customer_basket: ["customer_basket", "act_customer"],
-        atmosphere: ["atmosphere", "act_atmosphere"],
-        img_product: ["_item_", "_prod_"],
-        img_shelf: ["_shelf_"],
-        img_stock_scanner: ["_scanner_", "_stock_"],
-      };
-      const keywords = keywordMap[category] || [];
-      urlMatches.forEach((url) => {
-        const cleanUrl = url.replace(/\\"/g, "").replace(/"/g, "");
-        if (keywords.some((kw) => cleanUrl.toLowerCase().includes(kw))) {
-          urls.push(cleanUrl);
-        }
-      });
-    }
-
     return Array.from(new Set(urls.filter(Boolean)));
   };
 
   const handleExportExcel = async () => {
-    // ดึงข้อมูลจาก filteredData (ถ้าไม่มีให้ fallback ไปที่ reportData)
     const dataToExport: any[] =
       filteredData && filteredData.length > 0 ? filteredData : reportData;
 
@@ -1303,54 +1473,61 @@ export default function CustomerReportPortal() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("PG Full Report");
 
-    // กำหนดความกว้างคอลัมน์
-    worksheet.columns = [
+    const excelColumns: any[] = [
       { header: "NO.", key: "no", width: 6 },
       { header: "สาขา", key: "storeName", width: 25 },
       { header: "พนักงาน", key: "userName", width: 22 },
       { header: "วันที่", key: "reportDate", width: 14 },
       { header: "TARGET (แพ็ค)", key: "target", width: 14 },
-
       { header: "TRAFFIC", key: "traffic", width: 10 },
       { header: "APPROACH", key: "approach", width: 10 },
       { header: "CLOSED", key: "closedSales", width: 10 },
+    ];
 
-      { header: "สต๊อกก่อน เขียว90", key: "stockBeforeGreen", width: 14 },
-      { header: "สต๊อกก่อน ฟ้า90", key: "stockBeforeBlue", width: 14 },
-      { header: "สต๊อกก่อน ส้ม100", key: "stockBeforeOrange", width: 14 },
+    REPORT_PRODUCTS.forEach((prod) => {
+      excelColumns.push({
+        header: `สต๊อกก่อน (${prod.shortLabel})`,
+        key: `sb_${prod.barcode}`,
+        width: 14,
+      });
+    });
 
-      { header: "ขาย เขียว90", key: "salesGreen", width: 12 },
-      { header: "ขาย ฟ้า90", key: "salesBlue", width: 12 },
-      { header: "ขาย ส้ม100", key: "salesOrange", width: 12 },
+    REPORT_PRODUCTS.forEach((prod) => {
+      excelColumns.push({
+        header: `ขาย (${prod.shortLabel})`,
+        key: `sq_${prod.barcode}`,
+        width: 12,
+      });
+    });
 
-      { header: "สต๊อกหลัง เขียว90", key: "stockAfterGreen", width: 14 },
-      { header: "สต๊อกหลัง ฟ้า90", key: "stockAfterBlue", width: 14 },
-      { header: "สต๊อกหลัง ส้ม100", key: "stockAfterOrange", width: 14 },
+    REPORT_PRODUCTS.forEach((prod) => {
+      excelColumns.push({
+        header: `สต๊อกหลัง (${prod.shortLabel})`,
+        key: `sa_${prod.barcode}`,
+        width: 14,
+      });
+    });
 
-      // --- กลุ่มของแถม (แยก เขียว 40 และ ส้ม 100 ตรงตามหน้าเว็บ) ---
-      { header: "ของแถมก่อน (เขียว40)", key: "giftNourishBefore", width: 15 },
-      { header: "ของแถมก่อน (ส้ม100)", key: "giftOrangeBefore", width: 15 },
-      { header: "ของแถมแจก (เขียว40)", key: "giftNourishGiven", width: 15 },
-      { header: "ของแถมแจก (ส้ม100)", key: "giftOrangeGiven", width: 15 },
-      {
-        header: "ของแถมคงเหลือ (เขียว40)",
-        key: "giftNourishRemain",
+    REPORT_PRODUCTS.forEach((prod) => {
+      excelColumns.push({
+        header: `ราคา (${prod.shortLabel})`,
+        key: `pr_${prod.barcode}`,
+        width: 12,
+      });
+    });
+
+    COMPETITOR_ITEMS.forEach((comp) => {
+      excelColumns.push({
+        header: comp.label,
+        key: `comp_${comp.key}`,
         width: 15,
-      },
-      { header: "ของแถมคงเหลือ (ส้ม100)", key: "giftOrangeRemain", width: 15 },
+      });
+    });
 
-      { header: "ราคา เขียว90", key: "priceGreen", width: 12 },
-      { header: "ราคา ฟ้า90", key: "priceBlue", width: 12 },
-      { header: "ราคา ส้ม100", key: "priceOrange", width: 12 },
-      { header: "ราคา CELLOX", key: "compCellox", width: 12 },
-      { header: "ราคา KLEENEX", key: "compKleenex", width: 12 },
-      { header: "ราคา PASEO", key: "compPaseo", width: 12 },
-
+    excelColumns.push(
       { header: "FEEDBACK หน้าร้าน", key: "feedback", width: 30 },
       { header: "โปรคู่แข่ง", key: "competitorPromo", width: 30 },
       { header: "หมายเหตุ", key: "remark", width: 25 },
-
-      // คอลัมน์รูปภาพ (Col AG ถึง AL / Index 32 ถึง 37)
       { header: "รูปพนักงานถือสินค้า", key: "photo_staff_holding", width: 45 },
       {
         header: "รูปถ่ายคู่กับลูกค้า/ตะกร้า",
@@ -1361,192 +1538,56 @@ export default function CustomerReportPortal() {
       { header: "รูปสินค้า", key: "photo_img_product", width: 45 },
       { header: "รูปเชลฟ์ชั้นวาง", key: "photo_img_shelf", width: 45 },
       { header: "รูปสแกนสต๊อก", key: "photo_img_stock_scanner", width: 45 },
-    ];
+    );
 
-    // แมป Index คอลัมน์รูปภาพ
+    worksheet.columns = excelColumns;
+
+    const baseColCount = 8 + 10 + 10 + 10 + 10 + 15 + 3;
     const photoCategoryMap = [
-      { key: "staff_holding", colIndex: 32 },
-      { key: "customer_basket", colIndex: 33 },
-      { key: "atmosphere", colIndex: 34 },
-      { key: "img_product", colIndex: 35 },
-      { key: "img_shelf", colIndex: 36 },
-      { key: "img_stock_scanner", colIndex: 37 },
+      { key: "staff_holding", colIndex: baseColCount },
+      { key: "customer_basket", colIndex: baseColCount + 1 },
+      { key: "atmosphere", colIndex: baseColCount + 2 },
+      { key: "img_product", colIndex: baseColCount + 3 },
+      { key: "img_shelf", colIndex: baseColCount + 4 },
+      { key: "img_stock_scanner", colIndex: baseColCount + 5 },
     ];
 
     for (let i = 0; i < dataToExport.length; i++) {
       const item = dataToExport[i];
-      const excelRowIndex = i + 1; // Row Index ใน Excel
+      const excelRowIndex = i + 1;
 
-      // 1. เช็กว่าเป็น Big C หรือไม่
-      const accountName =
-        typeof getAccountName === "function"
-          ? getAccountName(item.storeName || item.store_code, item.storeCode)
-          : "";
+      const accountName = getAccountName(item.storeName, item.storeCode);
       const isBigC = accountName === "Big C";
 
-      // 2. ข้อมูล สต๊อกก่อน และ ยอดขาย
-      const stockBeforeGreen = Number(
-        item.stockBeforeGreen ?? item.stock_before_green90 ?? 0,
-      );
-      const stockBeforeBlue = Number(
-        item.stockBeforeBlue ?? item.stock_before_blue90 ?? 0,
-      );
-      const stockBeforeOrange = Number(
-        item.stockBeforeOrange ?? item.stock_before_orange100 ?? 0,
-      );
-
-      const salesGreen = Number(item.salesGreen ?? item.sales_qty_green90 ?? 0);
-      const salesBlue = Number(item.salesBlue ?? item.sales_qty_blue90 ?? 0);
-      const salesOrange = Number(
-        item.salesOrange ?? item.sales_qty_orange100 ?? 0,
-      );
-
-      // 3. สต๊อกหลังเลิก
-      const stockAfterGreen =
-        item.stockAfterGreen !== undefined &&
-        item.stockAfterGreen !== null &&
-        item.stockAfterGreen !== ""
-          ? Number(item.stockAfterGreen)
-          : item.stock_after_green90 !== undefined &&
-              item.stock_after_green90 !== null &&
-              item.stock_after_green90 !== ""
-            ? Number(item.stock_after_green90)
-            : Math.max(0, stockBeforeGreen - salesGreen * (isBigC ? 2 : 1));
-
-      const stockAfterBlue =
-        item.stockAfterBlue !== undefined &&
-        item.stockAfterBlue !== null &&
-        item.stockAfterBlue !== ""
-          ? Number(item.stockAfterBlue)
-          : item.stock_after_blue90 !== undefined &&
-              item.stock_after_blue90 !== null &&
-              item.stock_after_blue90 !== ""
-            ? Number(item.stock_after_blue90)
-            : Math.max(0, stockBeforeBlue - salesBlue * (isBigC ? 2 : 1));
-
-      const stockAfterOrange = isBigC
-        ? "-"
-        : item.stockAfterOrange !== undefined &&
-            item.stockAfterOrange !== null &&
-            item.stockAfterOrange !== ""
-          ? Number(item.stockAfterOrange)
-          : item.stock_after_orange100 !== undefined &&
-              item.stock_after_orange100 !== null &&
-              item.stock_after_orange100 !== ""
-            ? Number(item.stock_after_orange100)
-            : Math.max(0, stockBeforeOrange - salesOrange * 2);
-
-      // 4. ของแถม
-      const giftNourishBefore = Number(
-        item.giftNourishBefore ?? item.gift_nourish_before ?? 0,
-      );
-      const giftOrangeBefore = Number(
-        item.giftOrangeBefore ?? item.gift_orange_before ?? 0,
-      );
-
-      const giftNourishGiven = Number(
-        item.giftNourishGiven ?? item.gift_nourish_given ?? 0,
-      );
-      const giftOrangeGiven = Number(
-        item.giftOrangeGiven ?? item.gift_orange_given ?? 0,
-      );
-
-      const giftNourishRemain =
-        item.giftNourishAfter !== undefined &&
-        item.giftNourishAfter !== null &&
-        item.giftNourishAfter !== ""
-          ? Number(item.giftNourishAfter)
-          : item.gift_nourish_after !== undefined &&
-              item.gift_nourish_after !== null &&
-              item.gift_nourish_after !== ""
-            ? Number(item.gift_nourish_after)
-            : Math.max(0, giftNourishBefore - giftNourishGiven);
-
-      const giftOrangeRemain =
-        item.giftOrangeAfter !== undefined &&
-        item.giftOrangeAfter !== null &&
-        item.giftOrangeAfter !== ""
-          ? Number(item.giftOrangeAfter)
-          : item.gift_orange_after !== undefined &&
-              item.gift_orange_after !== null &&
-              item.gift_orange_after !== ""
-            ? Number(item.gift_orange_after)
-            : Math.max(0, giftOrangeBefore - giftOrangeGiven);
-
-      // 5. หมายเหตุ
-      const remarkDisplay =
-        item.remark ||
-        item.remark_store ||
-        item.remarkStore ||
-        item.remarks ||
-        item.note ||
-        item.notes ||
-        "-";
-
-      // เพิ่ม Row ลง Worksheet
-      const row = worksheet.addRow({
+      const rowObj: any = {
         no: i + 1,
         storeName: item.storeName || item.store_code || "-",
         userName: item.userName || item.user_id || "-",
         reportDate: item.reportDate || item.report_date || "-",
         target: Number(item.targetPacks ?? item.target ?? 0),
-
         traffic: Number(item.traffic ?? item.traffic_count ?? 0),
         approach: Number(item.approach ?? item.approach_count ?? 0),
         closedSales: Number(item.closedSales ?? item.closed_sales_count ?? 0),
+      };
 
-        stockBeforeGreen: stockBeforeGreen,
-        stockBeforeBlue: stockBeforeBlue,
-        stockBeforeOrange: isBigC ? "-" : stockBeforeOrange,
-
-        salesGreen: salesGreen,
-        salesBlue: salesBlue,
-        salesOrange: isBigC ? "-" : salesOrange,
-
-        stockAfterGreen: stockAfterGreen,
-        stockAfterBlue: stockAfterBlue,
-        stockAfterOrange: stockAfterOrange,
-
-        // ของแถม
-        giftNourishBefore: giftNourishBefore,
-        giftOrangeBefore: giftOrangeBefore,
-        giftNourishGiven: giftNourishGiven,
-        giftOrangeGiven: giftOrangeGiven,
-        giftNourishRemain: giftNourishRemain,
-        giftOrangeRemain: giftOrangeRemain,
-
-        priceGreen: item.priceGreen ?? item.price_our_green90 ?? "-",
-        priceBlue: item.priceBlue ?? item.price_our_blue90 ?? "-",
-        priceOrange: isBigC
-          ? "-"
-          : (item.priceOrange ?? item.price_our_orange100 ?? "-"),
-
-        compCellox:
-          Number(item.compCellox ?? item.price_comp_cellox ?? 0) > 0
-            ? Number(item.compCellox ?? item.price_comp_cellox)
-            : "-",
-        compKleenex:
-          Number(item.compKleenex ?? item.price_comp_kleenex ?? 0) > 0
-            ? Number(item.compKleenex ?? item.price_comp_kleenex)
-            : "-",
-        compPaseo:
-          Number(item.compPaseo ?? item.price_comp_paseo ?? 0) > 0
-            ? Number(item.compPaseo ?? item.price_comp_paseo)
-            : "-",
-
-        feedback: item.feedback || item.feedback_store || "-",
-        competitorPromo:
-          item.competitorPromo || item.competitor_promotion || "-",
-        remark: remarkDisplay,
-
-        photo_staff_holding: "",
-        photo_customer_basket: "",
-        photo_atmosphere: "",
-        photo_img_product: "",
-        photo_img_shelf: "",
-        photo_img_stock_scanner: "",
+      REPORT_PRODUCTS.forEach((prod) => {
+        const info = getProductInfo(item, prod.barcode, isBigC);
+        rowObj[`sb_${prod.barcode}`] = info.stockBefore;
+        rowObj[`sq_${prod.barcode}`] = info.salesQty;
+        rowObj[`sa_${prod.barcode}`] = info.stockAfter;
+        rowObj[`pr_${prod.barcode}`] = info.priceOur;
       });
 
+      COMPETITOR_ITEMS.forEach((comp) => {
+        rowObj[`comp_${comp.key}`] = getCompetitorVal(item, comp.key);
+      });
+
+      rowObj.feedback = item.feedback || item.feedback_store || "-";
+      rowObj.competitorPromo =
+        item.competitorPromo || item.competitor_promotion || "-";
+      rowObj.remark = item.remark || item.remark_store || "-";
+
+      const row = worksheet.addRow(rowObj);
       row.height = 65;
       row.alignment = {
         vertical: "middle",
@@ -1558,21 +1599,14 @@ export default function CustomerReportPortal() {
       const IMG_HEIGHT = 55;
       const EMU_PER_PX = 9525;
 
-      // แทรกรูปภาพลง Cell Excel
       for (const cat of photoCategoryMap) {
-        const urls =
-          typeof getPhotoUrlsArray === "function"
-            ? getPhotoUrlsArray(item, cat.key)
-            : [];
+        const urls = getPhotoUrlsArray(item, cat.key);
         const validUrls = urls.slice(0, 10);
         const totalImgs = validUrls.length;
 
         for (let imgIdx = 0; imgIdx < totalImgs; imgIdx++) {
           const url = validUrls[imgIdx];
-          const imageData =
-            typeof fetchImageAsBuffer === "function"
-              ? await fetchImageAsBuffer(url)
-              : null;
+          const imageData = await fetchImageAsBuffer(url);
 
           if (imageData) {
             try {
@@ -1603,7 +1637,6 @@ export default function CustomerReportPortal() {
       }
     }
 
-    // แต่ง Header Excel
     const headerRow = worksheet.getRow(1);
     headerRow.height = 28;
     headerRow.font = { bold: true, color: { argb: "FFFFFF" } };
@@ -1614,7 +1647,6 @@ export default function CustomerReportPortal() {
     };
     headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-    // บันทึกไฟล์ Excel ดาวน์โหลดลงเครื่อง
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1623,107 +1655,6 @@ export default function CustomerReportPortal() {
       blob,
       `PG_Report_Full_${new Date().toISOString().slice(0, 10)}.xlsx`,
     );
-
-    // --- 6. เคลียร์ข้อมูลและลบรูปภาพออกจาก Supabase หลัง Export ---
-    try {
-      const confirmResult = await Swal.fire({
-        title: "ส่งออกไฟล์เรียบร้อย",
-        text: "ต้องการเคลียร์ข้อมูลและลบไฟล์รูปภาพออกจาก Database (Supabase) หรือไม่?",
-        icon: "warning",
-        showCancelButton: true,
-        confirmButtonColor: "#d33",
-        cancelButtonColor: "#3085d6",
-        confirmButtonText: "ลบข้อมูลทันที",
-        cancelButtonText: "เก็บข้อมูลไว้ก่อน",
-      });
-
-      if (confirmResult.isConfirmed) {
-        Swal.fire({
-          title: "กำลังเคลียร์ข้อมูล...",
-          text: "กรุณารอสักครู่",
-          allowOutsideClick: false,
-          didOpen: () => Swal.showLoading(),
-        });
-
-        // ดึง Record ID ของรายงานหลัก
-        const recordIds = dataToExport
-          .map((item: any) => item.id)
-          .filter(Boolean);
-
-        // ดึง File Paths สำหรับลบใน Storage
-        const filePathsToDelete: string[] = [];
-        const BUCKET_NAME = "pg-photos"; // **ตรวจสอบชื่อ Bucket ของคุณว่าตรงกันหรือไม่**
-
-        photoCategoryMap.forEach((cat: any) => {
-          dataToExport.forEach((item: any) => {
-            const urls =
-              typeof getPhotoUrlsArray === "function"
-                ? getPhotoUrlsArray(item, cat.key)
-                : [];
-            urls.forEach((url: string) => {
-              if (url && typeof url === "string") {
-                const path = url.includes(`/${BUCKET_NAME}/`)
-                  ? url.split(`/${BUCKET_NAME}/`)[1]
-                  : url;
-
-                if (path) {
-                  filePathsToDelete.push(decodeURIComponent(path));
-                }
-              }
-            });
-          });
-        });
-
-        // 1. ลบรูปภาพออกจาก Supabase Storage
-        if (filePathsToDelete.length > 0) {
-          const { error: storageError } = await supabase.storage
-            .from(BUCKET_NAME)
-            .remove(filePathsToDelete);
-
-          if (storageError) {
-            console.error("Storage delete error:", storageError);
-          }
-        }
-
-        // 2. ลบข้อมูลใน Database ทั้ง 2 ตาราง
-        if (recordIds.length > 0) {
-          // 2.1 ลบตารางรายละเอียดสินค้าก่อน (pg_daily_report_products)
-          const { error: productsError } = await supabase
-            .from("pg_daily_report_products")
-            .delete()
-            .in("report_id", recordIds); // ใช้คอลัมน์ report_id เชื่อมไปยังตารางหลัก (หรือ id หากชื่อตรงกัน)
-
-          if (productsError) {
-            console.warn("Products delete warning:", productsError);
-          }
-
-          // 2.2 ลบตารางหลัก (pg_daily_activity_reports)
-          const { error: mainReportError } = await supabase
-            .from("pg_daily_activity_reports")
-            .delete()
-            .in("id", recordIds);
-
-          if (mainReportError) throw mainReportError;
-        }
-
-        // เคลียร์ State หน้าเว็บ
-        if (typeof setFilteredData === "function") setFilteredData([]);
-        if (typeof setReportData === "function") setReportData([]);
-
-        Swal.fire(
-          "สำเร็จ!",
-          "เคลียร์ข้อมูลและรูปภาพออกจากระบบเรียบร้อยแล้ว",
-          "success",
-        );
-      }
-    } catch (error) {
-      console.error("Clear data error:", error);
-      Swal.fire(
-        "เกิดข้อผิดพลาด",
-        "ไม่สามารถเคลียร์ข้อมูลใน Database ได้",
-        "error",
-      );
-    }
   };
 
   return (
@@ -1814,7 +1745,7 @@ export default function CustomerReportPortal() {
               <div className="flex items-center gap-1 sm:gap-2">
                 <button
                   onClick={handleExportExcel}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium transition-colors cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   Export Excel
@@ -1857,6 +1788,25 @@ export default function CustomerReportPortal() {
                 <PlusCircle size={14} />
                 <span>คีย์รายงานย้อนหลัง</span>
               </button>
+
+              {/* 🏷️ ตัวกรองรอบโปรโมชั่น */}
+              <div className="flex items-center gap-1 text-xs">
+                <Tag size={14} className="text-amber-500" />
+                <span className="font-bold text-slate-500">รอบโปรโมชั่น:</span>
+                <select
+                  value={selectedPromotion}
+                  onChange={(e) => setSelectedPromotion(e.target.value)}
+                  className="px-2.5 py-1.5 border border-amber-300 rounded-xl font-bold bg-amber-50 focus:bg-white text-xs cursor-pointer text-slate-800 max-w-[180px] truncate"
+                >
+                  <option value="ALL">-- ทุกรอบโปรโมชั่น --</option>
+                  {promotions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title || p.name || `รอบโปรโมชั่น #${p.id}`} (
+                      {p.start_date} ~ {p.end_date})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div className="flex items-center gap-1 text-xs">
                 <Layers size={14} className="text-slate-400" />
@@ -1927,12 +1877,12 @@ export default function CustomerReportPortal() {
             </div>
           </div>
 
-          {/* 💵 FINANCIAL KPI CARDS SUMMARY */}
+          {/* 💵 FINANCIAL KPI CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-left">
             <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                  ยอดขายรวมทั้งหมด
+                  ยอดขายรวมทั้งหมด (10 SKU)
                 </span>
                 <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
                   <DollarSign size={18} />
@@ -1942,24 +1892,16 @@ export default function CustomerReportPortal() {
                 <span className="text-xl font-black text-blue-900 block tracking-tight">
                   ฿{totalRevenue.toLocaleString()}
                 </span>
-                <div className="mt-2 pt-1.5 border-t border-slate-100 flex justify-between text-[10px] font-bold">
-                  <span className="text-emerald-700">
-                    เขียว: ฿{totalGreenRevenue.toLocaleString()}
-                  </span>
-                  <span className="text-blue-700">
-                    ฟ้า: ฿{totalBlueRevenue.toLocaleString()}
-                  </span>
-                  <span className="text-orange-600">
-                    ส้ม: ฿{totalOrangeRevenue.toLocaleString()}
-                  </span>
-                </div>
+                <p className="text-[10px] font-bold text-slate-500 mt-1">
+                  คำนวณสะสมตามยอดขายจริงครบทุกรายการสินค้า
+                </p>
               </div>
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-purple-100 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                  รายจ่ายพนักงาน PG
+                  รายจ่ายพนักงาน PG (ทำจ่ายทุก 3 วัน: ศุกร์-อาทิตย์)
                 </span>
                 <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
                   <Users size={18} />
@@ -1971,7 +1913,9 @@ export default function CustomerReportPortal() {
                 </span>
                 <div className="mt-2 pt-1.5 border-t border-slate-100 flex justify-between text-[10px] font-bold text-slate-600">
                   <span>ค่าแรง: ฿{totalBaseWage.toLocaleString()}</span>
-                  <span>คอมมิชชั่น: ฿{totalCommission.toLocaleString()}</span>
+                  <span className="text-purple-700">
+                    คอมมิชชั่น: ฿{totalCommission.toLocaleString()}
+                  </span>
                 </div>
               </div>
             </div>
@@ -2006,7 +1950,7 @@ export default function CustomerReportPortal() {
                   {netProfit >= 0 ? "+" : ""}฿{netProfit.toLocaleString()}
                 </span>
                 <p className="text-[10px] font-bold text-slate-500 mt-1">
-                  คำนวณจาก: ยอดขายรวม - รายจ่ายพนักงาน
+                  คำนวณจาก: ยอดขายรวม - (ค่าแรง + คอมมิชชั่น)
                 </p>
               </div>
             </div>
@@ -2031,13 +1975,14 @@ export default function CustomerReportPortal() {
                   {profitMarginPercent.toFixed(1)}%
                 </span>
                 <p className="text-[10px] font-bold text-slate-500 mt-1">
-                  สัดส่วนกำไรต่อยอดขายรวม
+                  เกณฑ์ คอมมิชชั่น: 30ชิ้น=100฿ | 40ชิ้น=200฿ | เกิน
+                  40ชิ้น+100฿/10ชิ้น
                 </p>
               </div>
             </div>
           </div>
 
-          {/* 📈 OPERATIONAL KPI CARDS SUMMARY */}
+          {/* 📈 OPERATIONAL KPI CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-left">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
               <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
@@ -2096,14 +2041,14 @@ export default function CustomerReportPortal() {
             </div>
           </div>
 
-          {/* 📊 3 CHARTS SECTION */}
+          {/* 📊 CHARTS */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            {/* CHART 1 */}
+            {/* CHART 1: ยอดขายครบทั้ง 10 SKU */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                   <BarChart3 size={16} className="text-blue-600" />
-                  1. ยอดขายรายสินค้า (เขียว / ฟ้า / ส้ม)
+                  1. ยอดขายรวมแยกรายสินค้า (ครบทุก 10 SKU)
                 </h3>
                 <span className="text-[9px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md">
                   {selectedStore === "ALL" ? "แยก Account" : "แยกรายวัน"}
@@ -2116,36 +2061,19 @@ export default function CustomerReportPortal() {
                     margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
                   >
                     <defs>
-                      <linearGradient
-                        id="c1-3dGreen"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0%" stopColor="#34d399" />
-                        <stop offset="100%" stopColor="#059669" />
-                      </linearGradient>
-                      <linearGradient
-                        id="c1-3dBlue"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0%" stopColor="#60a5fa" />
-                        <stop offset="100%" stopColor="#1d4ed8" />
-                      </linearGradient>
-                      <linearGradient
-                        id="c1-3dOrange"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0%" stopColor="#fb923c" />
-                        <stop offset="100%" stopColor="#c2410c" />
-                      </linearGradient>
+                      {REPORT_PRODUCTS.map((prod) => (
+                        <linearGradient
+                          key={`grad_${prod.barcode}`}
+                          id={`c1-grad-${prod.barcode}`}
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop offset="0%" stopColor={prod.gradStart} />
+                          <stop offset="100%" stopColor={prod.gradEnd} />
+                        </linearGradient>
+                      ))}
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis
@@ -2155,32 +2083,23 @@ export default function CustomerReportPortal() {
                     <YAxis tick={{ fontSize: 9, fontWeight: "bold" }} />
                     <Tooltip content={<CustomSalesTooltip />} />
                     <Legend
-                      wrapperStyle={{ fontSize: "10px", fontWeight: "bold" }}
+                      wrapperStyle={{ fontSize: "9px", fontWeight: "bold" }}
                     />
-                    <Bar
-                      dataKey="salesGreen"
-                      name="เขียว 90"
-                      fill="url(#c1-3dGreen)"
-                      radius={[6, 6, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="salesBlue"
-                      name="ฟ้า 90"
-                      fill="url(#c1-3dBlue)"
-                      radius={[6, 6, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="salesOrange"
-                      name="ส้ม 100"
-                      fill="url(#c1-3dOrange)"
-                      radius={[6, 6, 0, 0]}
-                    />
+                    {REPORT_PRODUCTS.map((prod) => (
+                      <Bar
+                        key={prod.barcode}
+                        dataKey={`sales_${prod.barcode}`}
+                        name={prod.shortLabel}
+                        fill={`url(#c1-grad-${prod.barcode})`}
+                        radius={[4, 4, 0, 0]}
+                      />
+                    ))}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* CHART 2 */}
+            {/* CHART 2: Funnel */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -2262,12 +2181,12 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            {/* CHART 3 */}
+            {/* CHART 3: ราคาเปรียบเทียบทุก SKU เรา vs ทุกรายการคู่แข่ง */}
             <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                   <PieChartIcon size={16} className="text-purple-600" />
-                  3. เปรียบเทียบราคาหน้าร้าน vs คู่แข่ง (บาท)
+                  3. เปรียบเทียบราคาหน้าร้านทุก SKU vs คู่แข่ง (บาท)
                 </h3>
                 <span className="text-[9px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-md">
                   ข้อมูล ณ {chart3Data.latestDate}
@@ -2281,88 +2200,26 @@ export default function CustomerReportPortal() {
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <defs>
-                        <linearGradient
-                          id="c3-3dGreen"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop offset="0%" stopColor="#34d399" />
-                          <stop offset="100%" stopColor="#059669" />
-                        </linearGradient>
-                        <linearGradient
-                          id="c3-3dBlue"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop offset="0%" stopColor="#60a5fa" />
-                          <stop offset="100%" stopColor="#1d4ed8" />
-                        </linearGradient>
-                        <linearGradient
-                          id="c3-3dOrange"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop offset="0%" stopColor="#fb923c" />
-                          <stop offset="100%" stopColor="#c2410c" />
-                        </linearGradient>
-                        <linearGradient
-                          id="c3-3dCellox"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop offset="0%" stopColor="#fb7185" />
-                          <stop offset="100%" stopColor="#be123c" />
-                        </linearGradient>
-                        <linearGradient
-                          id="c3-3dKleenex"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop offset="0%" stopColor="#c084fc" />
-                          <stop offset="100%" stopColor="#7e22ce" />
-                        </linearGradient>
-                        <linearGradient
-                          id="c3-3dPaseo"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop offset="0%" stopColor="#fcd34d" />
-                          <stop offset="100%" stopColor="#b45309" />
-                        </linearGradient>
-                      </defs>
                       <Tooltip content={<CustomPieTooltip />} />
                       <Legend
-                        wrapperStyle={{ fontSize: "10px", fontWeight: "bold" }}
+                        wrapperStyle={{ fontSize: "9px", fontWeight: "bold" }}
                       />
                       <Pie
                         data={chart3Data.slices}
                         cx="50%"
                         cy="45%"
-                        innerRadius={50}
-                        outerRadius={80}
-                        paddingAngle={4}
+                        innerRadius={45}
+                        outerRadius={75}
+                        paddingAngle={3}
                         dataKey="value"
-                        cornerRadius={6}
+                        cornerRadius={4}
                       >
-                        {chart3Data.slices.map((entry, index) => (
+                        {chart3Data.slices.map((entry: any, index: number) => (
                           <Cell
                             key={`cell-${index}`}
                             fill={entry.fill}
                             stroke="#ffffff"
-                            strokeWidth={2}
+                            strokeWidth={1.5}
                           />
                         ))}
                       </Pie>
@@ -2381,14 +2238,15 @@ export default function CustomerReportPortal() {
                   ตารางรายงานกิจกรรม PG ประจำสาขารายวัน (Full Report)
                 </h3>
                 <p className="text-[10px] text-slate-400 font-bold">
-                  รวมรายละเอียด Target, สต๊อกสินค้า, สต๊อกของแถม
-                  ข้อมูลการตลาดคู่แข่ง และรูปภาพกิจกรรมแยกตามประเภท
+                  รวมรายละเอียด Target, สต๊อกสินค้าครบ 10 รายการ,
+                  ราคาเปรียบเทียบ 15 รายการ และรูปภาพกิจกรรม (แยก 1 รูปต่อ 1
+                  คอลัมน์)
                 </p>
               </div>
             </div>
 
             <div className="relative overflow-auto max-h-[70vh] border-t border-slate-200">
-              <table className="w-full text-[10px] border-collapse min-w-[2600px]">
+              <table className="w-full text-[10px] border-collapse min-w-[3200px]">
                 <thead className="sticky top-0 z-30 bg-slate-100 text-slate-600 font-black uppercase shadow-xs">
                   <tr className="border-b border-slate-200">
                     <th
@@ -2399,33 +2257,31 @@ export default function CustomerReportPortal() {
                     </th>
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 sticky left-[50px] z-40 bg-slate-100 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
+                      className="p-2 border-r border-blue-400 text-center sticky left-[50px] z-40 bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                     >
                       สาขา
                     </th>
-
                     <th
                       rowSpan={2}
                       className="p-2 border-r border-slate-200 text-center bg-amber-100 text-amber-900 min-w-[70px] no-print"
                     >
                       จัดการ
                     </th>
-
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 min-w-[140px]"
+                      className="p-2 border-r border-blue-400 text-center bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                     >
                       พนักงาน
                     </th>
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 text-center min-w-[90px]"
+                      className="p-2 border-r border-blue-400 text-center bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                     >
                       วันที่
                     </th>
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 text-center min-w-[90px]"
+                      className="p-2 border-r border-blue-400 text-center bg-green-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                     >
                       TARGET (แพ็ค)
                     </th>
@@ -2437,51 +2293,32 @@ export default function CustomerReportPortal() {
                       สถิติลูกค้า (FUNNEL)
                     </th>
                     <th
-                      colSpan={3}
-                      className="p-2 border-r border-slate-200 text-center bg-slate-200/60"
+                      colSpan={10}
+                      className="p-5 border-r border-slate-200 text-center bg-yellow-100/60"
                     >
                       STOCK ก่อนเริ่ม (P)
                     </th>
                     <th
-                      colSpan={3}
+                      colSpan={10}
                       className="p-2 border-r border-slate-200 text-center bg-emerald-100/60 text-emerald-900"
                     >
                       จำนวนขาย (แพ็ค)
                     </th>
                     <th
-                      colSpan={3}
-                      className="p-2 border-r border-slate-200 text-center bg-slate-200/60"
+                      colSpan={10}
+                      className="p-5 border-r border-slate-200 text-center bg-yellow-100/60"
                     >
                       STOCK หลังเลิก (P)
                     </th>
 
                     <th
-                      colSpan={2}
-                      className="p-2 border-r border-slate-200 text-center bg-orange-50/70 text-orange-900"
-                    >
-                      ของแถมก่อนเริ่ม
-                    </th>
-                    <th
-                      colSpan={2}
-                      className="p-2 border-r border-slate-200 text-center bg-amber-100/70 text-amber-900"
-                    >
-                      จำนวนแจกแถม
-                    </th>
-                    <th
-                      colSpan={2}
-                      className="p-2 border-r border-slate-200 text-center bg-orange-100/60 text-orange-900"
-                    >
-                      ของแถมคงเหลือ
-                    </th>
-
-                    <th
-                      colSpan={3}
+                      colSpan={10}
                       className="p-2 border-r border-slate-200 text-center bg-indigo-50/70 text-indigo-900"
                     >
                       ราคาขายหน้าร้าน
                     </th>
                     <th
-                      colSpan={3}
+                      colSpan={15}
                       className="p-2 border-r border-slate-200 text-center bg-rose-50/70 text-rose-900"
                     >
                       ราคาคู่แข่ง
@@ -2489,124 +2326,106 @@ export default function CustomerReportPortal() {
 
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 min-w-[220px] max-w-[300px]"
+                      className="p-2 border-r border-slate-200 text-center min-w-[220px] max-w-[300px]"
                     >
                       FEEDBACK หน้าร้าน
                     </th>
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 min-w-[200px] max-w-[280px]"
+                      className="p-2 border-r border-slate-200 text-center min-w-[200px] max-w-[280px]"
                     >
                       โปรคู่แข่ง
                     </th>
 
                     <th
                       rowSpan={2}
-                      className="p-2 border-r border-slate-200 min-w-[220px] max-w-[320px] bg-amber-100/80 text-amber-950 font-black"
+                      className="p-2 border-r border-slate-200 text-center min-w-[220px] max-w-[320px] bg-amber-100/80 text-amber-950 font-black"
                     >
                       หมายเหตุ
                     </th>
 
+                    {/* --- บรรทัดบนของ Header รูปภาพ --- */}
                     <th
-                      colSpan={6}
-                      className="p-2 border-r border-slate-200 text-center bg-blue-100/80 text-blue-950 min-w-[360px]"
+                      colSpan={TOTAL_PHOTO_COLS}
+                      className="p-2 border-r border-slate-200 text-center bg-blue-100/80 text-blue-950 min-w-[1200px]"
                     >
-                      📸 รูปภาพกิจกรรมหน้าร้าน & สต๊อกสินค้า
+                      📸 รูปภาพกิจกรรมหน้าร้าน & สต๊อกสินค้า (แยกรูปละ 1
+                      คอลัมน์)
                     </th>
                   </tr>
 
                   <tr className="bg-slate-50 text-[9px] border-b border-slate-200 text-center">
-                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/40">
+                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
                       TRAFFIC
                     </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/40">
+                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
                       APPROACH
                     </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/40">
+                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
                       CLOSED
                     </th>
 
-                    <th className="p-1.5 border-r border-slate-200">
-                      เขียว 90
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200">ฟ้า 90</th>
-                    <th className="p-1.5 border-r border-slate-200">ส้ม 100</th>
+                    {/* Stock Before (10) */}
+                    {REPORT_PRODUCTS.map((p) => (
+                      <th
+                        key={`sb_head_${p.barcode}`}
+                        className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                      >
+                        {p.label}
+                      </th>
+                    ))}
 
-                    <th className="p-1.5 border-r border-slate-200 bg-emerald-50/40">
-                      เขียว 90
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-emerald-50/40">
-                      ฟ้า 90
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-emerald-50/40">
-                      ส้ม 100
-                    </th>
+                    {/* Sales Qty (10) */}
+                    {REPORT_PRODUCTS.map((p) => (
+                      <th
+                        key={`sq_head_${p.barcode}`}
+                        className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                      >
+                        {p.label}
+                      </th>
+                    ))}
 
-                    <th className="p-1.5 border-r border-slate-200">
-                      เขียว 90
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200">ฟ้า 90</th>
-                    <th className="p-1.5 border-r border-slate-200">ส้ม 100</th>
+                    {/* Stock After (10) */}
+                    {REPORT_PRODUCTS.map((p) => (
+                      <th
+                        key={`sa_head_${p.barcode}`}
+                        className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                      >
+                        {p.label}
+                      </th>
+                    ))}
 
-                    <th className="p-1.5 border-r border-slate-200 bg-orange-50/40">
-                      เขียว 40
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-orange-50/40">
-                      ส้ม 100
-                    </th>
+                    {/* Our Prices (10) */}
+                    {REPORT_PRODUCTS.map((p) => (
+                      <th
+                        key={`pr_head_${p.barcode}`}
+                        className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                      >
+                        {p.label} (บ.)
+                      </th>
+                    ))}
 
-                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
-                      เขียว 40
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
-                      ส้ม 100
-                    </th>
+                    {/* Competitor Prices (15) */}
+                    {COMPETITOR_ITEMS.map((comp) => (
+                      <th
+                        key={`comp_head_${comp.key}`}
+                        className={`p-5.0 border-r border-slate-200 min-w-[180px] max-w-[300px] ${comp.bgClass}`}
+                      >
+                        {comp.label}
+                      </th>
+                    ))}
 
-                    <th className="p-1.5 border-r border-slate-200 bg-orange-50/40">
-                      เขียว 40
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-orange-50/40">
-                      ส้ม 100
-                    </th>
-
-                    <th className="p-1.5 border-r border-slate-200 bg-indigo-50/40">
-                      เขียว 90
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-indigo-50/40">
-                      ฟ้า 90
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-indigo-50/40">
-                      ส้ม 100
-                    </th>
-
-                    <th className="p-1.5 border-r border-slate-200 bg-rose-50/40">
-                      CELLOX
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-rose-50/40">
-                      KLEENEX
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-rose-50/40">
-                      PASEO
-                    </th>
-
-                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
-                      พนักงานถือสินค้า
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
-                      ถ่ายคู่กับลูกค้า/ตะกร้า
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
-                      บรรยากาศหน้าร้าน
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
-                      รูปสินค้า
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
-                      รูปเชลฟ์ชั้นวาง
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-blue-50/50">
-                      รูปสแกนสต๊อก
-                    </th>
+                    {/* --- บรรทัดล่างของ Header (กระจายหัวคอลัมน์ย่อยของรูปภาพ) --- */}
+                    {PHOTO_COLUMNS_CONFIG.map((cat) =>
+                      Array.from({ length: cat.max }).map((_, i) => (
+                        <th
+                          key={`${cat.key}_head_${i}`}
+                          className="p-2 border-r border-slate-200 bg-blue-50/60 min-w-[85px] max-w-[100px] text-center text-[9px]"
+                        >
+                          {cat.label} {cat.max > 1 ? `#${i + 1}` : ""}
+                        </th>
+                      )),
+                    )}
                   </tr>
                 </thead>
 
@@ -2618,40 +2437,6 @@ export default function CustomerReportPortal() {
                       row.storeCode,
                     );
                     const isBigC = accountName === "Big C";
-
-                    const stockAfterGreen =
-                      row.stockAfterGreen !== undefined &&
-                      row.stockAfterGreen !== null &&
-                      row.stockAfterGreen !== ""
-                        ? Number(row.stockAfterGreen)
-                        : Math.max(
-                            0,
-                            Number(row.stockBeforeGreen || 0) -
-                              Number(row.salesGreen || 0) * (isBigC ? 2 : 1),
-                          );
-
-                    const stockAfterBlue =
-                      row.stockAfterBlue !== undefined &&
-                      row.stockAfterBlue !== null &&
-                      row.stockAfterBlue !== ""
-                        ? Number(row.stockAfterBlue)
-                        : Math.max(
-                            0,
-                            Number(row.stockBeforeBlue || 0) -
-                              Number(row.salesBlue || 0) * (isBigC ? 2 : 1),
-                          );
-
-                    const stockAfterOrange = isBigC
-                      ? "-"
-                      : row.stockAfterOrange !== undefined &&
-                          row.stockAfterOrange !== null &&
-                          row.stockAfterOrange !== ""
-                        ? Number(row.stockAfterOrange)
-                        : Math.max(
-                            0,
-                            Number(row.stockBeforeOrange || 0) -
-                              Number(row.salesOrange || 0) * 2,
-                          );
 
                     const remarkDisplay =
                       row.remark ||
@@ -2705,81 +2490,91 @@ export default function CustomerReportPortal() {
                           {row.closedSales}
                         </td>
 
-                        {/* Stock Before */}
-                        <td className="p-2 border-r border-slate-200 font-mono">
-                          {row.stockBeforeGreen}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono">
-                          {row.stockBeforeBlue}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono">
-                          {isBigC ? "-" : row.stockBeforeOrange}
-                        </td>
+                        {/* Stock Before (10 Columns) */}
+                        {REPORT_PRODUCTS.map((prod) => {
+                          const info = getProductInfo(
+                            row,
+                            prod.barcode,
+                            isBigC,
+                          );
+                          return (
+                            <td
+                              key={`sb_${prod.barcode}`}
+                              className="p-2 border-r border-slate-200 font-mono"
+                            >
+                              {info.stockBefore}
+                            </td>
+                          );
+                        })}
 
-                        {/* Sales Qty */}
-                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-emerald-600 bg-emerald-50/20">
-                          +{row.salesGreen}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-blue-600 bg-blue-50/20">
-                          +{row.salesBlue}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-orange-600 bg-orange-50/20">
-                          {isBigC ? "-" : `+${row.salesOrange}`}
-                        </td>
+                        {/* Sales Qty (10 Columns) */}
+                        {REPORT_PRODUCTS.map((prod) => {
+                          const info = getProductInfo(
+                            row,
+                            prod.barcode,
+                            isBigC,
+                          );
+                          return (
+                            <td
+                              key={`sq_${prod.barcode}`}
+                              className="p-2 border-r border-slate-200 font-mono font-bold text-emerald-600 bg-emerald-50/20"
+                            >
+                              {info.salesQty !== "-" &&
+                              Number(info.salesQty) > 0
+                                ? `+${info.salesQty}`
+                                : info.salesQty}
+                            </td>
+                          );
+                        })}
 
-                        {/* Stock After */}
-                        <td className="p-2 border-r border-slate-200">
-                          {renderStockCell(stockAfterGreen)}
-                        </td>
-                        <td className="p-2 border-r border-slate-200">
-                          {renderStockCell(stockAfterBlue)}
-                        </td>
-                        <td className="p-2 border-r border-slate-200">
-                          {renderStockCell(stockAfterOrange)}
-                        </td>
+                        {/* Stock After (10 Columns) */}
+                        {REPORT_PRODUCTS.map((prod) => {
+                          const info = getProductInfo(
+                            row,
+                            prod.barcode,
+                            isBigC,
+                          );
+                          return (
+                            <td
+                              key={`sa_${prod.barcode}`}
+                              className="p-2 border-r border-slate-200"
+                            >
+                              {renderStockCell(info.stockAfter)}
+                            </td>
+                          );
+                        })}
 
-                        {/* Gifts */}
-                        <td className="p-2 border-r border-slate-200 font-mono text-slate-500">
-                          {row.giftNourishBefore || 0}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono text-slate-500">
-                          {row.giftOrangeBefore || 0}
-                        </td>
+                        {/* Prices Our (10 Columns) */}
+                        {REPORT_PRODUCTS.map((prod) => {
+                          const info = getProductInfo(
+                            row,
+                            prod.barcode,
+                            isBigC,
+                          );
+                          return (
+                            <td
+                              key={`pr_${prod.barcode}`}
+                              className="p-2 border-r border-slate-200 font-mono font-semibold"
+                            >
+                              {info.priceOur !== "-"
+                                ? `${info.priceOur}฿`
+                                : "-"}
+                            </td>
+                          );
+                        })}
 
-                        <td className="p-2 border-r border-slate-200 font-mono text-amber-600 font-bold bg-amber-50/20">
-                          {row.giftNourishGiven || 0}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono text-amber-600 font-bold bg-amber-50/20">
-                          {row.giftOrangeGiven || 0}
-                        </td>
-
-                        <td className="p-2 border-r border-slate-200 font-mono text-emerald-600 font-bold">
-                          {row.giftNourishAfter || 0}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono text-emerald-600 font-bold">
-                          {row.giftOrangeAfter || 0}
-                        </td>
-
-                        {/* Prices */}
-                        <td className="p-2 border-r border-slate-200 font-mono font-semibold">
-                          {row.priceGreen ? `${row.priceGreen}฿` : "-"}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono font-semibold">
-                          {row.priceBlue ? `${row.priceBlue}฿` : "-"}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono font-semibold">
-                          {row.priceOrange ? `${row.priceOrange}฿` : "-"}
-                        </td>
-
-                        <td className="p-2 border-r border-slate-200 font-mono text-rose-600 font-bold">
-                          {row.compCellox > 0 ? `${row.compCellox}฿` : "-"}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono text-rose-600 font-bold">
-                          {row.compKleenex > 0 ? `${row.compKleenex}฿` : "-"}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono text-rose-600 font-bold">
-                          {row.compPaseo > 0 ? `${row.compPaseo}฿` : "-"}
-                        </td>
+                        {/* Competitor Prices (15 Columns) */}
+                        {COMPETITOR_ITEMS.map((comp) => {
+                          const val = getCompetitorVal(row, comp.key);
+                          return (
+                            <td
+                              key={`comp_${comp.key}`}
+                              className="p-2 border-r border-slate-200 font-mono text-rose-600 font-bold"
+                            >
+                              {val !== "-" ? `${val}฿` : "-"}
+                            </td>
+                          );
+                        })}
 
                         {/* Text Feedback & Promo */}
                         <td
@@ -2795,42 +2590,39 @@ export default function CustomerReportPortal() {
                           {row.competitorPromo || "-"}
                         </td>
 
-                        {/* 📌 หมายเหตุ */}
+                        {/* Remark */}
                         <td
-                          className="p-2 border-r border-slate-200 text-left font-bold text-amber-900 bg-amber-50/40 min-w-[220px] max-w-[320px] whitespace-normal break-words leading-tight"
+                          className="p-2 border-r border-slate-200 text-left text-amber-900 bg-amber-50/30 min-w-[220px] max-w-[320px] whitespace-normal break-words leading-tight font-medium"
                           title={remarkDisplay}
                         >
                           {remarkDisplay || "-"}
                         </td>
 
-                        {/* Photos */}
-                        <td className="p-2 border-r border-slate-200">
-                          {renderPhotoCell(
-                            photos.staffHolding,
-                            "พนักงานถือสินค้า",
-                          )}
-                        </td>
-                        <td className="p-2 border-r border-slate-200">
-                          {renderPhotoCell(
-                            photos.customerBasket,
-                            "ถ่ายคู่กับลูกค้า/ตะกร้า",
-                          )}
-                        </td>
-                        <td className="p-2 border-r border-slate-200">
-                          {renderPhotoCell(
-                            photos.atmosphere,
-                            "บรรยากาศหน้าร้าน",
-                          )}
-                        </td>
-                        <td className="p-2 border-r border-slate-200">
-                          {renderPhotoCell(photos.product, "รูปสินค้า")}
-                        </td>
-                        <td className="p-2 border-r border-slate-200">
-                          {renderPhotoCell(photos.shelf, "รูปเชลฟ์ชั้นวาง")}
-                        </td>
-                        <td className="p-2 border-r border-slate-200">
-                          {renderPhotoCell(photos.stockScanner, "รูปสแกนสต๊อก")}
-                        </td>
+                        {/* 📸 Photo Columns (Splitting photos across dedicated columns) */}
+                        {PHOTO_COLUMNS_CONFIG.map((cat) => {
+                          const categoryPhotos =
+                            photos[cat.key as keyof typeof photos] || [];
+                          return Array.from({ length: cat.max }).map((_, i) => {
+                            const photo = categoryPhotos[i];
+                            return (
+                              <td
+                                key={`${cat.key}_col_${i}`}
+                                className="p-1 border-r border-slate-200 text-center min-w-[85px] max-w-[100px]"
+                              >
+                                {photo ? (
+                                  renderPhotoCell(
+                                    [photo],
+                                    `${cat.label} ${i + 1}`,
+                                  )
+                                ) : (
+                                  <span className="text-slate-300 font-mono text-[10px]">
+                                    -
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          });
+                        })}
                       </tr>
                     );
                   })}
@@ -2844,7 +2636,7 @@ export default function CustomerReportPortal() {
       {/* 🛠️ MODAL สำหรับ ADMIN บันทึก/แก้ไข รายงานย้อนหลัง + แนบรูปภาพ */}
       {isEditModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto no-print">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden my-8">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl overflow-hidden my-8">
             <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <Edit3 size={16} className="text-amber-400" />
@@ -2862,12 +2654,14 @@ export default function CustomerReportPortal() {
 
             <form
               onSubmit={handleSaveByAdmin}
-              className="p-4 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs"
+              className="p-4 sm:p-6 space-y-5 max-h-[80vh] overflow-y-auto text-xs"
             >
-              {/* ข้อมูลทั่วไป */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              {/* 1. ข้อมูลทั่วไป & เลือกรอบโปรโมชั่น */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <div>
-                  <label className="block font-bold mb-1">วันที่รายงาน:</label>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    วันที่รายงาน:
+                  </label>
                   <input
                     type="date"
                     value={editForm.reportDate}
@@ -2879,7 +2673,9 @@ export default function CustomerReportPortal() {
                   />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">พนักงาน (PG):</label>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    พนักงาน (PG):
+                  </label>
                   <select
                     value={editForm.userId}
                     onChange={(e) =>
@@ -2897,7 +2693,9 @@ export default function CustomerReportPortal() {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">สาขา:</label>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    สาขา:
+                  </label>
                   <select
                     value={editForm.storeCode}
                     onChange={(e) =>
@@ -2914,28 +2712,49 @@ export default function CustomerReportPortal() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block font-bold mb-1 text-amber-900">
+                    รอบโปรโมชั่น:
+                  </label>
+                  <select
+                    value={editForm.promotionId}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, promotionId: e.target.value })
+                    }
+                    className="w-full border p-2 rounded-lg font-bold bg-amber-50 text-slate-800"
+                  >
+                    <option value="">-- ไม่ระบุ / ตามวัน --</option>
+                    {promotions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title || p.name || `รอบ #${p.id}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              {/* สถิติ Funnel */}
+              {/* 2. สถิติ Funnel */}
               <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100">
                 <span className="font-bold text-blue-900 block mb-2">
                   📊 สถิติลูกค้า (Funnel)
                 </span>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-slate-500 mb-1">Traffic</label>
+                    <label className="block text-slate-600 font-bold mb-1">
+                      Traffic (เดินผ่าน)
+                    </label>
                     <input
                       type="number"
                       value={editForm.traffic}
                       onChange={(e) =>
                         setEditForm({ ...editForm, traffic: e.target.value })
                       }
-                      className="w-full border p-2 rounded-lg font-mono bg-white"
+                      className="w-full border p-2 rounded-lg font-mono bg-white font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-500 mb-1">
-                      Approach
+                    <label className="block text-slate-600 font-bold mb-1">
+                      Approach (ทักทาย)
                     </label>
                     <input
                       type="number"
@@ -2943,12 +2762,12 @@ export default function CustomerReportPortal() {
                       onChange={(e) =>
                         setEditForm({ ...editForm, approach: e.target.value })
                       }
-                      className="w-full border p-2 rounded-lg font-mono bg-white"
+                      className="w-full border p-2 rounded-lg font-mono bg-white font-bold text-blue-600"
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-500 mb-1">
-                      Closed Sales
+                    <label className="block text-slate-600 font-bold mb-1">
+                      Closed Sales (ปิดการขาย)
                     </label>
                     <input
                       type="number"
@@ -2959,381 +2778,265 @@ export default function CustomerReportPortal() {
                           closedSales: e.target.value,
                         })
                       }
-                      className="w-full border p-2 rounded-lg font-mono bg-white"
+                      className="w-full border p-2 rounded-lg font-mono bg-white font-bold text-emerald-600"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* ยอดขายและสต๊อกสินค้า */}
+              {/* 3. ยอดขาย สต๊อก และราคาขายสินค้าเรา (ครบทั้ง 10 SKU) */}
               <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 space-y-3">
-                <span className="font-bold text-emerald-900 block">
-                  📦 ยอดขายและสต๊อกสินค้า
-                </span>
-
-                <div className="grid grid-cols-4 gap-2 items-center bg-white p-2 rounded-lg border">
-                  <span className="font-bold text-emerald-700">เขียว 90</span>
-                  <div>
-                    <label className="text-[10px] text-slate-400">
-                      Stock เริ่ม
-                    </label>
-                    <input
-                      type="number"
-                      value={editForm.stockBeforeGreen}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          stockBeforeGreen: e.target.value,
-                        })
-                      }
-                      className="w-full border p-1 rounded font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400">ยอดขาย</label>
-                    <input
-                      type="number"
-                      value={editForm.salesGreen}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          salesGreen: e.target.value,
-                        })
-                      }
-                      className="w-full border p-1 rounded font-mono text-emerald-600 font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400">
-                      Stock หลังเลิก
-                    </label>
-                    <input
-                      type="number"
-                      value={editForm.stockAfterGreen}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          stockAfterGreen: e.target.value,
-                        })
-                      }
-                      className="w-full border p-1 rounded font-mono"
-                    />
-                  </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-900 block">
+                    📦 ยอดขาย สต๊อก และราคาขายสินค้าเรา (ครบทั้ง 10 รายการ)
+                  </span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                    10 SKU
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-4 gap-2 items-center bg-white p-2 rounded-lg border">
-                  <span className="font-bold text-blue-700">ฟ้า 90</span>
-                  <div>
-                    <label className="text-[10px] text-slate-400">
-                      Stock เริ่ม
-                    </label>
-                    <input
-                      type="number"
-                      value={editForm.stockBeforeBlue}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          stockBeforeBlue: e.target.value,
-                        })
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {REPORT_PRODUCTS.map((prod) => {
+                    // Helper ดึงค่า
+                    const getProdVal = (
+                      field:
+                        | "stockBefore"
+                        | "salesQty"
+                        | "stockAfter"
+                        | "priceOur",
+                    ) => {
+                      if (Array.isArray(editForm.products)) {
+                        const found = editForm.products.find(
+                          (p: any) => p.barcode === prod.barcode,
+                        );
+                        if (found && found[field] !== undefined)
+                          return found[field];
                       }
-                      className="w-full border p-1 rounded font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400">ยอดขาย</label>
-                    <input
-                      type="number"
-                      value={editForm.salesBlue}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          salesBlue: e.target.value,
-                        })
+                      if (prod.barcode === "8858678423339") {
+                        if (field === "stockBefore")
+                          return editForm.stockBeforeGreen ?? "";
+                        if (field === "salesQty")
+                          return editForm.salesGreen ?? "";
+                        if (field === "stockAfter")
+                          return editForm.stockAfterGreen ?? "";
+                        if (field === "priceOur")
+                          return editForm.priceGreen ?? 150;
                       }
-                      className="w-full border p-1 rounded font-mono text-blue-600 font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400">
-                      Stock หลังเลิก
-                    </label>
-                    <input
-                      type="number"
-                      value={editForm.stockAfterBlue}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          stockAfterBlue: e.target.value,
-                        })
+                      if (prod.barcode === "8858678423681") {
+                        if (field === "stockBefore")
+                          return editForm.stockBeforeBlue ?? "";
+                        if (field === "salesQty")
+                          return editForm.salesBlue ?? "";
+                        if (field === "stockAfter")
+                          return editForm.stockAfterBlue ?? "";
+                        if (field === "priceOur")
+                          return editForm.priceBlue ?? 142;
                       }
-                      className="w-full border p-1 rounded font-mono"
-                    />
-                  </div>
-                </div>
+                      if (prod.barcode === "8858678422875") {
+                        if (field === "stockBefore")
+                          return editForm.stockBeforeOrange ?? "";
+                        if (field === "salesQty")
+                          return editForm.salesOrange ?? "";
+                        if (field === "stockAfter")
+                          return editForm.stockAfterOrange ?? "";
+                        if (field === "priceOur")
+                          return editForm.priceOrange ?? 100;
+                      }
+                      return editForm[`${field}_${prod.barcode}`] ?? "";
+                    };
 
-                <div className="grid grid-cols-4 gap-2 items-center bg-white p-2 rounded-lg border">
-                  <span className="font-bold text-orange-600">ส้ม 100</span>
-                  <div>
-                    <label className="text-[10px] text-slate-400">
-                      Stock เริ่ม
-                    </label>
-                    <input
-                      type="number"
-                      value={editForm.stockBeforeOrange}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          stockBeforeOrange: e.target.value,
-                        })
+                    // Helper บันทึกค่า
+                    const setProdVal = (field: string, val: any) => {
+                      let updated = { ...editForm };
+                      if (prod.barcode === "8858678423339") {
+                        if (field === "stockBefore")
+                          updated.stockBeforeGreen = val;
+                        if (field === "salesQty") updated.salesGreen = val;
+                        if (field === "stockAfter")
+                          updated.stockAfterGreen = val;
+                        if (field === "priceOur") updated.priceGreen = val;
+                      } else if (prod.barcode === "8858678423681") {
+                        if (field === "stockBefore")
+                          updated.stockBeforeBlue = val;
+                        if (field === "salesQty") updated.salesBlue = val;
+                        if (field === "stockAfter")
+                          updated.stockAfterBlue = val;
+                        if (field === "priceOur") updated.priceBlue = val;
+                      } else if (prod.barcode === "8858678422875") {
+                        if (field === "stockBefore")
+                          updated.stockBeforeOrange = val;
+                        if (field === "salesQty") updated.salesOrange = val;
+                        if (field === "stockAfter")
+                          updated.stockAfterOrange = val;
+                        if (field === "priceOur") updated.priceOrange = val;
                       }
-                      className="w-full border p-1 rounded font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400">ยอดขาย</label>
-                    <input
-                      type="number"
-                      value={editForm.salesOrange}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          salesOrange: e.target.value,
-                        })
-                      }
-                      className="w-full border p-1 rounded font-mono text-orange-600 font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400">
-                      Stock หลังเลิก
-                    </label>
-                    <input
-                      type="number"
-                      value={editForm.stockAfterOrange}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          stockAfterOrange: e.target.value,
-                        })
-                      }
-                      className="w-full border p-1 rounded font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
 
-              {/* ของแถม */}
-              <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-100">
-                <span className="font-bold text-amber-900 block mb-2">
-                  🎁 สต๊อกของแถม
-                </span>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white p-2 rounded-lg border">
-                    <span className="font-bold block text-slate-700 mb-1">
-                      เขียว 40
-                    </span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          ยกมา
-                        </label>
-                        <input
-                          type="number"
-                          value={editForm.giftNourishBefore}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              giftNourishBefore: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          แจกไป
-                        </label>
-                        <input
-                          type="number"
-                          value={editForm.giftNourishGiven}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              giftNourishGiven: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono text-amber-600 font-bold"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                      updated[`${field}_${prod.barcode}`] = val;
 
-                  <div className="bg-white p-2 rounded-lg border">
-                    <span className="font-bold block text-slate-700 mb-1">
-                      ส้ม 100
-                    </span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          ยกมา
-                        </label>
-                        <input
-                          type="number"
-                          value={editForm.giftOrangeBefore}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              giftOrangeBefore: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono"
-                        />
+                      let prods = Array.isArray(updated.products)
+                        ? [...updated.products]
+                        : [];
+                      const idx = prods.findIndex(
+                        (p: any) => p.barcode === prod.barcode,
+                      );
+                      if (idx >= 0) {
+                        prods[idx] = { ...prods[idx], [field]: val };
+                      } else {
+                        prods.push({ barcode: prod.barcode, [field]: val });
+                      }
+                      updated.products = prods;
+
+                      setEditForm(updated);
+                    };
+
+                    return (
+                      <div
+                        key={prod.barcode}
+                        className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white p-2 rounded-lg border border-slate-200 hover:border-emerald-300 transition"
+                      >
+                        <div className="sm:col-span-4">
+                          <span className="font-bold text-slate-800 block text-[11px] leading-tight">
+                            {prod.label}
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-400">
+                            {prod.barcode}
+                          </span>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="text-[9px] text-slate-500 block font-bold">
+                            Stock เริ่ม
+                          </label>
+                          <input
+                            type="number"
+                            value={getProdVal("stockBefore")}
+                            onChange={(e) =>
+                              setProdVal("stockBefore", e.target.value)
+                            }
+                            className="w-full border p-1 rounded font-mono text-xs"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="text-[9px] text-slate-500 block font-bold">
+                            ยอดขาย (แพ็ค)
+                          </label>
+                          <input
+                            type="number"
+                            value={getProdVal("salesQty")}
+                            onChange={(e) =>
+                              setProdVal("salesQty", e.target.value)
+                            }
+                            className="w-full border p-1 rounded font-mono text-xs text-emerald-600 font-bold bg-emerald-50/30"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="text-[9px] text-slate-500 block font-bold">
+                            Stock หลังเลิก
+                          </label>
+                          <input
+                            type="number"
+                            value={getProdVal("stockAfter")}
+                            onChange={(e) =>
+                              setProdVal("stockAfter", e.target.value)
+                            }
+                            className="w-full border p-1 rounded font-mono text-xs"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="text-[9px] text-slate-500 block font-bold">
+                            ราคาขาย (บาท)
+                          </label>
+                          <input
+                            type="number"
+                            value={getProdVal("priceOur")}
+                            onChange={(e) =>
+                              setProdVal("priceOur", e.target.value)
+                            }
+                            className="w-full border p-1 rounded font-mono text-xs font-bold text-slate-700"
+                            placeholder="บาท"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          แจกไป
-                        </label>
-                        <input
-                          type="number"
-                          value={editForm.giftOrangeGiven}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              giftOrangeGiven: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono text-amber-600 font-bold"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* 🏷️ ราคาขายหน้าร้าน & ราคาคู่แข่ง */}
-              <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 space-y-3">
-                <span className="font-bold text-indigo-900 block">
-                  🏷️ ราคาขายหน้าร้าน & ราคาคู่แข่ง (บาท)
-                </span>
+              {/* 4. ราคาขายสินค้าคู่แข่ง (ครบทั้ง 15 รายการ) */}
+              <div className="p-3 bg-rose-50/50 rounded-xl border border-rose-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-rose-900 block">
+                    🏷️ ราคาขายสินค้าคู่แข่งหน้าร้าน (ครบทั้ง 15 รายการ)
+                  </span>
+                  <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full">
+                    15 Items
+                  </span>
+                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* ราคาของเรา */}
-                  <div className="bg-white p-2.5 rounded-lg border">
-                    <span className="font-bold block text-slate-700 mb-1.5 text-[11px]">
-                      ราคาขายสินค้าของเรา
-                    </span>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          เขียว 90
-                        </label>
-                        <input
-                          type="number"
-                          value={editForm.priceGreen}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              priceGreen: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono font-bold text-emerald-600"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          ฟ้า 90
-                        </label>
-                        <input
-                          type="number"
-                          value={editForm.priceBlue}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              priceBlue: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono font-bold text-blue-600"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          ส้ม 100
-                        </label>
-                        <input
-                          type="number"
-                          value={editForm.priceOrange}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              priceOrange: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono font-bold text-orange-600"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 max-h-56 overflow-y-auto pr-1">
+                  {COMPETITOR_ITEMS.map((comp) => {
+                    const getCompVal = () => {
+                      if (
+                        editForm.competitorPrices &&
+                        editForm.competitorPrices[comp.key] !== undefined
+                      ) {
+                        return editForm.competitorPrices[comp.key];
+                      }
+                      if (comp.key === "cellox_satin_4" && editForm.compCellox)
+                        return editForm.compCellox;
+                      if (
+                        comp.key === "kleenex_silky_4" &&
+                        editForm.compKleenex
+                      )
+                        return editForm.compKleenex;
+                      if (comp.key === "scott_safesoft_4" && editForm.compPaseo)
+                        return editForm.compPaseo;
+                      return editForm[comp.key] ?? "";
+                    };
 
-                  {/* ราคาคู่แข่ง */}
-                  <div className="bg-white p-2.5 rounded-lg border">
-                    <span className="font-bold block text-slate-700 mb-1.5 text-[11px]">
-                      ราคาคู่แข่งหน้าร้าน
-                    </span>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          Cellox
+                    const setCompVal = (val: any) => {
+                      let updated = { ...editForm };
+                      let compPrices = { ...(updated.competitorPrices || {}) };
+                      compPrices[comp.key] = val;
+                      updated.competitorPrices = compPrices;
+
+                      if (comp.key === "cellox_satin_4")
+                        updated.compCellox = val;
+                      if (comp.key === "kleenex_silky_4")
+                        updated.compKleenex = val;
+                      if (comp.key === "scott_safesoft_4")
+                        updated.compPaseo = val;
+
+                      setEditForm(updated);
+                    };
+
+                    return (
+                      <div
+                        key={comp.key}
+                        className="bg-white p-2 rounded-lg border border-slate-200"
+                      >
+                        <label
+                          className="block text-[9px] font-bold text-slate-700 truncate mb-1"
+                          title={comp.label}
+                        >
+                          {comp.label}
                         </label>
                         <input
                           type="number"
-                          value={editForm.compCellox}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              compCellox: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono text-rose-600 font-bold"
+                          value={getCompVal()}
+                          onChange={(e) => setCompVal(e.target.value)}
+                          className="w-full border p-1 rounded font-mono text-xs text-rose-600 font-bold"
+                          placeholder="บาท"
                         />
                       </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          Kleenex
-                        </label>
-                        <input
-                          type="number"
-                          value={editForm.compKleenex}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              compKleenex: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono text-rose-600 font-bold"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400">
-                          Paseo
-                        </label>
-                        <input
-                          type="number"
-                          value={editForm.compPaseo}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              compPaseo: e.target.value,
-                            })
-                          }
-                          className="w-full border p-1 rounded font-mono text-rose-600 font-bold"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* 📸 ส่วนอัปโหลดรูปภาพกิจกรรมหน้าร้านย้อนหลัง */}
+              {/* 5. 📸 ส่วนอัปโหลดรูปภาพกิจกรรมหน้าร้าน */}
               <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100 space-y-3">
                 <span className="font-bold text-purple-900 flex items-center gap-1.5">
                   <ImageIcon size={15} className="text-purple-600" />
@@ -3400,10 +3103,10 @@ export default function CustomerReportPortal() {
                 </div>
               </div>
 
-              {/* ข้อความเพิ่มเติม */}
+              {/* 6. ข้อความเพิ่มเติม / Feedback / หมายเหตุ */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-bold mb-1">
+                  <label className="block font-bold mb-1 text-slate-700">
                     Feedback หน้าร้าน:
                   </label>
                   <textarea
@@ -3413,10 +3116,11 @@ export default function CustomerReportPortal() {
                       setEditForm({ ...editForm, feedback: e.target.value })
                     }
                     className="w-full border p-2 rounded-lg bg-white"
+                    placeholder="เสียงตอบรับจากลูกค้าหรือหน้าร้าน..."
                   />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">
+                  <label className="block font-bold mb-1 text-slate-700">
                     โปรโมชันคู่แข่ง:
                   </label>
                   <textarea
@@ -3429,10 +3133,13 @@ export default function CustomerReportPortal() {
                       })
                     }
                     className="w-full border p-2 rounded-lg bg-white"
+                    placeholder="รายละเอียดโปรโมชันคู่แข่ง..."
                   />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">หมายเหตุ:</label>
+                  <label className="block font-bold mb-1 text-slate-700">
+                    หมายเหตุ:
+                  </label>
                   <textarea
                     rows={2}
                     value={editForm.remark}
@@ -3440,6 +3147,7 @@ export default function CustomerReportPortal() {
                       setEditForm({ ...editForm, remark: e.target.value })
                     }
                     className="w-full border p-2 rounded-lg bg-amber-50/50 font-medium"
+                    placeholder="หมายเหตุเพิ่มเติม..."
                   />
                 </div>
               </div>

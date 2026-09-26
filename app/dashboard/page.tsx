@@ -8,6 +8,26 @@ interface PageProps {
   searchParams: Promise<{ userId?: string }>;
 }
 
+// ฟังก์ชันแปลงเวลา ISO UTC เป็นเวลาไทย (Asia/Bangkok)
+const formatThaiDateTime = (dateString: string | null | undefined) => {
+  if (!dateString) return "-";
+  
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "-";
+
+  // กำหนดรูปแบบเป็น DD/MM/YYYY HH:mm:ss (เวลาไทย)
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date).replace(",", "");
+};
+
 export default async function DashboardPage({ searchParams }: PageProps) {
   const resolvedParams = await searchParams;
   const userId = resolvedParams.userId

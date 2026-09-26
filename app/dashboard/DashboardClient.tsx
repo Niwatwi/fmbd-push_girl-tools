@@ -59,6 +59,28 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   const [productDetails, setProductDetails] = useState<any[]>([]);
   const [giftSummary, setGiftSummary] = useState<any[]>([]);
 
+  // ฟังก์ชันแปลงเวลา ISO UTC เป็นเวลาไทย (Asia/Bangkok)
+  const formatThaiDateTime = (dateString: string | null | undefined) => {
+    if (!dateString) return "-";
+
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "-";
+
+    // กำหนดรูปแบบเป็น DD/MM/YYYY HH:mm:ss (เวลาไทย)
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    })
+      .format(date)
+      .replace(",", "");
+  };
+
   // 🔄 ฟังก์ชันดึงข้อมูลหลัก
   const loadUserData = useCallback(
     async (isManualRefresh = false) => {
