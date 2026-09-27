@@ -68,6 +68,35 @@ function checkIsBigC(code: string = "", name: string = "") {
   );
 }
 
+function getStoreTargetPacks(target: any): number {
+  const productTargets = Array.from(
+    { length: 10 },
+    (_, index) => target?.[`target${index + 1}`],
+  );
+  const hasProductTargets = productTargets.some(
+    (value) => value !== null && value !== undefined && value !== "",
+  );
+
+  if (hasProductTargets) {
+    return productTargets.reduce((sum, value) => sum + Number(value || 0), 0);
+  }
+
+  const legacyTargets = [
+    target?.target_green90,
+    target?.target_blue90,
+    target?.target_orange100,
+  ];
+  const hasLegacyTargets = legacyTargets.some(
+    (value) => value !== null && value !== undefined && value !== "",
+  );
+
+  if (hasLegacyTargets) {
+    return legacyTargets.reduce((sum, value) => sum + Number(value || 0), 0);
+  }
+
+  return Number(target?.target_packs ?? target?.target ?? 0);
+}
+
 function getReportProductSalesBreakdown(report: any) {
   const directGreen = Number(report?.sales_qty_green90 ?? 0);
   const directBlue = Number(report?.sales_qty_blue90 ?? 0);
@@ -245,14 +274,14 @@ export async function getCustomerSalesVsTargetReport() {
       return {
         storeCode: target.store_code,
         storeName: target.store_name,
-        targetPacks: Number(target.target_packs),
+        targetPacks: getStoreTargetPacks(target),
         actualPacks: totalActualPacks,
         greenSales: actualGreen,
         blueSales: actualBlue,
         orangeSales: actualOrange,
         achievedPercent:
-          Number(target.target_packs) > 0
-            ? Math.round((totalActualPacks / Number(target.target_packs)) * 100)
+          getStoreTargetPacks(target) > 0
+            ? Math.round((totalActualPacks / getStoreTargetPacks(target)) * 100)
             : 0,
       };
     });
@@ -350,13 +379,10 @@ export async function saveStoreTargetAction(payload: {
       payload.price_orange100 ?? productRows[2]?.price ?? 100,
     );
 
-    const isBigC = checkIsBigC(payload.store_code, payload.store_name);
-
-    const targetSetsCounted = isBigC
-      ? Number(productRows[0]?.target ?? green) +
-        Number(productRows[1]?.target ?? blue)
-      : productRows.reduce((sum, row) => sum + Number(row.target || 0), 0);
-    const totalPacks = targetSetsCounted * 2;
+    const totalPacks = productRows.reduce(
+      (sum, row) => sum + Number(row.target || 0),
+      0,
+    );
 
     const totalRevenue = productRows.reduce(
       (sum, row) => sum + Number(row.target || 0) * Number(row.price || 0),
@@ -535,7 +561,9 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
       },
       storeName: attendance?.store_name || "ยังไม่ได้บันทึก Check-in วันนี้",
       storeCode: activeStoreCode,
-      storeTarget: storeTarget,
+      storeTarget: storeTarget
+        ? { ...storeTarget, target_packs: getStoreTargetPacks(storeTarget) }
+        : null,
       todaySales: todayReport || null,
       monthlyProgress: {
         total_packs: monthlyTotalPacks,
@@ -1181,9 +1209,7 @@ export async function getCustomerFullActivityReport() {
 
     const storeQueries = [
       supabase.from("stores").select("store_code, store_name"),
-      supabase
-        .from("store_targets")
-        .select("store_code, store_name, target_packs"),
+      supabase.from("store_targets").select("*"),
     ];
 
     const [storesRes, targetsRes] = await Promise.all(storeQueries);
@@ -1192,7 +1218,7 @@ export async function getCustomerFullActivityReport() {
       if (!target?.store_code) continue;
       targetLookup.set(
         String(target.store_code).trim(),
-        Number(target.target_packs || 0),
+        getStoreTargetPacks(target),
       );
     }
 

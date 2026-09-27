@@ -40,7 +40,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   const [isBigC, setIsBigC] = useState(false);
 
   // State เป้าหมายรวม และโบนัสสะสม
-  const [monthlyTarget, setMonthlyTarget] = useState<number>(240);
+  const [monthlyTarget, setMonthlyTarget] = useState<number>(0);
   const [currentMonthlyProgress, setCurrentMonthlyProgress] =
     useState<number>(0);
   const [incentiveBonus, setIncentiveBonus] = useState<number>(0);
@@ -103,7 +103,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           setIsBigC(checkIsBigC);
 
           if (res.storeTarget) {
-            setMonthlyTarget(Number(res.storeTarget.target_packs || 240));
+            setMonthlyTarget(Number(res.storeTarget.target_packs || 0));
           }
 
           // 1. ประมวลผลยอดขายวันนี้ (ถ้าไม่มีข้อมูลให้เป็น 0)

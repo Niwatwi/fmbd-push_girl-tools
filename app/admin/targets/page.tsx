@@ -93,16 +93,15 @@ export default function AdminTargetManagement() {
 
   const isBigC = checkIsBigC(storeCode, storeName);
 
-  const targetSetsCounted = isBigC
-    ? (productRows[0]?.target || 0) + (productRows[1]?.target || 0)
-    : productRows.reduce((sum, row) => sum + Number(row.target || 0), 0);
+  const targetSetsCounted = productRows.reduce(
+    (sum, row) => sum + Number(row.target || 0),
+    0,
+  );
 
   const totalCalculatedRevenue = productRows.reduce(
     (sum, row) => sum + Number(row.target || 0) * Number(row.price || 0),
     0,
   );
-
-  const totalPacksIncludeFree = targetSetsCounted * 2;
 
   // 🔄 ดึงข้อมูลร้านค้า, สินค้า และเป้าหมายจาก Database
   const initPageData = async () => {
@@ -802,7 +801,7 @@ export default function AdminTargetManagement() {
               </div>
 
               <div className="flex justify-between font-bold">
-                <span className="text-slate-400">ยอดนับ Target หลัก:</span>
+                <span className="text-slate-400">Target รวม:</span>
                 <span
                   className={`font-mono text-xs font-black ${
                     targetSetsCounted >= 60
@@ -810,14 +809,7 @@ export default function AdminTargetManagement() {
                       : "text-amber-400"
                   }`}
                 >
-                  {targetSetsCounted.toLocaleString()} ชุด
-                </span>
-              </div>
-
-              <div className="flex justify-between font-bold">
-                <span className="text-slate-400">รวมชิ้น (คิด 1 แถม 1):</span>
-                <span className="text-white font-mono">
-                  {totalPacksIncludeFree.toLocaleString()} ชิ้น
+                  {targetSetsCounted.toLocaleString()} แพ็ค
                 </span>
               </div>
 
@@ -997,7 +989,7 @@ export default function AdminTargetManagement() {
                           </span>
                         </td>
                         <td className="p-3 text-center font-mono font-bold text-slate-700">
-                          {targetValues.join(" / ")} ชุด
+                          {targetValues.join(" / ")} แพ็ค
                         </td>
                         <td className="p-3 text-center font-mono text-[11px] text-slate-500">
                           {priceValues.join(" / ")} ฿
