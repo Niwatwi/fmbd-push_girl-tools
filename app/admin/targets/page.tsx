@@ -27,8 +27,9 @@ import {
   saveStoreTargetAction,
   getAvailableStores,
   deleteStoreTargetAction,
-  getProducts, // ✅ นำเข้า getProducts จาก actions จริง
+  getProducts,
 } from "@/app/dashboard/actions";
+import { getAllPromotionsAction } from "@/app/admin/promotions/actions";
 import { useRouter } from "next/navigation";
 
 // 🔍 Helper เช็คว่าเป็น BigC หรือไม่
@@ -42,18 +43,12 @@ const checkIsBigC = (code: string = "", name: string = "") => {
   );
 };
 
-// ข้อมูลจำลองรอบโปรโมชั่น
-const FALLBACK_PROMOTIONS = [
-  { id: 1, title: "โปรโมชั่นประจำเดือน กันยายน 2026 (1แถม1)" },
-  { id: 2, title: "โปรโมชั่นเทศกาลพิเศษ ตลาดหน้าร้าน" },
-];
-
 export default function AdminTargetManagement() {
   const router = useRouter();
   const [targetsList, setTargetsList] = useState<any[]>([]);
   const [masterStores, setMasterStores] = useState<any[]>([]);
-  const [promotions] = useState<any[]>(FALLBACK_PROMOTIONS);
-  const [productsList, setProductsList] = useState<any[]>([]); // 📦 เก็บรายการสินค้าจาก Database
+  const [promotions, setPromotions] = useState<any[]>([]);
+  const [productsList, setProductsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -113,16 +108,21 @@ export default function AdminTargetManagement() {
   const initPageData = async () => {
     setLoading(true);
     try {
-      const [storesRes, targetsRes, productsRes] = await Promise.all([
-        getAvailableStores(),
-        getStoreTargets(),
-        getProducts(), // 🚀 ดึงข้อมูลสินค้าจริงจากฐานข้อมูล
-      ]);
+      const [storesRes, targetsRes, productsRes, promotionsRes] =
+        await Promise.all([
+          getAvailableStores(),
+          getStoreTargets(),
+          getProducts(),
+          getAllPromotionsAction(),
+        ]);
 
       if (storesRes.success) setMasterStores(storesRes.data);
       if (targetsRes.success) setTargetsList(targetsRes.data);
       if (productsRes.success && productsRes.data) {
         setProductsList(productsRes.data);
+      }
+      if (promotionsRes.success && promotionsRes.promotions) {
+        setPromotions(promotionsRes.promotions);
       }
     } catch (error) {
       console.error("Error loading page data:", error);
@@ -144,7 +144,9 @@ export default function AdminTargetManagement() {
   const handlePromotionChange = (promoId: string) => {
     setPromotionId(promoId);
     const found = promotions.find((p) => String(p.id) === String(promoId));
-    setPromotionName(found ? found.title || found.name || "" : "");
+    setPromotionName(
+      found ? found.campaign_title || found.title || found.name || "" : "",
+    );
   };
 
   const handleAddProductRow = () => {
@@ -324,6 +326,16 @@ export default function AdminTargetManagement() {
       store_name: storeName,
       promotion_id: promotionId || null,
       promotion_name: promotionName || null,
+      promotion_title: promotionName || null,
+      target_type: promotionId ? "PROMOTION_THEME" : "STANDARD",
+      target_value: promotionId || "STANDARD",
+      target_round: promotionName || null,
+      target_green90: productRows[0]?.target || 0,
+      target_blue90: productRows[1]?.target || 0,
+      target_orange100: productRows[2]?.target || 0,
+      price_green90: productRows[0]?.price || 0,
+      price_blue90: productRows[1]?.price || 0,
+      price_orange100: productRows[2]?.price || 0,
       product1_id: productRows[0]?.productId || null,
       target1: productRows[0]?.target || 0,
       price1: productRows[0]?.price || 0,

@@ -30,6 +30,8 @@ import {
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   PieChart,
   Pie,
   Cell,
@@ -49,19 +51,59 @@ import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import Swal from "sweetalert2";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+// ==========================================
+// 1. Type Interfaces
+// ==========================================
+export interface ReportProduct {
+  barcode: string;
+  label: string;
+  shortLabel: string;
+  bgClass: string;
+  color: string;
+  gradStart?: string;
+  gradEnd?: string;
+}
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export interface CompetitorItem {
+  key: string;
+  label: string;
+  bgClass?: string;
+  color?: string;
+  gradStart?: string;
+  gradEnd?: string;
+}
 
-// 📦 รายการสินค้าหลัก 10 รายการ (พร้อมโครงสร้างสีสำหรับกราฟ)
-const REPORT_PRODUCTS = [
+// ==========================================
+// 2. ประกาศตัวแปร COMPETITOR_ITEMS
+// ==========================================
+const COMPETITOR_ITEMS: CompetitorItem[] = [
+  { key: "cellox_satin_4", label: "เซลล็อกซ์ ซาติน แพ็ค 4 (บ.)" },
+  { key: "kleenex_silky_4", label: "คลีเน็กซ์ ซิลค์กี้สมูท แพ็ค 4 (บ.)" },
+  { key: "scott_safesoft_4", label: "สก็อตต์เซฟซอฟท์บ๊อกซ์แพ็ค4 (บ.)" },
+  { key: "zilk_cotton_6", label: "ซิลค์ คอตตอน ชำระแพ็ค 6 (บ.)" },
+  { key: "cellox_2ply_6", label: "เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 6 (บ.)" },
+  { key: "scott_extra_6", label: "สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 6 (บ.)" },
+  { key: "zilk_cotton_24", label: "ซิลค์ คอตตอน ชำระแพ็ค 24 (บ.)" },
+  { key: "cellox_2ply_24", label: "เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 24 (บ.)" },
+  { key: "scott_extra_24", label: "สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 24 (บ.)" },
+  { key: "maxmo_hang_200", label: "แม๊กโม่แบบแขวน 200 แผ่น (บ.)" },
+  { key: "maxmo_3", label: "แม๊กซ์โม่อเนกประสงค์ แพ็ค 3 (บ.)" },
+  { key: "scott_3_1", label: "สก็อตต์ อเนกประสงค์ 3+1 (บ.)" },
+  { key: "maxmo_6_2_green", label: "แม๊กซ์โม่ อเนกประสงค์ 6+2 เขียว (บ.)" },
+  { key: "maxmo_6_2_red", label: "แม๊กซ์โม่ อเนกประสงค์ 6+2 แดง (บ.)" },
+  { key: "scott_6_2_red", label: "สก็อตต์ อเนกประสงค์ 6+2 แดง (บ.)" },
+];
+
+// ==========================================
+// 3. ประกาศตัวแปร REPORT_PRODUCTS พร้อม gradStart / gradEnd
+// ==========================================
+const REPORT_PRODUCTS: ReportProduct[] = [
   {
     barcode: "8858678423339",
     label: "มายด์ลักซูรี่ สีเขียว 90",
     shortLabel: "เขียว 90",
-    bgClass: "bg-green-100 min-w-[180px] max-w-[300px]",
-    color: "#10b981",
+    bgClass: "bg-emerald-50 min-w-[180px]",
+    color: "#059669",
     gradStart: "#34d399",
     gradEnd: "#059669",
   },
@@ -69,8 +111,8 @@ const REPORT_PRODUCTS = [
     barcode: "8858678423681",
     label: "มายด์ลักซูรี่ สีฟ้า 90",
     shortLabel: "ฟ้า 90",
-    bgClass: "bg-blue-200 min-w-[180px] max-w-[300px]",
-    color: "#3b82f6",
+    bgClass: "bg-blue-50 min-w-[180px]",
+    color: "#2563eb",
     gradStart: "#60a5fa",
     gradEnd: "#1d4ed8",
   },
@@ -78,154 +120,80 @@ const REPORT_PRODUCTS = [
     barcode: "8858678422875",
     label: "มายด์ลักซูรี่ สีส้ม 100",
     shortLabel: "ส้ม 100",
-    bgClass: "bg-orange-100 min-w-[180px] max-w-[300px]",
-    color: "#f97316",
+    bgClass: "bg-orange-50 min-w-[180px]",
+    color: "#ea580c",
     gradStart: "#fb923c",
     gradEnd: "#c2410c",
   },
   {
     barcode: "8858678423407",
-    label: "มายด์โดราเอม่อน แพ็ค 5",
-    shortLabel: "โดราเอม่อน 5",
-    bgClass: "bg-blue-100 min-w-[180px] max-w-[300px]",
-    color: "#06b6d4",
-    gradStart: "#22d3ee",
-    gradEnd: "#0891b2",
+    label: "มายด์โดราเอมอน แพ็ค 5",
+    shortLabel: "โดราเอมอน P5",
+    bgClass: "bg-sky-50 min-w-[180px]",
+    color: "#0284c7",
+    gradStart: "#38bdf8",
+    gradEnd: "#0369a1",
   },
   {
     barcode: "8858678423063",
-    label: "เทนเดอร์ เช็ดหน้า แพ็ค 4+1",
-    shortLabel: "เช็ดหน้า 4+1",
-    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
-    color: "#ef4444",
+    label: "เทนเดอร์ เช็ดหน้า 4+1",
+    shortLabel: "เทนเดอร์ เช็ดหน้า 4+1",
+    bgClass: "bg-red-50 min-w-[180px]",
+    color: "#dc2626",
     gradStart: "#f87171",
-    gradEnd: "#dc2626",
+    gradEnd: "#b91c1c",
   },
   {
     barcode: "8851020101213",
     label: "เทนเดอร์ ชำระ 6+2",
-    shortLabel: "ชำระ 6+2",
-    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
-    color: "#ec4899",
-    gradStart: "#f472b6",
-    gradEnd: "#db2777",
+    shortLabel: "เทนเดอร์ ชำระ 6+2",
+    bgClass: "bg-rose-50 min-w-[180px]",
+    color: "#e11d48",
+    gradStart: "#fb7185",
+    gradEnd: "#be123c",
   },
   {
     barcode: "8851020101220",
     label: "เทนเดอร์ ชำระ 24+6",
-    shortLabel: "ชำระ 24+6",
-    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
-    color: "#a855f7",
-    gradStart: "#c084fc",
-    gradEnd: "#7e22ce",
+    shortLabel: "เทนเดอร์ ชำระ 24+6",
+    bgClass: "bg-rose-100 min-w-[180px]",
+    color: "#be123c",
+    gradStart: "#fda4af",
+    gradEnd: "#881337",
   },
   {
     barcode: "8858678422769",
-    label: "เทนเดอร์ อเนกประสงค์แบบแขวน 200",
-    shortLabel: "แขวน 200",
-    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
-    color: "#6366f1",
-    gradStart: "#818cf8",
-    gradEnd: "#4338ca",
+    label: "เทนเดอร์ อเนกประสงค์ 200",
+    shortLabel: "เทนเดอร์ อเนกฯ 200",
+    bgClass: "bg-amber-50 min-w-[180px]",
+    color: "#d97706",
+    gradStart: "#fcd34d",
+    gradEnd: "#b45309",
   },
   {
     barcode: "8858678422752",
     label: "เทนเดอร์ อเนกประสงค์ 3+1",
-    shortLabel: "อเนกประสงค์ 3+1",
-    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
-    color: "#eab308",
+    shortLabel: "เทนเดอร์ อเนกฯ 3+1",
+    bgClass: "bg-amber-100 min-w-[180px]",
+    color: "#b45309",
     gradStart: "#fde047",
-    gradEnd: "#ca8a04",
+    gradEnd: "#78350f",
   },
   {
     barcode: "8858678421304",
     label: "เทนเดอร์ อเนกประสงค์ 6+2",
-    shortLabel: "อเนกประสงค์ 6+2",
-    bgClass: "bg-red-200 min-w-[180px] max-w-[300px]",
-    color: "#14b8a6",
-    gradStart: "#2dd4bf",
-    gradEnd: "#0f766e",
+    shortLabel: "เทนเดอร์ อเนกฯ 6+2",
+    bgClass: "bg-yellow-100 min-w-[180px]",
+    color: "#a16207",
+    gradStart: "#fef08a",
+    gradEnd: "#713f12",
   },
 ];
 
-// 🏷️ รายการสินค้าคู่แข่ง 15 รายการ
-const COMPETITOR_ITEMS = [
-  {
-    key: "cellox_satin_4",
-    label: "เซลล็อกซ์ ซาติน แพ็ค 4 (บ.)",
-    bgClass: "bg-blue-200",
-  },
-  {
-    key: "kleenex_silky_4",
-    label: "คลีเน็กซ์ ซิลค์กี้สมุท แพ็ค 4 (บ.)",
-    bgClass: "bg-green-100/60",
-  },
-  {
-    key: "scott_safesoft_4",
-    label: "สก็อดด์เซฟซอฟท์บ๊อกซ์ แพ็ค 4 (บ.)",
-    bgClass: "bg-red-100/60",
-  },
-  {
-    key: "zilk_cotton_6",
-    label: "ซิลค์ คอดตอน ชำระแพ็ค 6 (บ.)",
-    bgClass: "bg-green-800/60 text-white",
-  },
-  {
-    key: "cellox_2ply_6",
-    label: "เชลล็อกซ์ 2 ชั้น ชำระแพ็ค 6 (บ.)",
-    bgClass: "bg-blue-400/40",
-  },
-  {
-    key: "scott_extra_6",
-    label: "สก็อตต์ เอ็กซ์ตร้า ชำระ แพ็ค 6 (บ.)",
-    bgClass: "bg-green-200/40",
-  },
-  {
-    key: "zilk_cotton_24",
-    label: "ซิลค์ คอดตอน ชำระแพ็ค 24 (บ.)",
-    bgClass: "bg-green-800/60 text-white",
-  },
-  {
-    key: "cellox_2ply_24",
-    label: "เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 24 (บ.)",
-    bgClass: "bg-blue-400/40",
-  },
-  {
-    key: "scott_extra_24",
-    label: "สก็อตต์ เอ็กซ์ตร้า ชำระ แพ็ค 24 (บ.)",
-    bgClass: "bg-blue-200",
-  },
-  {
-    key: "maxmo_hang_200",
-    label: "แม็กซ์โม่ แบบแขวน 200 (บ.)",
-    bgClass: "bg-green-200/80",
-  },
-  {
-    key: "maxmo_3",
-    label: "แม็กซ์โม่ อเนกประสงค์ แพ็ค 3 (บ.)",
-    bgClass: "bg-green-800/40 text-white",
-  },
-  {
-    key: "scott_3_1",
-    label: "สก็อตต์ อเนกประสงค์ แพ็ค 3+1 (บ.)",
-    bgClass: "bg-red-600 text-white",
-  },
-  {
-    key: "maxmo_6_2_green",
-    label: "แม็กซ์โม่ อเนกประสงค์ แพ็ค 6+2 เขียว (บ.)",
-    bgClass: "bg-green-800 text-white",
-  },
-  {
-    key: "maxmo_6_2_red",
-    label: "แม็กซ์โม่ อเนกประสงค์ แพ็ค 6+2 แดง (บ.)",
-    bgClass: "bg-red-600 text-white",
-  },
-  {
-    key: "scott_6_2_red",
-    label: "สก็อตต์ อเนกประสงค์ แพ็ค 6+2 แดง (บ.)",
-    bgClass: "bg-red-600 text-white",
-  },
-];
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // 📸 Helper ย่อขนาดรูปภาพ
 const compressImage = (file: File): Promise<string> => {
@@ -292,40 +260,7 @@ const TOTAL_PHOTO_COLS = PHOTO_COLUMNS_CONFIG.reduce(
   0,
 );
 
-// 📸 Helper แสดงผลรูปภาพแบบขยายขนาดใหญ่ พร้อมระบบ Hover Zoom
-const renderPhotoCell = (photos: any[], defaultLabel: string) => {
-  if (!photos || photos.length === 0) {
-    return <span className="text-slate-300 font-mono text-[10px]">-</span>;
-  }
-  return (
-    <div className="flex flex-wrap items-center gap-2 p-1 justify-center min-w-[110px]">
-      {photos.map((photo: any, pIdx: number) => (
-        <div
-          key={pIdx}
-          onClick={() =>
-            handleViewImage(
-              photo.url,
-              photo.label || `${defaultLabel} ที่ ${pIdx + 1}`,
-            )
-          }
-          className="relative group cursor-pointer"
-          title={photo.label || "คลิกเพื่อเปิดดูรูปขนาดเต็ม"}
-        >
-          <img
-            src={photo.url}
-            alt={photo.label || defaultLabel}
-            className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-xl border-2 border-slate-200 group-hover:border-blue-500 group-hover:scale-150 group-hover:z-30 transition-all duration-200 shadow-sm group-hover:shadow-xl bg-slate-100"
-          />
-          <span className="absolute -top-1.5 -right-1.5 bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md z-10 border border-white group-hover:scale-110 transition">
-            {pIdx + 1}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// 🔍 Helper เช็คชื่อ Account
+//  Helper เช็คชื่อ Account
 function getAccountName(storeName: string = "", storeCode: string = "") {
   const name = (storeName || "").toLowerCase().replace(/\s+/g, "");
   const code = (storeCode || "").toLowerCase().replace(/\s+/g, "");
@@ -344,8 +279,12 @@ function getAccountName(storeName: string = "", storeCode: string = "") {
 // 📦 Helper ดึงข้อมูลสินค้าแต่ละบาร์โค้ด
 function getProductInfo(row: any, barcode: string, isBigC: boolean = false) {
   const prods = row.products || row.pg_daily_report_products || row.items;
+
   if (Array.isArray(prods) && prods.length > 0) {
-    const found = prods.find((p: any) => p.barcode === barcode);
+    const found = prods.find(
+      (p: any) => String(p.barcode).trim() === String(barcode).trim(),
+    );
+
     if (found) {
       const sb = Number(found.stock_before ?? found.stockBefore ?? 0);
       const sq = Number(found.sales_qty ?? found.salesQty ?? 0);
@@ -360,6 +299,7 @@ function getProductInfo(row: any, barcode: string, isBigC: boolean = false) {
     }
   }
 
+  // Fallback เดิมสำหรับย้อนหลัง legacy
   if (barcode === "8858678423339") {
     const sb = Number(row.stockBeforeGreen ?? row.stock_before_green90 ?? 0);
     const sq = Number(row.salesGreen ?? row.sales_qty_green90 ?? 0);
@@ -415,6 +355,33 @@ function getRowTotalSalesPcs(row: any): number {
   });
 
   return totalPcs;
+}
+
+function withPackTotals(rows: any[] = []) {
+  return rows.map((row) => {
+    const accountName = getAccountName(
+      row.storeName || row.store_name || "",
+      row.storeCode || row.store_code || "",
+    );
+    const isBigC = accountName === "Big C";
+
+    const greenInfo = getProductInfo(row, "8858678423339", isBigC);
+    const blueInfo = getProductInfo(row, "8858678423681", isBigC);
+    const orangeInfo = getProductInfo(row, "8858678422875", isBigC);
+
+    const green = Number(greenInfo.salesQty || 0);
+    const blue = Number(blueInfo.salesQty || 0);
+    const orange = Number(orangeInfo.salesQty || 0);
+
+    // Packs (ห่อ) calculation: Big C counts sets differently
+    const packs = isBigC ? (green + blue) * 2 : green + blue + orange * 2;
+
+    return {
+      ...row,
+      actualPacksTotal: Number(packs || 0),
+      actualSetsTotal: Number(green + blue + orange || 0),
+    };
+  });
 }
 
 // 💵 Helper คำนวณ Commission รายวันจากยอดขายรวมทุก SKU
@@ -561,6 +528,28 @@ export default function CustomerReportPortal() {
   const [promotions, setPromotions] = useState<any[]>([]);
   const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reportProducts, setReportProducts] = useState<any[]>([]);
+
+  const fetchProductsData = async () => {
+    const { data, error } = await supabase
+      .from("products") // หรือชื่อตารางสินค้าของคุณ
+      .select("*")
+      .eq("is_active", true);
+
+    if (!error && data) {
+      // แปลงข้อมูลให้อยู่ในโครงสร้างที่รองรับการแสดงผล
+      return data.map((item, index) => ({
+        barcode: item.barcode,
+        label: item.name,
+        shortLabel: item.short_name || item.name,
+        bgClass: "bg-slate-100 min-w-[180px] max-w-[300px]",
+        color: item.color || "#3b82f6",
+        gradStart: item.grad_start || "#60a5fa",
+        gradEnd: item.grad_end || "#1d4ed8",
+      }));
+    }
+    return [];
+  };
 
   const [currentTime, setCurrentTime] = useState<string>("");
 
@@ -669,9 +658,11 @@ export default function CustomerReportPortal() {
     const promoRes = await fetchPromotionsData();
 
     if (res.success) {
-      setReportData(res.data || []);
-      setFilteredData(res.data || []);
-      setAttendanceWages(res.attendanceWages || []);
+      const normalizedRows = withPackTotals(res.data || []);
+      setReportData(normalizedRows);
+      setFilteredData(normalizedRows);
+      // attendanceWages may not exist on all response shapes, guard access
+      setAttendanceWages((res as any).attendanceWages || []);
     }
 
     if (salaryRes.success) {
@@ -868,7 +859,6 @@ export default function CustomerReportPortal() {
 
     const slices: any[] = [];
 
-    // 1. ดึงราคาเฉลี่ยสินค้าเราครบทั้ง 10 SKU
     REPORT_PRODUCTS.forEach((prod) => {
       const prices = latestRows.map((r) => {
         const acc = getAccountName(r.storeName, r.storeCode);
@@ -885,7 +875,6 @@ export default function CustomerReportPortal() {
       }
     });
 
-    // 2. ดึงราคาเฉลี่ยสินค้าคู่แข่งทั้ง 15 รายการ
     const compColors = [
       "#e11d48",
       "#be123c",
@@ -921,6 +910,38 @@ export default function CustomerReportPortal() {
     return { latestDate: maxDate, slices };
   }, [filteredData]);
 
+  const chart4Data = useMemo(() => {
+    if (!filteredData || filteredData.length === 0) return [];
+
+    const dateMap = new Map<string, any>();
+
+    filteredData.forEach((row) => {
+      const dateKey = row.reportDate || "ไม่ระบุวัน";
+      if (!dateMap.has(dateKey)) {
+        const init: any = { date: dateKey };
+        REPORT_PRODUCTS.forEach((prod) => {
+          init[`sales_${prod.barcode}`] = 0;
+        });
+        dateMap.set(dateKey, init);
+      }
+
+      const current = dateMap.get(dateKey);
+      const acc = getAccountName(row.storeName, row.storeCode);
+      const isBigC = acc === "Big C";
+
+      REPORT_PRODUCTS.forEach((prod) => {
+        const info = getProductInfo(row, prod.barcode, isBigC);
+        if (typeof info.salesQty === "number" && !isNaN(info.salesQty)) {
+          current[`sales_${prod.barcode}`] += info.salesQty;
+        }
+      });
+    });
+
+    return Array.from(dateMap.values()).sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+  }, [filteredData]);
+
   const handleViewImage = (url: string, label: string) => {
     Swal.fire({
       title: label || "รูปภาพกิจกรรม PG หน้าร้าน",
@@ -937,42 +958,61 @@ export default function CustomerReportPortal() {
     });
   };
 
-  const categorizePhotos = (activityPhotos: any[]) => {
-    if (!Array.isArray(activityPhotos)) {
-      return {
-        staffHolding: [],
-        customerBasket: [],
-        atmosphere: [],
-        product: [],
-        shelf: [],
-        stockScanner: [],
-      };
+  const categorizePhotos = (activityPhotos: any[], row?: any) => {
+    const normalizedPhotos = Array.isArray(activityPhotos)
+      ? activityPhotos
+      : [];
+    const productRows = Array.isArray(row?.pg_daily_report_products)
+      ? row.pg_daily_report_products
+      : Array.isArray(row?.products)
+        ? row.products
+        : [];
+
+    const productPhotoEntries: any[] = [];
+    for (const product of productRows) {
+      if (!product || typeof product !== "object") continue;
+      const productLabel = product.descriptions || product.barcode || "สินค้า";
+      [
+        [product.img_product, "img_product", `รูปสินค้า: ${productLabel}`],
+        [product.img_shelf, "img_shelf", `รูปเชลฟ์ชั้นวาง: ${productLabel}`],
+        [
+          product.img_stock_scanner,
+          "img_stock_scanner",
+          `รูปสแกนสต๊อก: ${productLabel}`,
+        ],
+      ].forEach(([url, type, label]) => {
+        if (url && typeof url === "string" && url.trim()) {
+          productPhotoEntries.push({ url, type, label });
+        }
+      });
     }
 
-    const staffHolding = activityPhotos.filter(
+    const allPhotos = [...normalizedPhotos, ...productPhotoEntries];
+
+    const staffHolding = allPhotos.filter(
       (p) =>
         p.type === "staff_holding" ||
         (p.label && p.label.includes("พนักงานถือสินค้า")),
     );
-    const customerBasket = activityPhotos.filter(
+    const customerBasket = allPhotos.filter(
       (p) =>
         p.type?.startsWith("customer_basket") ||
         (p.label && (p.label.includes("ตะกร้า") || p.label.includes("ลูกค้า"))),
     );
-    const atmosphere = activityPhotos.filter(
+    const atmosphere = allPhotos.filter(
       (p) =>
         p.type?.startsWith("atmosphere") ||
         (p.label && p.label.includes("บรรยากาศ")),
     );
-    const product = activityPhotos.filter(
+    const product = allPhotos.filter(
       (p) =>
         p.type === "img_product" || (p.label && p.label.includes("รูปสินค้า")),
     );
-    const shelf = activityPhotos.filter(
+    const shelf = allPhotos.filter(
       (p) =>
         p.type === "img_shelf" || (p.label && p.label.includes("รูปเชลฟ์")),
     );
-    const stockScanner = activityPhotos.filter(
+    const stockScanner = allPhotos.filter(
       (p) =>
         p.type === "img_stock_scanner" ||
         (p.label && p.label.includes("สแกนสต๊อก")),
@@ -988,12 +1028,16 @@ export default function CustomerReportPortal() {
     };
   };
 
+  useEffect(() => {
+    fetchProductsData();
+  }, []);
+
   const renderPhotoCell = (photos: any[], defaultLabel: string) => {
     if (!photos || photos.length === 0) {
       return <span className="text-slate-300 font-mono text-[10px]">-</span>;
     }
     return (
-      <div className="flex items-center gap-1.5 whitespace-nowrap justify-center">
+      <div className="flex items-center gap-1.5 whitespace-nowrap justify-center max-w-[180px] mx-auto">
         {photos.map((photo: any, pIdx: number) => (
           <div
             key={pIdx}
@@ -1003,15 +1047,15 @@ export default function CustomerReportPortal() {
                 photo.label || `${defaultLabel} ที่ ${pIdx + 1}`,
               )
             }
-            className="relative group cursor-pointer"
+            className="photo-preview-shell relative group cursor-pointer rounded-xl p-1.5 transition duration-200"
             title={photo.label || "คลิกเพื่อดูรูปใหญ่"}
           >
             <img
               src={photo.url}
               alt={photo.label || defaultLabel}
-              className="w-8 h-8 object-cover rounded-lg border border-slate-200 group-hover:border-blue-500 group-hover:scale-110 transition shadow-xs"
+              className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg border border-slate-200 group-hover:border-blue-500 group-hover:scale-105 transition-transform shadow-sm"
             />
-            <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[8px] font-bold px-1 rounded-full opacity-80 group-hover:opacity-100">
+            <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full shadow-sm">
               {pIdx + 1}
             </span>
           </div>
@@ -1123,6 +1167,36 @@ export default function CustomerReportPortal() {
   const netProfit = totalRevenue - totalStaffExpense;
   const profitMarginPercent =
     totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+  const summaryStats = [
+    {
+      label: "รายงานแสดง",
+      value: `${filteredData.length.toLocaleString()} รายการ`,
+      tone: "bg-blue-50 text-blue-700",
+      icon: BarChart3,
+    },
+    {
+      label: "ประสิทธิภาพปิดการขาย",
+      value: `${avgClosingRate}%`,
+      tone: "bg-emerald-50 text-emerald-700",
+      icon: CheckCircle2,
+    },
+    {
+      label: "คาดการณ์กำไรสุทธิ",
+      value: `฿${netProfit.toLocaleString()}`,
+      tone:
+        netProfit >= 0
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-rose-50 text-rose-700",
+      icon: TrendingUp,
+    },
+    {
+      label: "อัปเดตล่าสุด",
+      value: currentTime || "กำลังโหลด...",
+      tone: "bg-slate-100 text-slate-700",
+      icon: Calendar,
+    },
+  ];
 
   const removePhoto = (type: keyof typeof photoFiles, index: number) => {
     setPhotoFiles((prev) => ({
@@ -1408,6 +1482,28 @@ export default function CustomerReportPortal() {
       }
     }
 
+    const directPhotoMap = [
+      ["photo_staff_holding", "staff_holding"],
+      ["photo_cheer_sales", "cheer_sales"],
+      ["photo_customer_basket_1", "customer_basket"],
+      ["photo_customer_basket_2", "customer_basket"],
+      ["photo_atmosphere_1", "atmosphere"],
+      ["photo_atmosphere_2", "atmosphere"],
+    ];
+
+    for (const [fieldName, typeName] of directPhotoMap) {
+      const photoUrl = item[fieldName];
+      if (photoUrl && typeof photoUrl === "string" && photoUrl.trim()) {
+        if (
+          (category === "staff_holding" && typeName === "staff_holding") ||
+          (category === "customer_basket" && typeName === "customer_basket") ||
+          (category === "atmosphere" && typeName === "atmosphere")
+        ) {
+          urls.push(photoUrl);
+        }
+      }
+    }
+
     if (Array.isArray(activityPhotos)) {
       activityPhotos.forEach((p: any) => {
         const type = (p.type || p.photoType || "").toLowerCase();
@@ -1658,8 +1754,99 @@ export default function CustomerReportPortal() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans antialiased flex flex-col justify-between">
+    <div className="portal-shell min-h-screen text-slate-800 font-sans antialiased flex flex-col justify-between">
       <style jsx global>{`
+        .portal-shell {
+          background:
+            radial-gradient(
+              circle at top left,
+              rgba(96, 165, 250, 0.18),
+              transparent 30%
+            ),
+            radial-gradient(
+              circle at top right,
+              rgba(14, 165, 233, 0.12),
+              transparent 25%
+            ),
+            linear-gradient(180deg, #f8fbff 0%, #edf4ff 100%);
+        }
+
+        .portal-topbar {
+          background: linear-gradient(
+            135deg,
+            #0f172a 0%,
+            #1d4ed8 45%,
+            #0ea5e9 100%
+          );
+          box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
+        }
+
+        .portal-panel {
+          background: rgba(255, 255, 255, 0.9);
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+          backdrop-filter: blur(8px);
+        }
+
+        .portal-card {
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid rgba(148, 163, 184, 0.18);
+          box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+          transition:
+            transform 0.2s ease,
+            box-shadow 0.2s ease;
+        }
+
+        .portal-card:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+        }
+
+        .portal-table-row {
+          background: rgba(255, 255, 255, 0.92);
+        }
+
+        .portal-table-row:nth-child(even) {
+          background: rgba(248, 250, 252, 0.9);
+        }
+
+        .portal-table-row:hover {
+          background: linear-gradient(
+            90deg,
+            rgba(239, 246, 255, 0.95) 0%,
+            rgba(255, 255, 255, 1) 100%
+          );
+        }
+
+        .photo-preview-shell {
+          background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+          border: 1px solid rgba(148, 163, 184, 0.28);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+        }
+
+        .photo-preview-shell:hover {
+          border-color: rgba(37, 99, 235, 0.5);
+          box-shadow: 0 8px 18px rgba(59, 130, 246, 0.12);
+        }
+
+        .portal-button-primary {
+          background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+          box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+        }
+
+        .portal-button-primary:hover {
+          filter: brightness(1.02);
+        }
+
+        .portal-button-soft {
+          background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+          border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+
+        .portal-table-wrap {
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        }
+
         @media print {
           @page {
             size: A4 landscape;
@@ -1714,8 +1901,8 @@ export default function CustomerReportPortal() {
 
       <div>
         {/* NAV BAR */}
-        <nav className="bg-blue-400 border-b border-slate-200 sticky top-0 z-40 shadow-xs no-print">
-          <div className="max-w-[98%] sm:max-w-[96%] mx-auto px-2 sm:px-4 min-h-[60px] py-2 flex items-center justify-between gap-2">
+        <nav className="portal-topbar sticky top-0 z-40 no-print">
+          <div className="max-w-[98%] sm:max-w-[96%] mx-auto px-2 sm:px-4 min-h-[64px] py-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <img
                 src="/rvp.png"
@@ -1727,7 +1914,7 @@ export default function CustomerReportPortal() {
                 }}
               />
               <div className="text-left border-l border-slate-200 pl-2 sm:pl-3 min-w-0">
-                <span className="text-xs sm:text-sm font-black text-slate-800 block leading-tight truncate">
+                <span className="text-xs sm:text-sm font-black text-white block leading-tight truncate">
                   Riverpro Intertrade Co., Ltd
                 </span>
                 <span className="text-[9px] sm:text-[10px] font-bold text-red-600 hidden sm:block tracking-wider uppercase">
@@ -1745,14 +1932,14 @@ export default function CustomerReportPortal() {
               <div className="flex items-center gap-1 sm:gap-2">
                 <button
                   onClick={handleExportExcel}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium transition-colors cursor-pointer"
+                  className="portal-button-primary flex items-center gap-1.5 px-3 py-1.5 text-white rounded-xl hover:brightness-105 text-sm font-semibold transition-all cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   Export Excel
                 </button>
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3.5 sm:py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-[11px] sm:text-xs rounded-xl transition shadow-xs cursor-pointer whitespace-nowrap"
+                  className="portal-button-soft flex items-center gap-1 px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-slate-800 font-bold text-[11px] sm:text-xs rounded-xl transition cursor-pointer whitespace-nowrap"
                 >
                   <Printer size={13} className="sm:w-3.5 sm:h-3.5" />
                   <span>
@@ -1761,7 +1948,7 @@ export default function CustomerReportPortal() {
                 </button>
                 <button
                   onClick={loadPortalData}
-                  className={`p-1.5 sm:p-2 rounded-xl border border-slate-200 hover:bg-slate-50 transition cursor-pointer ${
+                  className={`portal-button-soft p-1.5 sm:p-2 rounded-xl transition cursor-pointer ${
                     loading ? "animate-spin" : ""
                   }`}
                   title="รีเฟรชข้อมูล"
@@ -1775,7 +1962,7 @@ export default function CustomerReportPortal() {
 
         <main className="max-w-[98%] sm:max-w-[96%] mx-auto px-1 sm:px-2 py-4 sm:py-6 space-y-4 sm:space-y-6">
           {/* 🔍 FILTER BAR */}
-          <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 no-print text-left">
+          <div className="portal-panel p-3 sm:p-4 rounded-3xl flex flex-wrap items-center justify-between gap-3 no-print text-left">
             <div className="flex items-center gap-2 text-slate-700 text-xs font-black">
               <Filter size={16} className="text-blue-600" /> ตัวกรองข้อมูลสถิติ:
             </div>
@@ -1877,9 +2064,35 @@ export default function CustomerReportPortal() {
             </div>
           </div>
 
+          <div className="portal-panel p-3 sm:p-4 rounded-3xl no-print">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              {summaryStats.map((stat) => {
+                const Icon = stat.icon;
+                return (
+                  <div
+                    key={stat.label}
+                    className={`rounded-2xl border border-slate-200 ${stat.tone} p-3 flex items-center gap-3`}
+                  >
+                    <div className="p-2 rounded-xl bg-white/80 shadow-xs">
+                      <Icon size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-70">
+                        {stat.label}
+                      </p>
+                      <p className="mt-1 text-sm font-black leading-tight break-words">
+                        {stat.value}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* 💵 FINANCIAL KPI CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-left">
-            <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-xs flex flex-col justify-between">
+            <div className="portal-card p-4 rounded-2xl flex flex-col justify-between">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold text-slate-400 block uppercase">
                   ยอดขายรวมทั้งหมด (10 SKU)
@@ -1898,7 +2111,7 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-purple-100 shadow-xs flex flex-col justify-between">
+            <div className="portal-card p-4 rounded-2xl flex flex-col justify-between">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold text-slate-400 block uppercase">
                   รายจ่ายพนักงาน PG (ทำจ่ายทุก 3 วัน: ศุกร์-อาทิตย์)
@@ -1921,10 +2134,10 @@ export default function CustomerReportPortal() {
             </div>
 
             <div
-              className={`p-4 rounded-2xl border shadow-xs flex flex-col justify-between ${
+              className={`portal-card p-4 rounded-2xl flex flex-col justify-between ${
                 netProfit >= 0
-                  ? "bg-emerald-50/50 border-emerald-200"
-                  : "bg-rose-50/50 border-rose-200"
+                  ? "border-emerald-200 bg-emerald-50/50"
+                  : "border-rose-200 bg-rose-50/50"
               }`}
             >
               <div className="flex items-center justify-between mb-1">
@@ -1955,7 +2168,7 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-xs flex flex-col justify-between">
+            <div className="portal-card p-4 rounded-2xl flex flex-col justify-between">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold text-slate-400 block uppercase">
                   อัตราส่วนกำไร (% Margin)
@@ -1984,7 +2197,7 @@ export default function CustomerReportPortal() {
 
           {/* 📈 OPERATIONAL KPI CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-left">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+            <div className="portal-card p-4 rounded-2xl flex items-center gap-3">
               <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                 <ShoppingBag size={20} />
               </div>
@@ -1998,7 +2211,7 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+            <div className="portal-card p-4 rounded-2xl flex items-center gap-3">
               <div className="p-3 bg-slate-100 text-slate-600 rounded-xl">
                 <Users size={20} />
               </div>
@@ -2012,7 +2225,7 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+            <div className="portal-card p-4 rounded-2xl flex items-center gap-3">
               <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
                 <MessageCircle size={20} />
               </div>
@@ -2026,7 +2239,7 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+            <div className="portal-card p-4 rounded-2xl flex items-center gap-3">
               <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
                 <CheckCircle2 size={20} />
               </div>
@@ -2042,9 +2255,9 @@ export default function CustomerReportPortal() {
           </div>
 
           {/* 📊 CHARTS */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* CHART 1: ยอดขายครบทั้ง 10 SKU */}
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
+            <div className="portal-card p-4 sm:p-5 rounded-2xl text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                   <BarChart3 size={16} className="text-blue-600" />
@@ -2100,7 +2313,7 @@ export default function CustomerReportPortal() {
             </div>
 
             {/* CHART 2: Funnel */}
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
+            <div className="portal-card p-4 sm:p-5 rounded-2xl text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                   <TrendingUp size={16} className="text-emerald-600" />
@@ -2182,7 +2395,7 @@ export default function CustomerReportPortal() {
             </div>
 
             {/* CHART 3: ราคาเปรียบเทียบทุก SKU เรา vs ทุกรายการคู่แข่ง */}
-            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs text-left">
+            <div className="portal-card p-4 sm:p-5 rounded-2xl text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                   <PieChartIcon size={16} className="text-purple-600" />
@@ -2228,408 +2441,481 @@ export default function CustomerReportPortal() {
                 )}
               </div>
             </div>
+
+            {/* CHART 4: แนวโน้มยอดขาย SKU ตามวัน */}
+            <div className="portal-card p-4 sm:p-5 rounded-2xl text-left">
+              <div className="flex justify-between items-center border-b pb-2 mb-3">
+                <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <TrendingUp size={16} className="text-amber-600" />
+                  4. แนวโน้มยอดขาย SKU ตามวัน
+                </h3>
+                <span className="text-[9px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-md">
+                  {chart4Data.length} วัน
+                </span>
+              </div>
+              <div className="h-60 sm:h-64 w-full">
+                {chart4Data.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-xs text-slate-400 font-bold">
+                    ไม่มีข้อมูลแนวโน้มสินค้า
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={chart4Data}
+                      margin={{ top: 10, right: 12, left: -12, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fontWeight: "bold" }}
+                      />
+                      <YAxis tick={{ fontSize: 9, fontWeight: "bold" }} />
+                      <Tooltip />
+                      <Legend
+                        wrapperStyle={{ fontSize: "9px", fontWeight: "bold" }}
+                      />
+                      {REPORT_PRODUCTS.slice(0, 6).map((prod, index) => (
+                        <Line
+                          key={prod.barcode}
+                          type="monotone"
+                          dataKey={`sales_${prod.barcode}`}
+                          name={prod.shortLabel}
+                          stroke={prod.color}
+                          strokeWidth={index === 0 ? 2.5 : 2}
+                          dot={{ r: 2 }}
+                          activeDot={{ r: 4 }}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* 📋 FULL CUSTOMER REPORT TABLE */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden text-left">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-              <div>
-                <h3 className="text-xs font-black text-slate-800">
-                  ตารางรายงานกิจกรรม PG ประจำสาขารายวัน (Full Report)
-                </h3>
-                <p className="text-[10px] text-slate-400 font-bold">
-                  รวมรายละเอียด Target, สต๊อกสินค้าครบ 10 รายการ,
-                  ราคาเปรียบเทียบ 15 รายการ และรูปภาพกิจกรรม (แยก 1 รูปต่อ 1
-                  คอลัมน์)
-                </p>
+          {filteredData.length === 0 && !loading ? (
+            <div className="portal-panel rounded-3xl p-8 text-center">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-100 text-slate-500 mb-3">
+                <Filter size={26} />
               </div>
+              <h3 className="text-base font-black text-slate-800">
+                ไม่พบข้อมูลรายงานตามเงื่อนไขที่เลือก
+              </h3>
+              <p className="text-sm text-slate-500 mt-2">
+                กรุณาเปลี่ยนเงื่อนไขตัวกรอง
+                หรือกดรีเฟรชข้อมูลใหม่เพื่อโหลดรายงานอีกครั้ง
+              </p>
             </div>
+          ) : (
+            <div className="portal-panel rounded-3xl overflow-hidden text-left">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                <div>
+                  <h3 className="text-xs font-black text-slate-800">
+                    ตารางรายงานกิจกรรม PG ประจำสาขารายวัน (Full Report)
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-bold">
+                    รวมรายละเอียด Target, สต๊อกสินค้าครบ 10 รายการ,
+                    ราคาเปรียบเทียบ 15 รายการ และรูปภาพกิจกรรม (แยก 1 รูปต่อ 1
+                    คอลัมน์)
+                  </p>
+                </div>
+              </div>
 
-            <div className="relative overflow-auto max-h-[70vh] border-t border-slate-200">
-              <table className="w-full text-[10px] border-collapse min-w-[3200px]">
-                <thead className="sticky top-0 z-30 bg-slate-100 text-slate-600 font-black uppercase shadow-xs">
-                  <tr className="border-b border-slate-200">
-                    <th
-                      rowSpan={2}
-                      className="p-2 border-r border-slate-200 text-center sticky left-0 z-40 bg-slate-100 min-w-[50px] w-[50px]"
-                    >
-                      NO.
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="p-2 border-r border-blue-400 text-center sticky left-[50px] z-40 bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
-                    >
-                      สาขา
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="p-2 border-r border-slate-200 text-center bg-amber-100 text-amber-900 min-w-[70px] no-print"
-                    >
-                      จัดการ
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="p-2 border-r border-blue-400 text-center bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
-                    >
-                      พนักงาน
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="p-2 border-r border-blue-400 text-center bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
-                    >
-                      วันที่
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="p-2 border-r border-blue-400 text-center bg-green-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
-                    >
-                      TARGET (แพ็ค)
-                    </th>
-
-                    <th
-                      colSpan={3}
-                      className="p-2 border-r border-slate-200 text-center bg-blue-50/70 text-blue-900"
-                    >
-                      สถิติลูกค้า (FUNNEL)
-                    </th>
-                    <th
-                      colSpan={10}
-                      className="p-5 border-r border-slate-200 text-center bg-yellow-100/60"
-                    >
-                      STOCK ก่อนเริ่ม (P)
-                    </th>
-                    <th
-                      colSpan={10}
-                      className="p-2 border-r border-slate-200 text-center bg-emerald-100/60 text-emerald-900"
-                    >
-                      จำนวนขาย (แพ็ค)
-                    </th>
-                    <th
-                      colSpan={10}
-                      className="p-5 border-r border-slate-200 text-center bg-yellow-100/60"
-                    >
-                      STOCK หลังเลิก (P)
-                    </th>
-
-                    <th
-                      colSpan={10}
-                      className="p-2 border-r border-slate-200 text-center bg-indigo-50/70 text-indigo-900"
-                    >
-                      ราคาขายหน้าร้าน
-                    </th>
-                    <th
-                      colSpan={15}
-                      className="p-2 border-r border-slate-200 text-center bg-rose-50/70 text-rose-900"
-                    >
-                      ราคาคู่แข่ง
-                    </th>
-
-                    <th
-                      rowSpan={2}
-                      className="p-2 border-r border-slate-200 text-center min-w-[220px] max-w-[300px]"
-                    >
-                      FEEDBACK หน้าร้าน
-                    </th>
-                    <th
-                      rowSpan={2}
-                      className="p-2 border-r border-slate-200 text-center min-w-[200px] max-w-[280px]"
-                    >
-                      โปรคู่แข่ง
-                    </th>
-
-                    <th
-                      rowSpan={2}
-                      className="p-2 border-r border-slate-200 text-center min-w-[220px] max-w-[320px] bg-amber-100/80 text-amber-950 font-black"
-                    >
-                      หมายเหตุ
-                    </th>
-
-                    {/* --- บรรทัดบนของ Header รูปภาพ --- */}
-                    <th
-                      colSpan={TOTAL_PHOTO_COLS}
-                      className="p-2 border-r border-slate-200 text-center bg-blue-100/80 text-blue-950 min-w-[1200px]"
-                    >
-                      📸 รูปภาพกิจกรรมหน้าร้าน & สต๊อกสินค้า (แยกรูปละ 1
-                      คอลัมน์)
-                    </th>
-                  </tr>
-
-                  <tr className="bg-slate-50 text-[9px] border-b border-slate-200 text-center">
-                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
-                      TRAFFIC
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
-                      APPROACH
-                    </th>
-                    <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
-                      CLOSED
-                    </th>
-
-                    {/* Stock Before (10) */}
-                    {REPORT_PRODUCTS.map((p) => (
+              <div className="portal-table-wrap relative overflow-auto max-h-[70vh] border-t border-slate-200">
+                <table className="w-full text-[10px] border-collapse min-w-[3200px]">
+                  <thead className="sticky top-0 z-30 bg-slate-100 text-slate-600 font-black uppercase shadow-xs">
+                    <tr className="border-b border-slate-200">
                       <th
-                        key={`sb_head_${p.barcode}`}
-                        className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                        rowSpan={2}
+                        className="p-2 border-r border-slate-200 text-center sticky left-0 z-40 bg-slate-100 min-w-[50px] w-[50px]"
                       >
-                        {p.label}
+                        NO.
                       </th>
-                    ))}
-
-                    {/* Sales Qty (10) */}
-                    {REPORT_PRODUCTS.map((p) => (
                       <th
-                        key={`sq_head_${p.barcode}`}
-                        className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                        rowSpan={2}
+                        className="p-2 border-r border-blue-400 text-center sticky left-[50px] z-40 bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                       >
-                        {p.label}
+                        สาขา
                       </th>
-                    ))}
-
-                    {/* Stock After (10) */}
-                    {REPORT_PRODUCTS.map((p) => (
                       <th
-                        key={`sa_head_${p.barcode}`}
-                        className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                        rowSpan={2}
+                        className="p-2 border-r border-slate-200 text-center bg-amber-100 text-amber-900 min-w-[70px] no-print"
                       >
-                        {p.label}
+                        จัดการ
                       </th>
-                    ))}
-
-                    {/* Our Prices (10) */}
-                    {REPORT_PRODUCTS.map((p) => (
                       <th
-                        key={`pr_head_${p.barcode}`}
-                        className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                        rowSpan={2}
+                        className="p-2 border-r border-blue-400 text-center bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                       >
-                        {p.label} (บ.)
+                        พนักงาน
                       </th>
-                    ))}
-
-                    {/* Competitor Prices (15) */}
-                    {COMPETITOR_ITEMS.map((comp) => (
                       <th
-                        key={`comp_head_${comp.key}`}
-                        className={`p-5.0 border-r border-slate-200 min-w-[180px] max-w-[300px] ${comp.bgClass}`}
+                        rowSpan={2}
+                        className="p-2 border-r border-blue-400 text-center bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
                       >
-                        {comp.label}
+                        วันที่
                       </th>
-                    ))}
+                      <th
+                        rowSpan={2}
+                        className="p-2 border-r border-blue-400 text-center bg-green-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
+                      >
+                        TARGET (แพ็ค)
+                      </th>
 
-                    {/* --- บรรทัดล่างของ Header (กระจายหัวคอลัมน์ย่อยของรูปภาพ) --- */}
-                    {PHOTO_COLUMNS_CONFIG.map((cat) =>
-                      Array.from({ length: cat.max }).map((_, i) => (
+                      <th
+                        colSpan={3}
+                        className="p-2 border-r border-slate-200 text-center bg-blue-50/70 text-blue-900"
+                      >
+                        สถิติลูกค้า (FUNNEL)
+                      </th>
+                      <th
+                        colSpan={10}
+                        className="p-5 border-r border-slate-200 text-center bg-yellow-100/60"
+                      >
+                        STOCK ก่อนเริ่ม (P)
+                      </th>
+                      <th
+                        colSpan={10}
+                        className="p-2 border-r border-slate-200 text-center bg-emerald-100/60 text-emerald-900"
+                      >
+                        จำนวนขาย (แพ็ค)
+                      </th>
+                      <th
+                        colSpan={10}
+                        className="p-5 border-r border-slate-200 text-center bg-yellow-100/60"
+                      >
+                        STOCK หลังเลิก (P)
+                      </th>
+
+                      <th
+                        colSpan={10}
+                        className="p-2 border-r border-slate-200 text-center bg-indigo-50/70 text-indigo-900"
+                      >
+                        ราคาขายหน้าร้าน
+                      </th>
+                      <th
+                        colSpan={15}
+                        className="p-2 border-r border-slate-200 text-center bg-rose-50/70 text-rose-900"
+                      >
+                        ราคาคู่แข่ง
+                      </th>
+
+                      <th
+                        rowSpan={2}
+                        className="p-2 border-r border-slate-200 text-center min-w-[220px] max-w-[300px]"
+                      >
+                        FEEDBACK หน้าร้าน
+                      </th>
+                      <th
+                        rowSpan={2}
+                        className="p-2 border-r border-slate-200 text-center min-w-[200px] max-w-[280px]"
+                      >
+                        โปรคู่แข่ง
+                      </th>
+
+                      <th
+                        rowSpan={2}
+                        className="p-2 border-r border-slate-200 text-center min-w-[220px] max-w-[320px] bg-amber-100/80 text-amber-950 font-black"
+                      >
+                        หมายเหตุ
+                      </th>
+
+                      {/* --- บรรทัดบนของ Header รูปภาพ --- */}
+                      <th
+                        colSpan={TOTAL_PHOTO_COLS}
+                        className="p-2 border-r border-slate-200 text-center bg-blue-100/80 text-blue-950 min-w-[1200px]"
+                      >
+                        📸 รูปภาพกิจกรรมหน้าร้าน & สต๊อกสินค้า (แยกรูปละ 1
+                        คอลัมน์)
+                      </th>
+                    </tr>
+
+                    <tr className="bg-slate-50 text-[9px] border-b border-slate-200 text-center">
+                      <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
+                        TRAFFIC
+                      </th>
+                      <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
+                        APPROACH
+                      </th>
+                      <th className="p-1.5 border-r border-slate-200 bg-amber-50/40">
+                        CLOSED
+                      </th>
+
+                      {/* Stock Before (10) */}
+                      {REPORT_PRODUCTS.map((p) => (
                         <th
-                          key={`${cat.key}_head_${i}`}
-                          className="p-2 border-r border-slate-200 bg-blue-50/60 min-w-[85px] max-w-[100px] text-center text-[9px]"
+                          key={`sb_head_${p.barcode}`}
+                          className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
                         >
-                          {cat.label} {cat.max > 1 ? `#${i + 1}` : ""}
+                          {p.label}
                         </th>
-                      )),
-                    )}
-                  </tr>
-                </thead>
+                      ))}
 
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
-                  {filteredData.map((row, idx) => {
-                    const photos = categorizePhotos(row.activityPhotos);
-                    const accountName = getAccountName(
-                      row.storeName,
-                      row.storeCode,
-                    );
-                    const isBigC = accountName === "Big C";
+                      {/* Sales Qty (10) */}
+                      {REPORT_PRODUCTS.map((p) => (
+                        <th
+                          key={`sq_head_${p.barcode}`}
+                          className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                        >
+                          {p.label}
+                        </th>
+                      ))}
 
-                    const remarkDisplay =
-                      row.remark ||
-                      row.remark_store ||
-                      row.remarkStore ||
-                      row.remarks ||
-                      row.note ||
-                      row.notes ||
-                      "";
+                      {/* Stock After (10) */}
+                      {REPORT_PRODUCTS.map((p) => (
+                        <th
+                          key={`sa_head_${p.barcode}`}
+                          className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                        >
+                          {p.label}
+                        </th>
+                      ))}
 
-                    return (
-                      <tr
-                        key={row.id || idx}
-                        className="hover:bg-slate-50 transition text-center"
-                      >
-                        <td className="p-2 border-r border-slate-200 font-bold text-slate-400 sticky left-0 z-20 bg-white min-w-[50px] w-[50px]">
-                          {idx + 1}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-black text-slate-800 text-left sticky left-[50px] z-20 bg-white min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                          {row.storeName}
-                        </td>
+                      {/* Our Prices (10) */}
+                      {REPORT_PRODUCTS.map((p) => (
+                        <th
+                          key={`pr_head_${p.barcode}`}
+                          className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
+                        >
+                          {p.label} (บ.)
+                        </th>
+                      ))}
 
-                        <td className="p-2 border-r border-slate-200 text-center no-print">
-                          <button
-                            onClick={() => handleEditRow(row)}
-                            className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded text-[9px] transition cursor-pointer flex items-center gap-1 mx-auto"
-                            title="แก้ไขรายงานแถวนี้"
+                      {/* Competitor Prices (15) */}
+                      {COMPETITOR_ITEMS.map((comp) => (
+                        <th
+                          key={`comp_head_${comp.key}`}
+                          className={`p-5.0 border-r border-slate-200 min-w-[180px] max-w-[300px] ${comp.bgClass}`}
+                        >
+                          {comp.label}
+                        </th>
+                      ))}
+
+                      {/* --- บรรทัดล่างของ Header (กระจายหัวคอลัมน์ย่อยของรูปภาพ) --- */}
+                      {PHOTO_COLUMNS_CONFIG.map((cat) =>
+                        Array.from({ length: cat.max }).map((_, i) => (
+                          <th
+                            key={`${cat.key}_head_${i}`}
+                            className="p-2 border-r border-slate-200 bg-blue-50/60 min-w-[85px] max-w-[100px] text-center text-[9px]"
                           >
-                            <Edit3 size={11} /> แก้ไข
-                          </button>
-                        </td>
+                            {cat.label} {cat.max > 1 ? `#${i + 1}` : ""}
+                          </th>
+                        )),
+                      )}
+                    </tr>
+                  </thead>
 
-                        <td className="p-2 border-r border-slate-200 text-left font-medium text-slate-600">
-                          {row.userName}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono">
-                          {row.reportDate}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-slate-500">
-                          {row.targetPacks}
-                        </td>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
+                    {filteredData.map((row, idx) => {
+                      const photos = categorizePhotos(row.activityPhotos, row);
+                      const accountName = getAccountName(
+                        row.storeName,
+                        row.storeCode,
+                      );
+                      const isBigC = accountName === "Big C";
+                      const safeStoreName =
+                        row.storeName || row.storeCode || "ไม่ระบุสาขา";
+                      const safeUserName =
+                        row.userName || row.userId || "ไม่ระบุพนักงาน";
+                      const safeReportDate =
+                        row.reportDate || row.report_date || "ไม่ระบุวันที่";
 
-                        {/* Funnel */}
-                        <td className="p-2 border-r border-slate-200 font-mono">
-                          {row.traffic}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono text-blue-600 font-bold">
-                          {row.approach}
-                        </td>
-                        <td className="p-2 border-r border-slate-200 font-mono text-emerald-600 font-bold">
-                          {row.closedSales}
-                        </td>
+                      const remarkDisplay =
+                        row.remark ||
+                        row.remark_store ||
+                        row.remarkStore ||
+                        row.remarks ||
+                        row.note ||
+                        row.notes ||
+                        "";
 
-                        {/* Stock Before (10 Columns) */}
-                        {REPORT_PRODUCTS.map((prod) => {
-                          const info = getProductInfo(
-                            row,
-                            prod.barcode,
-                            isBigC,
-                          );
-                          return (
-                            <td
-                              key={`sb_${prod.barcode}`}
-                              className="p-2 border-r border-slate-200 font-mono"
-                            >
-                              {info.stockBefore}
-                            </td>
-                          );
-                        })}
-
-                        {/* Sales Qty (10 Columns) */}
-                        {REPORT_PRODUCTS.map((prod) => {
-                          const info = getProductInfo(
-                            row,
-                            prod.barcode,
-                            isBigC,
-                          );
-                          return (
-                            <td
-                              key={`sq_${prod.barcode}`}
-                              className="p-2 border-r border-slate-200 font-mono font-bold text-emerald-600 bg-emerald-50/20"
-                            >
-                              {info.salesQty !== "-" &&
-                              Number(info.salesQty) > 0
-                                ? `+${info.salesQty}`
-                                : info.salesQty}
-                            </td>
-                          );
-                        })}
-
-                        {/* Stock After (10 Columns) */}
-                        {REPORT_PRODUCTS.map((prod) => {
-                          const info = getProductInfo(
-                            row,
-                            prod.barcode,
-                            isBigC,
-                          );
-                          return (
-                            <td
-                              key={`sa_${prod.barcode}`}
-                              className="p-2 border-r border-slate-200"
-                            >
-                              {renderStockCell(info.stockAfter)}
-                            </td>
-                          );
-                        })}
-
-                        {/* Prices Our (10 Columns) */}
-                        {REPORT_PRODUCTS.map((prod) => {
-                          const info = getProductInfo(
-                            row,
-                            prod.barcode,
-                            isBigC,
-                          );
-                          return (
-                            <td
-                              key={`pr_${prod.barcode}`}
-                              className="p-2 border-r border-slate-200 font-mono font-semibold"
-                            >
-                              {info.priceOur !== "-"
-                                ? `${info.priceOur}฿`
-                                : "-"}
-                            </td>
-                          );
-                        })}
-
-                        {/* Competitor Prices (15 Columns) */}
-                        {COMPETITOR_ITEMS.map((comp) => {
-                          const val = getCompetitorVal(row, comp.key);
-                          return (
-                            <td
-                              key={`comp_${comp.key}`}
-                              className="p-2 border-r border-slate-200 font-mono text-rose-600 font-bold"
-                            >
-                              {val !== "-" ? `${val}฿` : "-"}
-                            </td>
-                          );
-                        })}
-
-                        {/* Text Feedback & Promo */}
-                        <td
-                          className="p-2 border-r border-slate-200 text-left text-slate-600 min-w-[220px] max-w-[300px] whitespace-normal break-words leading-tight"
-                          title={row.feedback || ""}
+                      return (
+                        <tr
+                          key={row.id || idx}
+                          className="portal-table-row transition text-center"
                         >
-                          {row.feedback || "-"}
-                        </td>
-                        <td
-                          className="p-2 border-r border-slate-200 text-left text-rose-600 min-w-[200px] max-w-[280px] whitespace-normal break-words leading-tight"
-                          title={row.competitorPromo || ""}
-                        >
-                          {row.competitorPromo || "-"}
-                        </td>
+                          <td className="p-2 border-r border-slate-200 font-bold text-slate-400 sticky left-0 z-20 bg-white min-w-[50px] w-[50px]">
+                            {idx + 1}
+                          </td>
+                          <td className="p-2 border-r border-slate-200 font-black text-slate-800 text-left sticky left-[50px] z-20 bg-white min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                            {safeStoreName}
+                          </td>
 
-                        {/* Remark */}
-                        <td
-                          className="p-2 border-r border-slate-200 text-left text-amber-900 bg-amber-50/30 min-w-[220px] max-w-[320px] whitespace-normal break-words leading-tight font-medium"
-                          title={remarkDisplay}
-                        >
-                          {remarkDisplay || "-"}
-                        </td>
+                          <td className="p-2 border-r border-slate-200 text-center no-print">
+                            <button
+                              onClick={() => handleEditRow(row)}
+                              className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded text-[9px] transition cursor-pointer flex items-center gap-1 mx-auto"
+                              title="แก้ไขรายงานแถวนี้"
+                            >
+                              <Edit3 size={11} /> แก้ไข
+                            </button>
+                          </td>
 
-                        {/* 📸 Photo Columns (Splitting photos across dedicated columns) */}
-                        {PHOTO_COLUMNS_CONFIG.map((cat) => {
-                          const categoryPhotos =
-                            photos[cat.key as keyof typeof photos] || [];
-                          return Array.from({ length: cat.max }).map((_, i) => {
-                            const photo = categoryPhotos[i];
+                          <td className="p-2 border-r border-slate-200 text-left font-medium text-slate-600">
+                            {safeUserName}
+                          </td>
+                          <td className="p-2 border-r border-slate-200 font-mono">
+                            {safeReportDate}
+                          </td>
+                          <td className="p-2 border-r border-slate-200 font-mono font-extrabold text-slate-700 bg-emerald-50/30">
+                            {row.targetPacks ?? "-"}
+                          </td>
+
+                          {/* Funnel */}
+                          <td className="p-2 border-r border-slate-200 font-mono">
+                            {row.traffic}
+                          </td>
+                          <td className="p-2 border-r border-slate-200 font-mono text-blue-600 font-bold">
+                            {row.approach}
+                          </td>
+                          <td className="p-2 border-r border-slate-200 font-mono text-emerald-600 font-bold">
+                            {row.closedSales}
+                          </td>
+
+                          {/* Stock Before (10 Columns) */}
+                          {REPORT_PRODUCTS.map((prod) => {
+                            const info = getProductInfo(
+                              row,
+                              prod.barcode,
+                              isBigC,
+                            );
                             return (
                               <td
-                                key={`${cat.key}_col_${i}`}
-                                className="p-1 border-r border-slate-200 text-center min-w-[85px] max-w-[100px]"
+                                key={`sb_${prod.barcode}`}
+                                className="p-2 border-r border-slate-200 font-mono bg-slate-50/50"
                               >
-                                {photo ? (
-                                  renderPhotoCell(
-                                    [photo],
-                                    `${cat.label} ${i + 1}`,
-                                  )
-                                ) : (
-                                  <span className="text-slate-300 font-mono text-[10px]">
-                                    -
-                                  </span>
-                                )}
+                                {info.stockBefore}
                               </td>
                             );
-                          });
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          })}
+
+                          {/* Sales Qty (10 Columns) */}
+                          {REPORT_PRODUCTS.map((prod) => {
+                            const info = getProductInfo(
+                              row,
+                              prod.barcode,
+                              isBigC,
+                            );
+                            return (
+                              <td
+                                key={`sq_${prod.barcode}`}
+                                className="p-2 border-r border-slate-200 font-mono font-black text-emerald-700 bg-emerald-100/60"
+                              >
+                                {info.salesQty !== "-" &&
+                                Number(info.salesQty) > 0
+                                  ? `+${info.salesQty}`
+                                  : info.salesQty}
+                              </td>
+                            );
+                          })}
+
+                          {/* Stock After (10 Columns) */}
+                          {REPORT_PRODUCTS.map((prod) => {
+                            const info = getProductInfo(
+                              row,
+                              prod.barcode,
+                              isBigC,
+                            );
+                            return (
+                              <td
+                                key={`sa_${prod.barcode}`}
+                                className="p-2 border-r border-slate-200 bg-amber-50/40"
+                              >
+                                {renderStockCell(info.stockAfter)}
+                              </td>
+                            );
+                          })}
+
+                          {/* Prices Our (10 Columns) */}
+                          {REPORT_PRODUCTS.map((prod) => {
+                            const info = getProductInfo(
+                              row,
+                              prod.barcode,
+                              isBigC,
+                            );
+                            return (
+                              <td
+                                key={`pr_${prod.barcode}`}
+                                className="p-2 border-r border-slate-200 font-mono font-black text-indigo-700 bg-indigo-50/60"
+                              >
+                                {info.priceOur !== "-"
+                                  ? `${info.priceOur}฿`
+                                  : "-"}
+                              </td>
+                            );
+                          })}
+
+                          {/* Competitor Prices (15 Columns) */}
+                          {COMPETITOR_ITEMS.map((comp) => {
+                            const val = getCompetitorVal(row, comp.key);
+                            return (
+                              <td
+                                key={`comp_${comp.key}`}
+                                className="p-2 border-r border-slate-200 font-mono text-rose-700 font-black bg-rose-50/50"
+                              >
+                                {val !== "-" ? `${val}฿` : "-"}
+                              </td>
+                            );
+                          })}
+
+                          {/* Text Feedback & Promo */}
+                          <td
+                            className="p-2 border-r border-slate-200 text-left text-slate-600 min-w-[220px] max-w-[300px] whitespace-normal break-words leading-tight"
+                            title={row.feedback || ""}
+                          >
+                            {row.feedback || "-"}
+                          </td>
+                          <td
+                            className="p-2 border-r border-slate-200 text-left text-rose-600 min-w-[200px] max-w-[280px] whitespace-normal break-words leading-tight"
+                            title={row.competitorPromo || ""}
+                          >
+                            {row.competitorPromo || "-"}
+                          </td>
+
+                          {/* Remark */}
+                          <td
+                            className="p-2 border-r border-slate-200 text-left text-amber-900 bg-amber-50/30 min-w-[220px] max-w-[320px] whitespace-normal break-words leading-tight font-medium"
+                            title={remarkDisplay}
+                          >
+                            {remarkDisplay || "-"}
+                          </td>
+
+                          {/* 📸 Photo Columns (Splitting photos across dedicated columns) */}
+                          {PHOTO_COLUMNS_CONFIG.map((cat) => {
+                            const categoryPhotos =
+                              photos[cat.key as keyof typeof photos] || [];
+                            return Array.from({ length: cat.max }).map(
+                              (_, i) => {
+                                const photo = categoryPhotos[i];
+                                return (
+                                  <td
+                                    key={`${cat.key}_col_${i}`}
+                                    className="p-1.5 border-r border-slate-200 text-center min-w-[90px] max-w-[120px] bg-blue-50/20 align-middle"
+                                  >
+                                    {photo ? (
+                                      renderPhotoCell(
+                                        [photo],
+                                        `${cat.label} ${i + 1}`,
+                                      )
+                                    ) : (
+                                      <span className="text-slate-300 font-mono text-[10px]">
+                                        -
+                                      </span>
+                                    )}
+                                  </td>
+                                );
+                              },
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
         </main>
       </div>
 

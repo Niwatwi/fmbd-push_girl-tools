@@ -1,21 +1,20 @@
 "use server";
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/utils/supabase/server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-const supabaseDefault = createClient(supabaseUrl, supabaseAnonKey);
-
-function getClientInstance() {
+async function getClientInstance() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
   if (!serviceKey) {
     console.warn(
       "⚠️ [Warning] ไม่พบ SUPABASE_SERVICE_ROLE_KEY ในระบบ สลับไปใช้ Anon Key แทนชั่วคราว",
     );
-    return supabaseDefault;
   }
-  return createClient(supabaseUrl, serviceKey);
+
+  return await createClient();
 }
 
 // 🇹🇭 Helper Function: แปลง Timestamp เป็นเวลาไทย (Asia/Bangkok UTC+7)
@@ -69,6 +68,65 @@ function checkIsBigC(code: string = "", name: string = "") {
   );
 }
 
+function getReportProductSalesBreakdown(report: any) {
+  const directGreen = Number(report?.sales_qty_green90 ?? 0);
+  const directBlue = Number(report?.sales_qty_blue90 ?? 0);
+  const directOrange = Number(report?.sales_qty_orange100 ?? 0);
+
+  const productRows = Array.isArray(report?.pg_daily_report_products)
+    ? report.pg_daily_report_products
+    : Array.isArray(report?.products)
+      ? report.products
+      : [];
+
+  let nestedGreen = 0;
+  let nestedBlue = 0;
+  let nestedOrange = 0;
+
+  for (const item of productRows) {
+    const barcode = String(item?.barcode ?? "").trim();
+    const qty = Number(item?.sales_qty ?? 0);
+    if (!barcode || Number.isNaN(qty)) continue;
+
+    if (barcode === "8858678423339") nestedGreen += qty;
+    else if (barcode === "8858678423681") nestedBlue += qty;
+    else if (barcode === "8858678422875") nestedOrange += qty;
+  }
+
+  const hasNestedData = productRows.some(
+    (item: any) => Number(item?.sales_qty ?? 0) > 0,
+  );
+
+  return {
+    greenSets: hasNestedData ? nestedGreen : directGreen,
+    blueSets: hasNestedData ? nestedBlue : directBlue,
+    orangeSets: hasNestedData ? nestedOrange : directOrange,
+  };
+}
+
+function getReportTotalSalesQty(report: any): number {
+  const productRows = Array.isArray(report?.pg_daily_report_products)
+    ? report.pg_daily_report_products
+    : Array.isArray(report?.products)
+      ? report.products
+      : [];
+
+  if (Array.isArray(productRows) && productRows.length > 0) {
+    const totalProductQty = productRows.reduce((sum: number, item: any) => {
+      const qty = Number(item?.sales_qty ?? 0);
+      return sum + (Number.isNaN(qty) ? 0 : qty);
+    }, 0);
+
+    if (totalProductQty > 0) return totalProductQty;
+  }
+
+  return (
+    Number(report?.sales_qty_green90 ?? 0) +
+    Number(report?.sales_qty_blue90 ?? 0) +
+    Number(report?.sales_qty_orange100 ?? 0)
+  );
+}
+
 // 🖼️ Helper Parse & Normalize รูปภาพจาก activity_photos
 function parsePhotoArray(fieldData: any) {
   if (!fieldData) return [];
@@ -117,7 +175,7 @@ function parsePhotoArray(fieldData: any) {
 
 // 1. 📅 ดึงข้อมูล Time Attendance สำหรับส่งฝ่ายบัญชีทำค่าใช้จ่าย
 export async function getAttendanceReportForAccounting() {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
     const { data, error } = await supabase
       .from("pg_attendance_logs")
@@ -145,11 +203,14 @@ export async function getAttendanceReportForAccounting() {
 
 // 2. 📊 ดึงยอดขายสะสมเปรียบเทียบกับเป้าหมาย (Target) แยกตามสาขา
 export async function getCustomerSalesVsTargetReport() {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
-    const { data: targets } = await supabase.from("store_targets").select("*");
+    const { data: targets = [] } = await supabase
+      .from("store_targets")
+      .select("*");
 
-    const { data: reports } = await supabase.from("pg_daily_activity_reports")
+    const { data: reports = [] } = await supabase
+      .from("pg_daily_activity_reports")
       .select(`
         store_code,
         sales_qty_green90,
@@ -157,21 +218,21 @@ export async function getCustomerSalesVsTargetReport() {
         sales_qty_orange100
       `);
 
-    const performanceSummary = (targets || []).map((target) => {
+    const performanceSummary = (targets || []).map((target: any) => {
       const storeReports = (reports || []).filter(
-        (r) => r.store_code === target.store_code,
+        (r: any) => r.store_code === target.store_code,
       );
 
       const actualGreen = storeReports.reduce(
-        (sum, r) => sum + Number(r.sales_qty_green90 || 0),
+        (sum: number, r: any) => sum + Number(r.sales_qty_green90 || 0),
         0,
       );
       const actualBlue = storeReports.reduce(
-        (sum, r) => sum + Number(r.sales_qty_blue90 || 0),
+        (sum: number, r: any) => sum + Number(r.sales_qty_blue90 || 0),
         0,
       );
       const actualOrange = storeReports.reduce(
-        (sum, r) => sum + Number(r.sales_qty_orange100 || 0),
+        (sum: number, r: any) => sum + Number(r.sales_qty_orange100 || 0),
         0,
       );
 
@@ -205,7 +266,7 @@ export async function getCustomerSalesVsTargetReport() {
 
 // 3. ดึงรายชื่อสาขาและเป้าหมายทั้งหมด
 export async function getStoreTargets() {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
     const { data, error } = await supabase
       .from("store_targets")
@@ -224,22 +285,37 @@ export async function getStoreTargets() {
 export async function saveStoreTargetAction(payload: {
   store_code: string;
   store_name: string;
-  target_green90: number;
-  target_blue90: number;
-  target_orange100: number;
+  target_green90?: number;
+  target_blue90?: number;
+  target_orange100?: number;
   price_green90?: number;
   price_blue90?: number;
   price_orange100?: number;
+  promotion_id?: string | number | null;
+  promotion_name?: string | null;
+  promotion_title?: string | null;
+  target_type?: string | null;
+  target_value?: string | null;
+  target_round?: string | null;
+  product1_id?: string | number | null;
+  product2_id?: string | number | null;
+  product3_id?: string | number | null;
+  target1?: number;
+  target2?: number;
+  target3?: number;
+  price1?: number;
+  price2?: number;
+  price3?: number;
 }) {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
-    const green = Number(payload.target_green90 || 0);
-    const blue = Number(payload.target_blue90 || 0);
-    const orange = Number(payload.target_orange100 || 0);
+    const green = Number(payload.target_green90 ?? payload.target1 ?? 0);
+    const blue = Number(payload.target_blue90 ?? payload.target2 ?? 0);
+    const orange = Number(payload.target_orange100 ?? payload.target3 ?? 0);
 
-    const priceGreen = Number(payload.price_green90 || 150);
-    const priceBlue = Number(payload.price_blue90 || 142);
-    const priceOrange = Number(payload.price_orange100 || 100);
+    const priceGreen = Number(payload.price_green90 ?? payload.price1 ?? 150);
+    const priceBlue = Number(payload.price_blue90 ?? payload.price2 ?? 142);
+    const priceOrange = Number(payload.price_orange100 ?? payload.price3 ?? 100);
 
     const isBigC = checkIsBigC(payload.store_code, payload.store_name);
 
@@ -249,24 +325,30 @@ export async function saveStoreTargetAction(payload: {
     const totalRevenue =
       green * priceGreen + blue * priceBlue + orange * priceOrange;
 
+    const upsertData: any = {
+      store_code: payload.store_code.trim(),
+      store_name: payload.store_name.trim(),
+      target_green90: green,
+      target_blue90: blue,
+      target_orange100: orange,
+      price_green90: priceGreen,
+      price_blue90: priceBlue,
+      price_orange100: priceOrange,
+      target_packs: totalPacks,
+      target_revenue: totalRevenue,
+      target_month: new Date().toISOString().split("T")[0],
+    };
+
+    if (payload.promotion_id !== undefined) upsertData.promotion_id = payload.promotion_id;
+    if (payload.promotion_name !== undefined) upsertData.promotion_name = payload.promotion_name;
+    if (payload.promotion_title !== undefined) upsertData.promotion_title = payload.promotion_title;
+    if (payload.target_type !== undefined) upsertData.target_type = payload.target_type;
+    if (payload.target_value !== undefined) upsertData.target_value = payload.target_value;
+    if (payload.target_round !== undefined) upsertData.target_round = payload.target_round;
+
     const { data, error } = await supabase
       .from("store_targets")
-      .upsert(
-        {
-          store_code: payload.store_code.trim(),
-          store_name: payload.store_name.trim(),
-          target_green90: green,
-          target_blue90: blue,
-          target_orange100: orange,
-          price_green90: priceGreen,
-          price_blue90: priceBlue,
-          price_orange100: priceOrange,
-          target_packs: totalPacks,
-          target_revenue: totalRevenue,
-          target_month: new Date().toISOString().split("T")[0],
-        },
-        { onConflict: "store_code" },
-      )
+      .upsert(upsertData, { onConflict: "store_code" })
       .select()
       .single();
 
@@ -283,9 +365,8 @@ export async function saveStoreTargetAction(payload: {
 
 // 5. ดึงรายชื่อร้านค้าทั้งหมด
 export async function getAvailableStores() {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
-    // ลองดึงแบบไม่จำกัด is_active ก่อน เพื่อป้องกันกรณีข้อมูลในฐานข้อมูลไม่ได้เซ็ตค่าไว้
     const { data, error } = await supabase
       .from("pg_stores")
       .select("id, store_code, store_name, area, company_tag, is_active")
@@ -301,7 +382,7 @@ export async function getAvailableStores() {
 
 // 6. 🏆 ดึงโปรไฟล์พนักงาน + สถานที่ Check-in + ยอดขายจริงวันนี้ + ยอดสะสมประจำเดือน
 export async function getUserDashboardDataAction(userIdInput: number | string) {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   const userId = Number(userIdInput);
 
   try {
@@ -386,7 +467,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
     let monthlyTotalPacks = 0;
     if (monthlyReports && monthlyReports.length > 0) {
-      monthlyReports.forEach((r) => {
+      monthlyReports.forEach((r: any) => {
         const g = Number(r.sales_qty_green90 || 0);
         const b = Number(r.sales_qty_blue90 || 0);
         const o = Number(r.sales_qty_orange100 || 0);
@@ -424,7 +505,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
 // 7. ลบเป้าหมายสาขาออกจากระบบ
 export async function deleteStoreTargetAction(storeCode: string) {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
     const { error } = await supabase
       .from("store_targets")
@@ -538,433 +619,6 @@ function getWageFromAttendanceLog(log: any): number {
   return 0;
 }
 
-// 9. 📸 ดึงรายงานกิจกรรมฉบับเต็มสำหรับ Customer Portal
-export async function getCustomerFullActivityReport() {
-  const supabase = getClientInstance();
-  try {
-    const { data: rawReports, error: reportError } = await supabase
-      .from("pg_daily_activity_reports")
-      .select("*")
-      .order("report_date", { ascending: false });
-
-    if (reportError) throw reportError;
-
-    const { data: userProfiles } = await supabase
-      .from("user_profiles")
-      .select("id, display_name, employee_id, username, base_salary");
-
-    const userMap = new Map<number, any>();
-    (userProfiles || []).forEach((u: any) => userMap.set(Number(u.id), u));
-
-    const { data: attendanceLogs } = await supabase
-      .from("pg_attendance_logs")
-      .select(
-        "id, user_id, check_in_at, check_out_at, store_code, check_in_image_url, check_in_photo, check_out_image_url, check_out_photo",
-      );
-
-    const attendancePhotoByIdMap = new Map<number, any[]>();
-    const attendancePhotoByStoreDateMap = new Map<string, any[]>();
-    const attendancePhotoByUserDateMap = new Map<string, any[]>();
-
-    const attendanceWages = (attendanceLogs || []).map((log: any) => {
-      const dateStr = getIctDateStr(log.check_in_at);
-      const rawStoreCode = (log.store_code || "").trim();
-      const cleanStoreCode = rawStoreCode.toLowerCase().replace(/\s+/g, "");
-
-      const attPhotos: any[] = [];
-      const checkInImg = log.check_in_image_url || log.check_in_photo;
-      if (
-        checkInImg &&
-        typeof checkInImg === "string" &&
-        checkInImg.trim() !== ""
-      ) {
-        attPhotos.push({
-          url: checkInImg.trim(),
-          type: "staff_holding",
-          label: "รูป Check-in เข้างาน",
-        });
-      }
-
-      const checkOutImg = log.check_out_image_url || log.check_out_photo;
-      if (
-        checkOutImg &&
-        typeof checkOutImg === "string" &&
-        checkOutImg.trim() !== ""
-      ) {
-        attPhotos.push({
-          url: checkOutImg.trim(),
-          type: "atmosphere",
-          label: "รูป Check-out เลิกงาน",
-        });
-      }
-
-      if (attPhotos.length > 0) {
-        attendancePhotoByIdMap.set(Number(log.id), attPhotos);
-        const storeDateKey = `${log.user_id}_${cleanStoreCode}_${dateStr}`;
-        if (!attendancePhotoByStoreDateMap.has(storeDateKey)) {
-          attendancePhotoByStoreDateMap.set(storeDateKey, []);
-        }
-        attendancePhotoByStoreDateMap.get(storeDateKey)?.push(...attPhotos);
-
-        const userDateKey = `${log.user_id}_${dateStr}`;
-        if (!attendancePhotoByUserDateMap.has(userDateKey)) {
-          attendancePhotoByUserDateMap.set(userDateKey, []);
-        }
-        attendancePhotoByUserDateMap.get(userDateKey)?.push(...attPhotos);
-      }
-
-      const userObj = userMap.get(Number(log.user_id));
-      const baseRate = userObj?.base_salary ? Number(userObj.base_salary) : 700;
-
-      let workedHours = 0;
-      if (log.check_in_at && log.check_out_at) {
-        const checkIn = new Date(log.check_in_at).getTime();
-        const checkOut = new Date(log.check_out_at).getTime();
-        workedHours = Number(
-          ((checkOut - checkIn) / (1000 * 60 * 60)).toFixed(1),
-        );
-      }
-
-      const calculatedWage =
-        workedHours > 0 ? calculateDailyWage(workedHours, baseRate) : baseRate;
-
-      return {
-        id: log.id,
-        userId: log.user_id,
-        storeCode: rawStoreCode,
-        date: dateStr,
-        wage: calculatedWage,
-        dailyWage: calculatedWage,
-        baseSalary: baseRate,
-      };
-    });
-
-    const { data: storesData } = await supabase
-      .from("pg_stores")
-      .select("store_code, store_name, company_tag");
-
-    const { data: targetsData } = await supabase
-      .from("store_targets")
-      .select("store_code, store_name, target_packs");
-
-    const storeTargetMap = new Map<string, number>();
-    const storeMasterMap = new Map<string, { name: string; account: string }>();
-
-    (targetsData || []).forEach((t: any) => {
-      if (t.store_code) {
-        const code = t.store_code.trim();
-        storeTargetMap.set(code, Number(t.target_packs || 0));
-        const acc = checkIsBigC(t.store_code, t.store_name) ? "Big C" : "Tops";
-        storeMasterMap.set(code, { name: t.store_name, account: acc });
-      }
-    });
-
-    (storesData || []).forEach((s: any) => {
-      if (s.store_code) {
-        const code = s.store_code.trim();
-        const acc =
-          s.company_tag ||
-          (checkIsBigC(s.store_code, s.store_name) ? "Big C" : "Tops");
-        if (!storeMasterMap.has(code)) {
-          storeMasterMap.set(code, { name: s.store_name, account: acc });
-        }
-      }
-    });
-
-    const reportIds = (rawReports || []).map((r: any) => r.id);
-    const productsMap = new Map<
-      number,
-      {
-        img_product: string[];
-        img_shelf: string[];
-        img_stock_scanner: string[];
-      }
-    >();
-
-    if (reportIds.length > 0) {
-      const { data: reportProductsData } = await supabase
-        .from("pg_daily_report_products")
-        .select("report_id, img_product, img_shelf, img_stock_scanner")
-        .in("report_id", reportIds);
-
-      (reportProductsData || []).forEach((p: any) => {
-        const rId = Number(p.report_id);
-        if (!productsMap.has(rId)) {
-          productsMap.set(rId, {
-            img_product: [],
-            img_shelf: [],
-            img_stock_scanner: [],
-          });
-        }
-        const item = productsMap.get(rId)!;
-        if (
-          p.img_product &&
-          typeof p.img_product === "string" &&
-          p.img_product.trim() !== ""
-        ) {
-          item.img_product.push(p.img_product.trim());
-        }
-        if (
-          p.img_shelf &&
-          typeof p.img_shelf === "string" &&
-          p.img_shelf.trim() !== ""
-        ) {
-          item.img_shelf.push(p.img_shelf.trim());
-        }
-        if (
-          p.img_stock_scanner &&
-          typeof p.img_stock_scanner === "string" &&
-          p.img_stock_scanner.trim() !== ""
-        ) {
-          item.img_stock_scanner.push(p.img_stock_scanner.trim());
-        }
-      });
-    }
-
-    const formattedData = (rawReports || []).map((r: any) => {
-      const uId = Number(r.user_id);
-      const userObj = userMap.get(uId);
-
-      const userName =
-        userObj?.display_name || userObj?.username || `PG-${r.user_id}`;
-      const userEmpId =
-        userObj?.employee_id || userObj?.username || `PG-${r.user_id}`;
-      const userBaseSalary = userObj?.base_salary
-        ? Number(userObj.base_salary)
-        : 700;
-
-      const storeCodeStr = (r.store_code || "").trim();
-      const cleanReportStoreCode = storeCodeStr
-        .toLowerCase()
-        .replace(/\s+/g, "");
-      const reportDateStr = r.report_date ? r.report_date.split("T")[0] : "";
-      const masterInfo = storeMasterMap.get(storeCodeStr);
-
-      let finalStoreName =
-        r.store_name && r.store_name !== storeCodeStr
-          ? r.store_name
-          : masterInfo?.name || storeCodeStr;
-      let accountName =
-        masterInfo?.account ||
-        (checkIsBigC(storeCodeStr, finalStoreName) ? "Big C" : "Tops");
-
-      const storeTargetPacks = storeTargetMap.get(storeCodeStr);
-      const targetPacks =
-        storeTargetPacks !== undefined && storeTargetPacks > 0
-          ? storeTargetPacks
-          : Number(r.target_packs || 120);
-
-      const isBigCStore = checkIsBigC(storeCodeStr, finalStoreName);
-
-      const greenPacks = Number(r.sales_qty_green90 || 0);
-      const bluePacks = Number(r.sales_qty_blue90 || 0);
-      const orangePacks = Number(r.sales_qty_orange100 || 0);
-
-      const stockBeforeGreenVal = Number(r.stock_before_green90 || 0);
-      const stockBeforeBlueVal = Number(r.stock_before_blue90 || 0);
-      const stockBeforeOrangeVal = Number(r.stock_before_orange100 || 0);
-
-      let stockAfterGreen = 0;
-      let stockAfterBlue = 0;
-      let stockAfterOrange = 0;
-      let totalActualPacks = 0;
-
-      if (isBigCStore) {
-        const physicalGreen = greenPacks * 2;
-        const physicalBlue = bluePacks * 2;
-        stockAfterGreen =
-          r.stock_after_green90 !== null && Number(r.stock_after_green90) > 0
-            ? Number(r.stock_after_green90)
-            : Math.max(0, stockBeforeGreenVal - physicalGreen);
-        stockAfterBlue =
-          r.stock_after_blue90 !== null && Number(r.stock_after_blue90) > 0
-            ? Number(r.stock_after_blue90)
-            : Math.max(0, stockBeforeBlueVal - physicalBlue);
-        stockAfterOrange = 0;
-        totalActualPacks = physicalGreen + physicalBlue;
-      } else {
-        const physicalOrange = orangePacks * 2;
-        stockAfterGreen =
-          r.stock_after_green90 !== null && Number(r.stock_after_green90) > 0
-            ? Number(r.stock_after_green90)
-            : Math.max(0, stockBeforeGreenVal - greenPacks);
-        stockAfterBlue =
-          r.stock_after_blue90 !== null && Number(r.stock_after_blue90) > 0
-            ? Number(r.stock_after_blue90)
-            : Math.max(0, stockBeforeBlueVal - bluePacks);
-        stockAfterOrange =
-          r.stock_after_orange100 !== null &&
-          Number(r.stock_after_orange100) > 0
-            ? Number(r.stock_after_orange100)
-            : Math.max(0, stockBeforeOrangeVal - physicalOrange);
-        totalActualPacks = greenPacks + bluePacks + physicalOrange;
-      }
-
-      const compCellox = Number(
-        r.comp_cellox_price || r.price_comp_cellox || r.cellox_price || 0,
-      );
-      const compKleenex = Number(
-        r.comp_kleenex_price || r.price_comp_kleenex || r.kleenex_price || 0,
-      );
-      const compPaseo = Number(
-        r.comp_paseo_price || r.price_comp_paseo || r.paseo_price || 0,
-      );
-
-      const feedbackText =
-        r.feedback_store ||
-        r.feedback_notes ||
-        r.feedback ||
-        r.store_feedback ||
-        "";
-      const competitorPromoText =
-        r.competitor_promotion || r.competitor_promo || r.comp_promo || "";
-      const remarkText =
-        r.remark ||
-        r.remark_store ||
-        r.remarkStore ||
-        r.remarks ||
-        r.note ||
-        "";
-
-      const rawActivityPhotos = parsePhotoArray(r.activity_photos);
-      const prodData = productsMap.get(Number(r.id)) || {
-        img_product: [],
-        img_shelf: [],
-        img_stock_scanner: [],
-      };
-
-      const productPhotos = prodData.img_product.map((url) => ({
-        url,
-        type: "img_product",
-        label: "รูปสินค้า",
-      }));
-      const shelfPhotos = prodData.img_shelf.map((url) => ({
-        url,
-        type: "img_shelf",
-        label: "รูปเชลฟ์ชั้นวาง",
-      }));
-      const stockPhotos = prodData.img_stock_scanner.map((url) => ({
-        url,
-        type: "img_stock_scanner",
-        label: "รูปสแกนสต๊อก",
-      }));
-
-      let attPhotos: any[] = [];
-      if (r.attendance_log_id) {
-        attPhotos =
-          attendancePhotoByIdMap.get(Number(r.attendance_log_id)) || [];
-      }
-      if (attPhotos.length === 0) {
-        const storeDateKey = `${r.user_id}_${cleanReportStoreCode}_${reportDateStr}`;
-        attPhotos = attendancePhotoByStoreDateMap.get(storeDateKey) || [];
-      }
-      if (attPhotos.length === 0) {
-        const userDateKey = `${r.user_id}_${reportDateStr}`;
-        attPhotos = attendancePhotoByUserDateMap.get(userDateKey) || [];
-      }
-
-      const activityPhotos = [
-        ...rawActivityPhotos,
-        ...productPhotos,
-        ...shelfPhotos,
-        ...stockPhotos,
-        ...attPhotos,
-      ];
-
-      const giftOrangeBefore = Number(r.gift_orange_before || 0);
-      const giftOrangeGiven = Number(r.gift_orange_given || 0);
-      const giftOrangeAfter = Math.max(0, giftOrangeBefore - giftOrangeGiven);
-
-      const giftNourishBefore = Number(r.gift_nourish_before || 0);
-      const giftNourishGiven = Number(r.gift_nourish_given || 0);
-      const giftNourishAfter = Math.max(
-        0,
-        giftNourishBefore - giftNourishGiven,
-      );
-
-      return {
-        id: r.id,
-        userId: r.user_id,
-        userName,
-        userEmpId,
-        dailyWage: userBaseSalary,
-        account: accountName,
-        storeCode: storeCodeStr,
-        storeName: finalStoreName,
-        reportDate: r.report_date || "",
-        targetPacks,
-
-        traffic: Number(r.traffic_count || 0),
-        approach: Number(r.approach_count || 0),
-        closedSales: Number(r.closed_sales_count || 0),
-        approachRate:
-          Number(r.traffic_count || 0) > 0
-            ? Math.round(
-                (Number(r.approach_count || 0) / Number(r.traffic_count || 1)) *
-                  100,
-              )
-            : 0,
-        closingRate:
-          Number(r.approach_count || 0) > 0
-            ? Math.round(
-                (Number(r.closed_sales_count || 0) /
-                  Number(r.approach_count || 1)) *
-                  100,
-              )
-            : 0,
-
-        priceGreen: Number(r.price_our_green90 || r.price_green90 || 150),
-        priceBlue: Number(r.price_our_blue90 || r.price_blue90 || 142),
-        priceOrange: Number(r.price_our_orange100 || r.price_orange100 || 100),
-
-        compCellox,
-        compKleenex,
-        compPaseo,
-
-        stockBeforeGreen: stockBeforeGreenVal,
-        salesGreen: greenPacks,
-        stockAfterGreen,
-
-        stockBeforeBlue: stockBeforeBlueVal,
-        salesBlue: bluePacks,
-        stockAfterBlue,
-
-        stockBeforeOrange: stockBeforeOrangeVal,
-        salesOrange: orangePacks,
-        stockAfterOrange,
-
-        actualPacksTotal: totalActualPacks,
-
-        giftOrangeBefore,
-        giftOrangeGiven,
-        giftOrangeAfter,
-        giftNourishBefore,
-        giftNourishGiven,
-        giftNourishAfter,
-
-        feedback: feedbackText,
-        competitorPromo: competitorPromoText,
-        remark: remarkText,
-
-        activityPhotos,
-        productPhotos,
-        shelfPhotos,
-        stockPhotos,
-      };
-    });
-
-    return { success: true, data: formattedData, attendanceWages };
-  } catch (error: any) {
-    console.error("Get customer full report error:", error);
-    return {
-      success: false,
-      data: [],
-      attendanceWages: [],
-      message: error.message,
-    };
-  }
-}
-
 // 🇹🇭 Helper Function: คำนวณค่าแรงรายวันตามจำนวนชั่วโมงทำงานจริง
 function calculateDailyWage(hours: number, baseRate: number = 700): number {
   if (hours >= 9) {
@@ -982,7 +636,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   endDate?: string;
   storeCode?: string;
 }) {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
     const { data: userProfiles, error: userError } = await supabase
       .from("user_profiles")
@@ -1065,7 +719,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
 }) {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
     const expenseRes = await getAdminAttendanceExpenseReportAction(params);
     if (!expenseRes.success) throw new Error(expenseRes.message);
@@ -1073,7 +727,9 @@ export async function getAdminSalarySummaryReportAction(params?: {
     const attendanceLogs = expenseRes.data || [];
 
     // ดึงรายงานยอดขายประจำวันเพื่อนำมาคำนวณค่าคอมมิชชั่น
-    let reportsQuery = supabase.from("pg_daily_activity_reports").select("*");
+    let reportsQuery = supabase
+      .from("pg_daily_activity_reports")
+      .select("*, pg_daily_report_products (* )");
 
     if (params?.startDate) {
       reportsQuery = reportsQuery.gte("report_date", params.startDate);
@@ -1099,6 +755,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
           workDaysCount: 0,
           baseSalaryRate: log.baseSalaryRate,
           totalDailyWage: 0,
+          allSkuSalesQty: 0,
           greenSets: 0,
           blueSets: 0,
           orangeSets: 0,
@@ -1110,15 +767,31 @@ export async function getAdminSalarySummaryReportAction(params?: {
       userGroup.totalDailyWage += log.dailyWage;
     });
 
-    // รวมยอดขายสินค้าแต่ละประเภท
+    // รวมยอดขายสินค้าแต่ละประเภทโดยรองรับทั้งคอลัมน์ legacy และรายการสินค้าแบบ nested
     (dailyReports || []).forEach((rep: any) => {
       const uId = Number(rep.user_id);
-      if (userSummaryMap.has(uId)) {
-        const userGroup = userSummaryMap.get(uId)!;
-        userGroup.greenSets += Number(rep.sales_qty_green90 || 0);
-        userGroup.blueSets += Number(rep.sales_qty_blue90 || 0);
-        userGroup.orangeSets += Number(rep.sales_qty_orange100 || 0);
-      }
+      if (!userSummaryMap.has(uId)) return;
+
+      const saleBreakdown = getReportProductSalesBreakdown(rep);
+      const totalSalesQty = getReportTotalSalesQty(rep);
+      const userGroup = userSummaryMap.get(uId)!;
+
+      userGroup.allSkuSalesQty += totalSalesQty;
+      userGroup.greenSets += Number(
+        rep.sales_qty_green90 !== undefined && rep.sales_qty_green90 !== null
+          ? rep.sales_qty_green90
+          : saleBreakdown.greenSets,
+      );
+      userGroup.blueSets += Number(
+        rep.sales_qty_blue90 !== undefined && rep.sales_qty_blue90 !== null
+          ? rep.sales_qty_blue90
+          : saleBreakdown.blueSets,
+      );
+      userGroup.orangeSets += Number(
+        rep.sales_qty_orange100 !== undefined && rep.sales_qty_orange100 !== null
+          ? rep.sales_qty_orange100
+          : saleBreakdown.orangeSets,
+      );
     });
 
     // คำนวณคอมมิชชั่นและรวมค่าแรงสุทธิ
@@ -1141,7 +814,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
           workDaysCount: item.workDaysCount,
           baseSalaryRate: item.baseSalaryRate,
           totalDailyWage: item.totalDailyWage,
-          totalSets: commRes.totalSetsSold,
+          totalSets: item.allSkuSalesQty || commRes.totalSetsSold,
           totalPacks: commRes.totalPacksSold,
           totalCommission: commRes.incentiveAmount,
           tierStatus: commRes.tierStatus,
@@ -1165,7 +838,7 @@ export async function updateAdminAttendanceLogAction(payload: {
   storeCode?: string;
   storeName?: string;
 }) {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
     const updateData: any = {};
     if (payload.checkInAt !== undefined)
@@ -1195,7 +868,7 @@ export async function updateAdminAttendanceLogAction(payload: {
 
 // 13. 🛠️ ฟังก์ชันสำหรับ Admin บันทึกรายงานย้อนหลัง พร้อมระบบแปลง Base64 และอัปโหลดรูปภาพ
 export async function adminSaveReportWithImagesAction(payload: any) {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
     const BUCKET_NAME = "pg-attendance-photos";
 
@@ -1300,7 +973,7 @@ export async function adminSaveReportWithImagesAction(payload: any) {
 
 // 14. 📌 ดึงรายชื่อสาขาที่ User ได้รับมอบหมายตามรอบจัดเชียร์ขายใน pg_user_store_schedules
 export async function getAssignedStoresByUserAction(userId: number) {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
     const today = new Date().toISOString().split("T")[0];
 
@@ -1339,7 +1012,7 @@ export async function getAssignedStoresByUserAction(userId: number) {
 
 // 15. 📦 ดึงรายการสินค้าทั้งหมดจากตาราง products (รองรับทั้งตาราง products และ pg_products)
 export async function getProducts() {
-  const supabase = getClientInstance();
+  const supabase = await getClientInstance();
   try {
     let { data, error } = await supabase
       .from("products")
@@ -1360,5 +1033,250 @@ export async function getProducts() {
   } catch (error: any) {
     console.error("Get products error:", error);
     return { success: false, data: [], message: error.message };
+  }
+}
+
+// ดึงรายงานเต็มแบบ Customer Portal แบบปลอดภัย โดยรองรับตารางปัจจุบันและ legacy
+export async function getCustomerFullActivityReport() {
+  const supabase = await getClientInstance();
+
+  try {
+    const tableCandidates = ["pg_daily_activity_reports", "pg_daily_reports"];
+
+    let rows: any[] = [];
+    let lastError: any = null;
+
+    for (const tableName of tableCandidates) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select(`
+          *,
+          pg_daily_report_products (
+            id,
+            report_id,
+            barcode,
+            descriptions,
+            price_our,
+            stock_before,
+            sales_qty,
+            stock_after,
+            img_product,
+            img_shelf,
+            img_stock_scanner,
+            created_at
+          )
+        `)
+        .order("report_date", { ascending: false });
+
+      if (!error) {
+        rows = data || [];
+        break;
+      }
+
+      lastError = error;
+    }
+
+    if (lastError && rows.length === 0) {
+      console.error("Error fetching full customer activity report:", lastError);
+      return { success: false, data: [] };
+    }
+
+    const userLookup = new Map<string, any>();
+    const storeLookup = new Map<string, any>();
+
+    const profileQueries = [
+      supabase.from("user_profiles").select("id, display_name, username, employee_id"),
+      supabase.from("profiles").select("id, display_name, username, employee_id"),
+    ];
+
+    const [userProfilesRes, profilesRes] = await Promise.all(profileQueries);
+    const profileRows = [...(userProfilesRes.data || []), ...(profilesRes.data || [])];
+    for (const profile of profileRows) {
+      if (!profile) continue;
+      userLookup.set(String(profile.id), profile);
+      if (profile.username) userLookup.set(String(profile.username), profile);
+    }
+
+    const attendanceQuery = await supabase
+      .from("pg_attendance_logs")
+      .select("id, user_id, store_code, store_name, check_in_at")
+      .order("check_in_at", { ascending: false });
+
+    const attendanceRows = attendanceQuery.data || [];
+    for (const log of attendanceRows) {
+      const logAny = log as any;
+      if (logAny?.user_id != null) {
+        const key = String(logAny.user_id);
+        if (!userLookup.has(key)) {
+          userLookup.set(key, {
+            id: logAny.user_id,
+            display_name:
+              logAny.user_name ||
+              logAny.display_name ||
+              `PG-${logAny.user_id}`,
+            username: logAny.username || `PG-${logAny.user_id}`,
+            employee_id: logAny.employee_id || `PG-${logAny.user_id}`,
+          });
+        }
+      }
+      if (logAny?.store_code) {
+        storeLookup.set(String(logAny.store_code), {
+          store_code: logAny.store_code,
+          store_name: logAny.store_name,
+        });
+      }
+    }
+
+    const storeQueries = [
+      supabase.from("stores").select("store_code, store_name"),
+      supabase.from("store_targets").select("store_code, store_name"),
+    ];
+
+    const [storesRes, targetsRes] = await Promise.all(storeQueries);
+    for (const item of [...(storesRes.data || []), ...(targetsRes.data || [])]) {
+      if (!item?.store_code) continue;
+      const key = String(item.store_code).trim();
+      if (!storeLookup.has(key)) {
+        storeLookup.set(key, {
+          store_code: item.store_code,
+          store_name: item.store_name || "",
+        });
+      }
+    }
+
+    const normalized = (rows || []).map((row: any) => {
+      const userId = row.user_id ?? row.userId ?? row.userID ?? "";
+      const storeCode = row.store_code ?? row.storeCode ?? "";
+      const attendanceMatch =
+        (row.attendance_log_id &&
+          attendanceRows.find((log: any) => String(log.id) === String(row.attendance_log_id))) ||
+        attendanceRows.find((log: any) => String(log.user_id) === String(userId)) ||
+        null;
+
+      const profileMatch =
+        userLookup.get(String(userId)) ||
+        userLookup.get(String(row.user_name ?? "")) ||
+        null;
+
+      const resolvedUserName =
+        row.user_name ??
+        row.userName ??
+        profileMatch?.display_name ??
+        profileMatch?.username ??
+        attendanceMatch?.user_name ??
+        attendanceMatch?.display_name ??
+        (userId ? `PG-${userId}` : "");
+
+      const resolvedStoreName =
+        row.store_name ??
+        row.storeName ??
+        attendanceMatch?.store_name ??
+        storeLookup.get(String(storeCode))?.store_name ??
+        "";
+
+      const resolvedStoreCode =
+        row.store_code ??
+        row.storeCode ??
+        attendanceMatch?.store_code ??
+        "";
+
+      const directPhotoEntries: any[] = [];
+      const directPhotoFields = [
+        ["photo_staff_holding", "staff_holding", "พนักงานถือสินค้า"],
+        ["photo_cheer_sales", "cheer_sales", "รูปยืนเชียร์"],
+        ["photo_customer_basket_1", "customer_basket_1", "ถ่ายคู่กับลูกค้า/ตะกร้า #1"],
+        ["photo_customer_basket_2", "customer_basket_2", "ถ่ายคู่กับลูกค้า/ตะกร้า #2"],
+        ["photo_atmosphere_1", "atmosphere_1", "บรรยากาศหน้าร้าน #1"],
+        ["photo_atmosphere_2", "atmosphere_2", "บรรยากาศหน้าร้าน #2"],
+      ];
+
+      for (const [fieldName, typeName, label] of directPhotoFields) {
+        const photoUrl = row[fieldName];
+        if (photoUrl && typeof photoUrl === "string" && photoUrl.trim()) {
+          directPhotoEntries.push({
+            url: photoUrl,
+            type: typeName,
+            label,
+          });
+        }
+      }
+
+      const productPhotoEntries: any[] = [];
+      const productRows = Array.isArray(row.pg_daily_report_products)
+        ? row.pg_daily_report_products
+        : Array.isArray(row.products)
+          ? row.products
+          : [];
+
+      for (const product of productRows) {
+        if (!product || typeof product !== "object") continue;
+
+        const productLabel = product.descriptions || product.barcode || "สินค้า";
+        const photoFieldMap = [
+          [product.img_product, "img_product", `รูปสินค้า: ${productLabel}`],
+          [product.img_shelf, "img_shelf", `รูปเชลฟ์ชั้นวาง: ${productLabel}`],
+          [product.img_stock_scanner, "img_stock_scanner", `รูปสแกนสต๊อก: ${productLabel}`],
+        ];
+
+        for (const [photoUrl, typeName, label] of photoFieldMap) {
+          if (photoUrl && typeof photoUrl === "string" && photoUrl.trim()) {
+            productPhotoEntries.push({
+              url: photoUrl,
+              type: typeName,
+              label,
+            });
+          }
+        }
+      }
+
+      const parsedPhotos = Array.isArray(row.activity_photos)
+        ? row.activity_photos
+        : parsePhotoArray(row.activity_photos ?? row.activityPhotos ?? []);
+
+      const mergedPhotos = [
+        ...parsedPhotos,
+        ...directPhotoEntries,
+        ...productPhotoEntries,
+      ].filter(
+        (p, index, arr) =>
+          p?.url && arr.findIndex((item) => item?.url === p.url) === index,
+      );
+
+      return {
+        ...row,
+        id: row.id,
+        userId,
+        userName: resolvedUserName,
+        storeCode: resolvedStoreCode,
+        storeName: resolvedStoreName,
+        reportDate: row.report_date ?? row.reportDate ?? "",
+        traffic: Number(row.traffic_count ?? row.traffic ?? 0),
+        approach: Number(row.approach_count ?? row.approach ?? 0),
+        closedSales: Number(row.closed_sales_count ?? row.closedSales ?? 0),
+        targetPacks: Number(row.target_packs ?? row.target ?? 0),
+        feedback: row.feedback_store ?? row.feedback ?? "",
+        competitorPromo:
+          row.competitor_promotion ?? row.competitorPromo ?? "",
+        remark: row.remark ?? row.remark_store ?? row.remarkStore ?? "",
+        activityPhotos: mergedPhotos,
+        products:
+          row.pg_daily_report_products ??
+          row.products ??
+          row.report_products ??
+          row.items ??
+          [],
+        pg_daily_report_products:
+          row.pg_daily_report_products ??
+          row.products ??
+          row.report_products ??
+          row.items ??
+          [],
+      };
+    });
+
+    return { success: true, data: normalized };
+  } catch (error: any) {
+    console.error("Error fetching full customer activity report:", error);
+    return { success: false, data: [], message: error.message || "Unknown error" };
   }
 }

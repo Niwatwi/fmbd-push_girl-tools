@@ -89,6 +89,30 @@ export async function getAllPromotionsAction() {
 // ดึงโปรโมชันตามรหัสสาขา (storeCode) หรือกลุ่มห้าง (companyTag)
 // app/admin/promotions/actions.ts
 
+export async function getPromotionOptionsAction() {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("promotions")
+    .select(
+      "id, campaign_title, target_type, target_value, special_tier_text, is_active, created_at",
+    )
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return { success: false, message: error.message, promotions: [] };
+  }
+
+  return {
+    success: true,
+    promotions: (data || []).map((promo: any) => ({
+      ...promo,
+      title: promo.campaign_title || promo.title || "โปรโมชั่น",
+      name: promo.campaign_title || promo.title || "โปรโมชั่น",
+    })),
+  };
+}
+
 export async function getPromotionByStoreAction(
   storeCode?: string,
   companyTag?: string,
