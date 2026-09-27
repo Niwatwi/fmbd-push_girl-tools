@@ -1181,10 +1181,21 @@ export async function getCustomerFullActivityReport() {
 
     const storeQueries = [
       supabase.from("stores").select("store_code, store_name"),
-      supabase.from("store_targets").select("store_code, store_name"),
+      supabase
+        .from("store_targets")
+        .select("store_code, store_name, target_packs"),
     ];
 
     const [storesRes, targetsRes] = await Promise.all(storeQueries);
+    const targetLookup = new Map<string, number>();
+    for (const target of (targetsRes.data || []) as any[]) {
+      if (!target?.store_code) continue;
+      targetLookup.set(
+        String(target.store_code).trim(),
+        Number(target.target_packs || 0),
+      );
+    }
+
     for (const item of [
       ...(storesRes.data || []),
       ...(targetsRes.data || []),
@@ -1322,7 +1333,12 @@ export async function getCustomerFullActivityReport() {
         traffic: Number(row.traffic_count ?? row.traffic ?? 0),
         approach: Number(row.approach_count ?? row.approach ?? 0),
         closedSales: Number(row.closed_sales_count ?? row.closedSales ?? 0),
-        targetPacks: Number(row.target_packs ?? row.target ?? 0),
+        targetPacks: Number(
+          targetLookup.get(String(resolvedStoreCode).trim()) ??
+            row.target_packs ??
+            row.target ??
+            0,
+        ),
         feedback: row.feedback_store ?? row.feedback ?? "",
         competitorPromo: row.competitor_promotion ?? row.competitorPromo ?? "",
         remark: row.remark ?? row.remark_store ?? row.remarkStore ?? "",
