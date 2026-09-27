@@ -318,7 +318,6 @@ export interface PgMonthlyPayroll {
   updated_at: string;
 }
 
-
 // เพิ่มเข้าไปในไฟล์ app/login/actions.ts เพื่อใช้คำนวณเงินระบบคอมมิชชัน
 
 interface WeeklyCalculationParam {
@@ -347,7 +346,7 @@ export async function calculateWeeklyPayrollAction({
     // 2. รวมยอดขายสินค้าทั้งหมด (นับเป็นเซ็ท) จากตาราง Daily Report ในสัปดาห์นั้น
     const { data: salesData, error: salesError } = await supabase
       .from("pg_daily_sales_reports")
-      .select("quantity_sold, total_sales_amount")
+      .select("report_date, quantity_sold, total_sales_amount")
       .eq("user_id", userId)
       .gte("report_date", startDate)
       .lte("report_date", endDate);
@@ -355,8 +354,20 @@ export async function calculateWeeklyPayrollAction({
     if (salesError) throw salesError;
 
     // คำนวณยอดรวมชิ้นและยอดเงินดิบ
-    const totalSetsSold =
-      salesData?.reduce((sum, item) => sum + (item.quantity_sold || 0), 0) || 0;
+    const dailySales = new Map<string, number>();
+    (salesData || []).forEach((item: any, index: number) => {
+      const dateKey = String(item.report_date || `report-${index}`).split(
+        "T",
+      )[0];
+      dailySales.set(
+        dateKey,
+        (dailySales.get(dateKey) || 0) + Number(item.quantity_sold || 0),
+      );
+    });
+    const totalSetsSold = Array.from(dailySales.values()).reduce(
+      (sum, dailyQuantity) => sum + dailyQuantity,
+      0,
+    );
     const totalSalesValue =
       salesData?.reduce(
         (sum, item) => sum + (Number(item.total_sales_amount) || 0),
@@ -367,24 +378,16 @@ export async function calculateWeeklyPayrollAction({
     const DAILY_WAGE_RATE = 700;
     const baseWageTotal = (daysWorked || 0) * DAILY_WAGE_RATE; // ค่าจ้างพื้นฐานรวม
 
-    let commissionBonus = 0;
-
-    // เช็คเงื่อนไขขั้นบันไดคอมมิชชันสัปดาห์ละ 3 วัน
-    if (totalSetsSold >= 180) {
-      // เคสที่ 1: ทะลุเป้า 100% (ได้ 500 บาท + Extra ทุกๆ 15 เซ็ท)
-      commissionBonus = 500;
-      const extraSets = totalSetsSold - 180;
-      if (extraSets >= 15) {
-        const extraMultiplier = Math.floor(extraSets / 15);
-        commissionBonus += extraMultiplier * 100;
-      }
-    } else if (totalSetsSold >= 144) {
-      // เคสที่ 2: ถึงเป้าขั้นต่ำ 80% แต่ไม่ถึง 100% (ได้ 200 บาท)
-      commissionBonus = 200;
-    } else {
-      // เคสที่ 3: ไม่ถึงเป้าขั้นต่ำ 80%
-      commissionBonus = 0;
-    }
+    const commissionBonus = Array.from(dailySales.values()).reduce(
+      (totalBonus, dailyQuantity) => {
+        if (dailyQuantity >= 40) {
+          return totalBonus + 200 + Math.floor((dailyQuantity - 40) / 10) * 100;
+        }
+        if (dailyQuantity >= 30) return totalBonus + 100;
+        return totalBonus;
+      },
+      0,
+    );
 
     const netWeeklyIncome = baseWageTotal + commissionBonus;
 

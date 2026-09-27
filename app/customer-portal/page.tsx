@@ -343,8 +343,27 @@ function getProductInfo(row: any, barcode: string, isBigC: boolean = false) {
 
 // 💰 Helper คำนวณยอดขายรวมทุก SKU ต่อแถว (ชิ้น/แพ็ค)
 function getRowTotalSalesPcs(row: any): number {
-  const accountName = getAccountName(row.storeName, row.storeCode);
+  const accountName = getAccountName(
+    row.storeName || row.store_name,
+    row.storeCode || row.store_code,
+  );
   const isBigC = accountName === "Big C";
+  const productRows = row.products || row.pg_daily_report_products || row.items;
+
+  if (!Array.isArray(productRows) || productRows.length === 0) {
+    const green = Number(
+      getProductInfo(row, "8858678423339", isBigC).salesQty || 0,
+    );
+    const blue = Number(
+      getProductInfo(row, "8858678423681", isBigC).salesQty || 0,
+    );
+    const orange = Number(
+      getProductInfo(row, "8858678422875", isBigC).salesQty || 0,
+    );
+
+    return isBigC ? (green + blue) * 2 : green + blue + orange * 2;
+  }
+
   let totalPcs = 0;
 
   REPORT_PRODUCTS.forEach((prod) => {
@@ -359,27 +378,12 @@ function getRowTotalSalesPcs(row: any): number {
 
 function withPackTotals(rows: any[] = []) {
   return rows.map((row) => {
-    const accountName = getAccountName(
-      row.storeName || row.store_name || "",
-      row.storeCode || row.store_code || "",
-    );
-    const isBigC = accountName === "Big C";
-
-    const greenInfo = getProductInfo(row, "8858678423339", isBigC);
-    const blueInfo = getProductInfo(row, "8858678423681", isBigC);
-    const orangeInfo = getProductInfo(row, "8858678422875", isBigC);
-
-    const green = Number(greenInfo.salesQty || 0);
-    const blue = Number(blueInfo.salesQty || 0);
-    const orange = Number(orangeInfo.salesQty || 0);
-
-    // Packs (ห่อ) calculation: Big C counts sets differently
-    const packs = isBigC ? (green + blue) * 2 : green + blue + orange * 2;
+    const totalPacks = getRowTotalSalesPcs(row);
 
     return {
       ...row,
-      actualPacksTotal: Number(packs || 0),
-      actualSetsTotal: Number(green + blue + orange || 0),
+      actualPacksTotal: totalPacks,
+      actualSetsTotal: totalPacks,
     };
   });
 }

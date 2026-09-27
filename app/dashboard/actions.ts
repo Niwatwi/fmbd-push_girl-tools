@@ -514,7 +514,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
     const { data: recentReports } = await supabase
       .from("pg_daily_activity_reports")
-      .select("*")
+      .select("*, pg_daily_report_products (*)")
       .eq("user_id", userId)
       .order("id", { ascending: false })
       .limit(5);
@@ -529,25 +529,14 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
     const { data: monthlyReports } = await supabase
       .from("pg_daily_activity_reports")
-      .select(
-        "sales_qty_green90, sales_qty_blue90, sales_qty_orange100, store_code, store_name",
-      )
+      .select("*, pg_daily_report_products (*)")
       .eq("user_id", userId)
       .gte("report_date", firstDayOfMonth);
 
     let monthlyTotalPacks = 0;
     if (monthlyReports && monthlyReports.length > 0) {
       monthlyReports.forEach((r: any) => {
-        const g = Number(r.sales_qty_green90 || 0);
-        const b = Number(r.sales_qty_blue90 || 0);
-        const o = Number(r.sales_qty_orange100 || 0);
-
-        const isBigCStore = checkIsBigC(r.store_code, r.store_name);
-        if (isBigCStore) {
-          monthlyTotalPacks += (g + b) * 2;
-        } else {
-          monthlyTotalPacks += g + b + o * 2;
-        }
+        monthlyTotalPacks += getReportTotalSalesQty(r);
       });
     }
 
@@ -565,6 +554,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
         ? { ...storeTarget, target_packs: getStoreTargetPacks(storeTarget) }
         : null,
       todaySales: todayReport || null,
+      todaySalesTotalPacks: getReportTotalSalesQty(todayReport),
       monthlyProgress: {
         total_packs: monthlyTotalPacks,
       },
@@ -608,60 +598,49 @@ export interface CommissionResult {
 }
 
 export async function calculateBigCCommission(
-  greenSets: number = 0,
-  blueSets: number = 0,
-  orangeSets: number = 0,
-  workingDays: number = 3,
-  storeCodeOrName: string = "",
+  totalPacksForDay: number = 0,
+  _unusedBlueSets: number = 0,
+  _unusedOrangeSets: number = 0,
+  workingDays: number = 1,
+  _storeCodeOrName: string = "",
 ): Promise<CommissionResult> {
-  const isBigC = checkIsBigC(storeCodeOrName, storeCodeOrName);
-
-  const totalSetsSold = isBigC
-    ? Number(greenSets) + Number(blueSets)
-    : Number(greenSets) + Number(blueSets) + Number(orangeSets);
-
-  const totalPacksSold = isBigC
-    ? (Number(greenSets) + Number(blueSets)) * 2
-    : Number(greenSets) + Number(blueSets) + Number(orangeSets) * 2;
-
+  const totalPacksSold = Math.max(0, Number(totalPacksForDay) || 0);
   const wDays = workingDays > 0 ? workingDays : 1;
-  const target80Sets = 45 * wDays;
-  const target100Sets = 60 * wDays;
-
   const baseSalary = wDays * 700;
   let incentiveAmount = 0;
   let tierStatus = "";
   let nextTierDifference = 0;
 
-  if (totalSetsSold < target80Sets) {
+  if (totalPacksSold < 30) {
     incentiveAmount = 0;
     tierStatus = "ยังไม่ถึงเกณฑ์ 80%";
-    nextTierDifference = target80Sets - totalSetsSold;
-  } else if (totalSetsSold >= target80Sets && totalSetsSold < target100Sets) {
-    incentiveAmount = 200;
-    tierStatus = "ผ่านเกณฑ์ 80% (รับโบนัส 200฿)";
-    nextTierDifference = target100Sets - totalSetsSold;
+    nextTierDifference = 30 - totalPacksSold;
+  } else if (totalPacksSold < 40) {
+    incentiveAmount = 100;
+    tierStatus = "ผ่านเกณฑ์ 80% (รับคอมมิชชั่น 100฿)";
+    nextTierDifference = 40 - totalPacksSold;
   } else {
-    const baseIncentive = 500;
-    const extraSets = totalSetsSold - target100Sets;
-    const extraSteps = Math.floor(extraSets / 15);
-    const extraIncentive = extraSteps * 100;
-
-    incentiveAmount = baseIncentive + extraIncentive;
+    const extraSteps = Math.floor((totalPacksSold - 40) / 10);
+    incentiveAmount = 200 + extraSteps * 100;
 
     if (extraSteps > 0) {
-      tierStatus = `ทะลุเป้า 100% + Extra ${extraSteps} สเต็ป (รับโบนัส ${incentiveAmount}฿)`;
+      tierStatus = `ถึงเป้า 100% + โบนัสเพิ่ม ${extraSteps} ขั้น (รับ ${incentiveAmount}฿)`;
     } else {
-      tierStatus = "บรรลุเป้าหมาย 100% (รับโบนัส 500฿)";
+      tierStatus = "บรรลุเป้าหมาย 100% (รับคอมมิชชั่น 200฿)";
     }
 
-    nextTierDifference = 15 - (extraSets % 15);
+    nextTierDifference = 10 - ((totalPacksSold - 40) % 10);
   }
 
-  const achievementPercent = Math.round((totalSetsSold / target100Sets) * 100);
+  const achievementPercent =
+    totalPacksSold >= 40
+      ? Math.round((totalPacksSold / 40) * 100)
+      : totalPacksSold >= 30
+        ? 80
+        : Math.round((totalPacksSold / 30) * 80);
 
   return {
-    totalSetsSold,
+    totalSetsSold: totalPacksSold,
     totalPacksSold,
     baseSalary,
     incentiveAmount,
@@ -828,9 +807,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
           baseSalaryRate: log.baseSalaryRate,
           totalDailyWage: 0,
           allSkuSalesQty: 0,
-          greenSets: 0,
-          blueSets: 0,
-          orangeSets: 0,
+          dailySalesByDate: new Map<string, number>(),
         });
       }
 
@@ -844,38 +821,30 @@ export async function getAdminSalarySummaryReportAction(params?: {
       const uId = Number(rep.user_id);
       if (!userSummaryMap.has(uId)) return;
 
-      const saleBreakdown = getReportProductSalesBreakdown(rep);
       const totalSalesQty = getReportTotalSalesQty(rep);
       const userGroup = userSummaryMap.get(uId)!;
 
       userGroup.allSkuSalesQty += totalSalesQty;
-      userGroup.greenSets += Number(
-        rep.sales_qty_green90 !== undefined && rep.sales_qty_green90 !== null
-          ? rep.sales_qty_green90
-          : saleBreakdown.greenSets,
-      );
-      userGroup.blueSets += Number(
-        rep.sales_qty_blue90 !== undefined && rep.sales_qty_blue90 !== null
-          ? rep.sales_qty_blue90
-          : saleBreakdown.blueSets,
-      );
-      userGroup.orangeSets += Number(
-        rep.sales_qty_orange100 !== undefined &&
-          rep.sales_qty_orange100 !== null
-          ? rep.sales_qty_orange100
-          : saleBreakdown.orangeSets,
+      const reportDate = String(rep.report_date || "").split("T")[0];
+      const dateKey = reportDate || `report-${rep.id}`;
+      const currentDailySales = userGroup.dailySalesByDate.get(dateKey) || 0;
+      userGroup.dailySalesByDate.set(
+        dateKey,
+        currentDailySales + totalSalesQty,
       );
     });
 
     // คำนวณคอมมิชชั่นและรวมค่าแรงสุทธิ
     const summaryList = await Promise.all(
       Array.from(userSummaryMap.values()).map(async (item) => {
-        const commRes = await calculateBigCCommission(
-          item.greenSets,
-          item.blueSets,
-          item.orangeSets,
-          item.workDaysCount,
-          item.storeCode,
+        const dailyCommissionResults = await Promise.all(
+          (Array.from(item.dailySalesByDate.values()) as number[]).map(
+            (dailyPacks) => calculateBigCCommission(dailyPacks),
+          ),
+        );
+        const totalCommission = dailyCommissionResults.reduce(
+          (sum, result) => sum + result.incentiveAmount,
+          0,
         );
 
         return {
@@ -887,11 +856,13 @@ export async function getAdminSalarySummaryReportAction(params?: {
           workDaysCount: item.workDaysCount,
           baseSalaryRate: item.baseSalaryRate,
           totalDailyWage: item.totalDailyWage,
-          totalSets: item.allSkuSalesQty || commRes.totalSetsSold,
-          totalPacks: commRes.totalPacksSold,
-          totalCommission: commRes.incentiveAmount,
-          tierStatus: commRes.tierStatus,
-          totalNetSalary: item.totalDailyWage + commRes.incentiveAmount,
+          totalSets: item.allSkuSalesQty,
+          totalPacks: item.allSkuSalesQty,
+          totalCommission,
+          tierStatus: dailyCommissionResults
+            .map((result) => result.tierStatus)
+            .join(" / "),
+          totalNetSalary: item.totalDailyWage + totalCommission,
         };
       }),
     );

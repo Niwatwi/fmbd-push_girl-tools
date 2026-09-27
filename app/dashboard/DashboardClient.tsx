@@ -132,11 +132,14 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
             totalPacks = (gSets + bSets + oSets) * 2;
           }
 
+          const todayTotalPacks = Number(
+            (res as any).todaySalesTotalPacks ?? totalPacks,
+          );
           const totalSets = gSets + bSets + oSets;
           const totalRev = gSets * gPrice + bSets * bPrice + oSets * oPrice;
 
           setTodaySales({
-            totalPacks: totalPacks,
+            totalPacks: todayTotalPacks,
             totalSets: totalSets,
             totalRevenue: totalRev,
             greenQty: gPacks,
@@ -151,7 +154,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           setCurrentMonthlyProgress(monthlyTotalPacks);
 
           // 3. คำนวณ Incentive
-          const comm = await calculateBigCCommission(gSets, bSets, oSets);
+          const comm = await calculateBigCCommission(todayTotalPacks);
           setIncentiveBonus(comm.incentiveAmount);
 
           // 4. ตั้งค่ารายการสินค้าลงตารางเสมอ

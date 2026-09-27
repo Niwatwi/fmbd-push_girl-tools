@@ -20,14 +20,43 @@ import {
 } from "lucide-react";
 import { getAdminSalarySummaryReportAction } from "@/app/dashboard/actions";
 
+function getDefaultPayoutPeriod() {
+  const dateParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const partValue = (type: string) =>
+    Number(dateParts.find((part) => part.type === type)?.value || 0);
+  const currentDate = new Date(
+    Date.UTC(partValue("year"), partValue("month") - 1, partValue("day")),
+  );
+  const dayOfWeek = currentDate.getUTCDay();
+  const daysSinceFriday = dayOfWeek >= 5 ? dayOfWeek - 5 : dayOfWeek + 2;
+  const startDate = new Date(currentDate);
+  startDate.setUTCDate(startDate.getUTCDate() - daysSinceFriday);
+  const endDate = new Date(startDate);
+  endDate.setUTCDate(endDate.getUTCDate() + 2);
+
+  return {
+    startDate: startDate.toISOString().slice(0, 10),
+    endDate: endDate.toISOString().slice(0, 10),
+  };
+}
+
 export default function AdminSalarySummaryPage() {
   const [dataList, setDataList] = useState<any[]>([]);
   const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filter States
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(
+    () => getDefaultPayoutPeriod().startDate,
+  );
+  const [endDate, setEndDate] = useState<string>(
+    () => getDefaultPayoutPeriod().endDate,
+  );
   const [searchKeyword, setSearchKeyword] = useState<string>("");
 
   const loadData = async () => {
@@ -90,7 +119,7 @@ export default function AdminSalarySummaryPage() {
       "จำนวนวันทำงาน (วัน)",
       "อัตราค่าแรง/วัน (บาท)",
       "รวมค่าแรงรายวัน (บาท)",
-      "ยอดขายสะสม (ชุดโปร)",
+      "ยอดขายสะสม (แพ็ค)",
       "ค่าคอมมิชชั่น/Incentive (บาท)",
       "รายได้รวมสุทธิ (บาท)",
     ];
@@ -103,7 +132,7 @@ export default function AdminSalarySummaryPage() {
       item.workDaysCount, // ค่าจะส่งออกเป็น 0.5, 1, 1.5 ตามจริง
       item.baseSalaryRate,
       item.totalDailyWage,
-      item.totalSets,
+      item.totalPacks,
       item.totalCommission,
       item.totalNetSalary,
     ]);
@@ -167,7 +196,8 @@ export default function AdminSalarySummaryPage() {
                 Summary)
               </h1>
               <p className="text-xs text-slate-400 font-medium">
-                รวมค่าแรงรายวัน + ค่าคอมมิชชั่นสะสม สำหรับนำส่งจ่ายฝ่ายบัญชี
+                คอมฯ คิดรายวัน: 30 แพ็ค = 80%, 40 แพ็ค = 100%;
+                จ่ายรวมเป็นงวดศุกร์–อาทิตย์
               </p>
             </div>
           </div>
@@ -386,7 +416,7 @@ export default function AdminSalarySummaryPage() {
                       {item.totalDailyWage.toLocaleString()} ฿
                     </td>
                     <td className="p-2.5 border border-slate-200 text-center font-mono font-bold text-slate-600">
-                      {item.totalSets} ชุด
+                      {item.totalPacks} แพ็ค
                     </td>
                     <td className="p-2.5 border border-slate-200 text-right font-mono font-bold text-amber-600 bg-amber-50/30">
                       +{item.totalCommission.toLocaleString()} ฿
