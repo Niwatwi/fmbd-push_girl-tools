@@ -306,26 +306,62 @@ export async function saveStoreTargetAction(payload: {
   price1?: number;
   price2?: number;
   price3?: number;
+  products?: Array<{
+    product_id: string | number | null;
+    target: number;
+    price: number;
+  }>;
 }) {
   const supabase = await getClientInstance();
   try {
-    const green = Number(payload.target_green90 ?? payload.target1 ?? 0);
-    const blue = Number(payload.target_blue90 ?? payload.target2 ?? 0);
-    const orange = Number(payload.target_orange100 ?? payload.target3 ?? 0);
+    const productRows = (
+      payload.products ?? [
+        {
+          product_id: payload.product1_id ?? null,
+          target: payload.target1 ?? payload.target_green90 ?? 0,
+          price: payload.price1 ?? payload.price_green90 ?? 150,
+        },
+        {
+          product_id: payload.product2_id ?? null,
+          target: payload.target2 ?? payload.target_blue90 ?? 0,
+          price: payload.price2 ?? payload.price_blue90 ?? 142,
+        },
+        {
+          product_id: payload.product3_id ?? null,
+          target: payload.target3 ?? payload.target_orange100 ?? 0,
+          price: payload.price3 ?? payload.price_orange100 ?? 100,
+        },
+      ]
+    ).slice(0, 10);
 
-    const priceGreen = Number(payload.price_green90 ?? payload.price1 ?? 150);
-    const priceBlue = Number(payload.price_blue90 ?? payload.price2 ?? 142);
+    const green = Number(payload.target_green90 ?? productRows[0]?.target ?? 0);
+    const blue = Number(payload.target_blue90 ?? productRows[1]?.target ?? 0);
+    const orange = Number(
+      payload.target_orange100 ?? productRows[2]?.target ?? 0,
+    );
+
+    const priceGreen = Number(
+      payload.price_green90 ?? productRows[0]?.price ?? 150,
+    );
+    const priceBlue = Number(
+      payload.price_blue90 ?? productRows[1]?.price ?? 142,
+    );
     const priceOrange = Number(
-      payload.price_orange100 ?? payload.price3 ?? 100,
+      payload.price_orange100 ?? productRows[2]?.price ?? 100,
     );
 
     const isBigC = checkIsBigC(payload.store_code, payload.store_name);
 
-    const targetSetsCounted = isBigC ? green + blue : green + blue + orange;
+    const targetSetsCounted = isBigC
+      ? Number(productRows[0]?.target ?? green) +
+        Number(productRows[1]?.target ?? blue)
+      : productRows.reduce((sum, row) => sum + Number(row.target || 0), 0);
     const totalPacks = targetSetsCounted * 2;
 
-    const totalRevenue =
-      green * priceGreen + blue * priceBlue + orange * priceOrange;
+    const totalRevenue = productRows.reduce(
+      (sum, row) => sum + Number(row.target || 0) * Number(row.price || 0),
+      0,
+    );
 
     const upsertData: any = {
       store_code: payload.store_code.trim(),
@@ -340,6 +376,19 @@ export async function saveStoreTargetAction(payload: {
       target_revenue: totalRevenue,
       target_month: new Date().toISOString().split("T")[0],
     };
+
+    productRows.forEach((row, index) => {
+      upsertData[`product${index + 1}_id`] =
+        row.product_id == null ? null : String(row.product_id);
+      upsertData[`target${index + 1}`] = Number(row.target || 0);
+      upsertData[`price${index + 1}`] = Number(row.price || 0);
+    });
+
+    for (let index = productRows.length; index < 10; index += 1) {
+      upsertData[`product${index + 1}_id`] = null;
+      upsertData[`target${index + 1}`] = 0;
+      upsertData[`price${index + 1}`] = 0;
+    }
 
     const { data, error } = await supabase
       .from("store_targets")

@@ -150,6 +150,15 @@ export default function AdminTargetManagement() {
   };
 
   const handleAddProductRow = () => {
+    if (productRows.length >= 10) {
+      Swal.fire(
+        "เพิ่มสินค้าไม่ได้",
+        "กำหนดสินค้าได้สูงสุด 10 รายการค่ะ",
+        "warning",
+      );
+      return;
+    }
+
     setProductRows([
       ...productRows,
       {
@@ -214,39 +223,60 @@ export default function AdminTargetManagement() {
     setPromotionId(item.promotion_id || "");
     setPromotionName(item.promotion_name || "");
 
-    const loadedRows: Array<{
-      company: string;
-      category: string;
-      brand: string;
-      productId: string;
-      target: number;
-      price: number;
-    }> = [];
-
-    const fields = [
-      { prod: item.product1_id, target: item.target1, price: item.price1 },
-      { prod: item.product2_id, target: item.target2, price: item.price2 },
-      { prod: item.product3_id, target: item.target3, price: item.price3 },
+    const legacyTargets = [
+      item.target_green90,
+      item.target_blue90,
+      item.target_orange100,
     ];
+    const legacyPrices = [
+      item.price_green90,
+      item.price_blue90,
+      item.price_orange100,
+    ];
+    const savedRows = Array.from({ length: 10 }, (_, index) => {
+      const productId = item[`product${index + 1}_id`];
+      const foundProd = productsList.find(
+        (product) => String(product.id) === String(productId),
+      );
 
-    fields.forEach((f) => {
-      if (f.prod) {
-        const foundProd = productsList.find(
-          (p) => String(p.id) === String(f.prod),
-        );
-        loadedRows.push({
-          company: foundProd ? foundProd.company : "",
-          category: foundProd ? foundProd.category : "",
-          brand: foundProd ? foundProd.brand : "",
-          productId: String(f.prod),
-          target: Number(f.target || 0),
-          price: Number(f.price || 150),
-        });
-      }
+      return {
+        company: foundProd?.company || "",
+        category: foundProd?.category || "",
+        brand: foundProd?.brand || "",
+        productId: productId == null ? "" : String(productId),
+        target: Number(item[`target${index + 1}`] ?? legacyTargets[index] ?? 0),
+        price: Number(item[`price${index + 1}`] ?? legacyPrices[index] ?? 0),
+      };
     });
+    const lastConfiguredRow = savedRows.reduce(
+      (lastIndex, row, index) =>
+        row.productId || row.target !== 0 || row.price !== 0
+          ? index
+          : lastIndex,
+      -1,
+    );
 
-    if (loadedRows.length > 0) {
-      setProductRows(loadedRows);
+    if (lastConfiguredRow >= 0) {
+      setProductRows(savedRows.slice(0, lastConfiguredRow + 1));
+    } else {
+      setProductRows([
+        {
+          company: "",
+          category: "",
+          brand: "",
+          productId: "",
+          target: 30,
+          price: 150,
+        },
+        {
+          company: "",
+          category: "",
+          brand: "",
+          productId: "",
+          target: 30,
+          price: 142,
+        },
+      ]);
     }
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -336,15 +366,11 @@ export default function AdminTargetManagement() {
       price_green90: productRows[0]?.price || 0,
       price_blue90: productRows[1]?.price || 0,
       price_orange100: productRows[2]?.price || 0,
-      product1_id: productRows[0]?.productId || null,
-      target1: productRows[0]?.target || 0,
-      price1: productRows[0]?.price || 0,
-      product2_id: productRows[1]?.productId || null,
-      target2: productRows[1]?.target || 0,
-      price2: productRows[1]?.price || 0,
-      product3_id: productRows[2]?.productId || null,
-      target3: productRows[2]?.target || 0,
-      price3: productRows[2]?.price || 0,
+      products: productRows.slice(0, 10).map((row) => ({
+        product_id: row.productId || null,
+        target: Number(row.target || 0),
+        price: Number(row.price || 0),
+      })),
     };
 
     const res = await saveStoreTargetAction(payload as any);
@@ -897,15 +923,49 @@ export default function AdminTargetManagement() {
                       item.store_name,
                     );
 
-                    const t1 = Number(item.target1 || 0);
-                    const t2 = Number(item.target2 || 0);
-                    const t3 = Number(item.target3 || 0);
-
-                    const p1 = Number(item.price1 || 150);
-                    const p2 = Number(item.price2 || 142);
-                    const p3 = Number(item.price3 || 100);
-
-                    const rowCalculatedRevenue = t1 * p1 + t2 * p2 + t3 * p3;
+                    const targetValues = Array.from(
+                      { length: 10 },
+                      (_, index) => {
+                        const target = item[`target${index + 1}`];
+                        if (
+                          target !== null &&
+                          target !== undefined &&
+                          target !== ""
+                        ) {
+                          return Number(target);
+                        }
+                        const legacyTargets = [
+                          item.target_green90,
+                          item.target_blue90,
+                          item.target_orange100,
+                        ];
+                        return Number(legacyTargets[index] || 0);
+                      },
+                    );
+                    const priceValues = Array.from(
+                      { length: 10 },
+                      (_, index) => {
+                        const price = item[`price${index + 1}`];
+                        if (
+                          price !== null &&
+                          price !== undefined &&
+                          price !== ""
+                        ) {
+                          return Number(price);
+                        }
+                        const legacyPrices = [
+                          item.price_green90,
+                          item.price_blue90,
+                          item.price_orange100,
+                        ];
+                        return Number(legacyPrices[index] || 0);
+                      },
+                    );
+                    const rowCalculatedRevenue = targetValues.reduce(
+                      (total, target, index) =>
+                        total + target * priceValues[index],
+                      0,
+                    );
 
                     return (
                       <tr
@@ -937,10 +997,10 @@ export default function AdminTargetManagement() {
                           </span>
                         </td>
                         <td className="p-3 text-center font-mono font-bold text-slate-700">
-                          {t1} / {t2} / {t3} ชุด
+                          {targetValues.join(" / ")} ชุด
                         </td>
                         <td className="p-3 text-center font-mono text-[11px] text-slate-500">
-                          {p1} / {p2} / {p3} ฿
+                          {priceValues.join(" / ")} ฿
                         </td>
                         <td className="p-3 text-right font-mono font-black text-emerald-600 text-sm">
                           {rowCalculatedRevenue.toLocaleString()} ฿
