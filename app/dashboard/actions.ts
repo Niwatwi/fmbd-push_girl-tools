@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
+import { normalizeCompetitorPrices } from "@/utils/competitor-prices";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -914,6 +915,9 @@ export async function updateAdminAttendanceLogAction(payload: {
 export async function adminSaveReportWithImagesAction(payload: any) {
   const supabase = await getClientInstance();
   try {
+    const competitorPrices = normalizeCompetitorPrices(
+      payload.competitorPrices,
+    );
     const BUCKET_NAME = "pg-attendance-photos";
 
     const finalPhotos: any[] = [];
@@ -966,6 +970,8 @@ export async function adminSaveReportWithImagesAction(payload: any) {
       price_comp_cellox: payload.priceCompCellox,
       price_comp_kleenex: payload.priceCompKleenex,
       price_comp_paseo: payload.priceCompPaseo,
+      competitor_prices: competitorPrices,
+      ...competitorPrices,
       feedback_store: payload.feedbackStore,
       competitor_promotion: payload.competitorPromotion,
       remark: payload.remark,
@@ -1319,6 +1325,29 @@ export async function getCustomerFullActivityReport() {
           p?.url && arr.findIndex((item) => item?.url === p.url) === index,
       );
 
+      const storedCompetitorPrices =
+        row.competitor_prices && typeof row.competitor_prices === "object"
+          ? row.competitor_prices
+          : row.competitorPrices && typeof row.competitorPrices === "object"
+            ? row.competitorPrices
+            : {};
+      const competitorPrices = normalizeCompetitorPrices({
+        ...row,
+        ...storedCompetitorPrices,
+      });
+      if (!competitorPrices.cellox_satin_4) {
+        competitorPrices.cellox_satin_4 =
+          Number(row.price_comp_cellox ?? row.compCellox) || 0;
+      }
+      if (!competitorPrices.kleenex_silky_4) {
+        competitorPrices.kleenex_silky_4 =
+          Number(row.price_comp_kleenex ?? row.compKleenex) || 0;
+      }
+      if (!competitorPrices.scott_safesoft_4) {
+        competitorPrices.scott_safesoft_4 =
+          Number(row.price_comp_paseo ?? row.compPaseo) || 0;
+      }
+
       return {
         ...row,
         id: row.id,
@@ -1330,6 +1359,10 @@ export async function getCustomerFullActivityReport() {
         traffic: Number(row.traffic_count ?? row.traffic ?? 0),
         approach: Number(row.approach_count ?? row.approach ?? 0),
         closedSales: Number(row.closed_sales_count ?? row.closedSales ?? 0),
+        competitorPrices,
+        compCellox: competitorPrices.cellox_satin_4,
+        compKleenex: competitorPrices.kleenex_silky_4,
+        compPaseo: competitorPrices.scott_safesoft_4,
         targetPacks: Number(
           targetLookup.get(String(resolvedStoreCode).trim()) ??
             row.target_packs ??

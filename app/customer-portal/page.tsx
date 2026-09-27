@@ -402,13 +402,11 @@ function calculateDailyCommission(totalSalesPcs: number): number {
 // 🏷️ Helper ดึงราคาคู่แข่ง
 function getCompetitorVal(row: any, key: string) {
   const compObj = row.competitorPrices || row.compPrices;
-  if (
-    compObj &&
-    typeof compObj === "object" &&
-    compObj[key] !== undefined &&
-    compObj[key] !== ""
-  ) {
-    return Number(compObj[key]) || "-";
+  const competitorPrice =
+    compObj && typeof compObj === "object" ? compObj[key] : undefined;
+  const storedPrice = competitorPrice ?? row[key];
+  if (storedPrice !== undefined && storedPrice !== null && storedPrice !== "") {
+    return Number(storedPrice) || "-";
   }
   if (key === "cellox_satin_4" && row.compCellox) return Number(row.compCellox);
   if (key === "kleenex_silky_4" && row.compKleenex)
@@ -1384,6 +1382,7 @@ export default function CustomerReportPortal() {
       priceCompCellox: Number(editForm.compCellox || 0),
       priceCompKleenex: Number(editForm.compKleenex || 0),
       priceCompPaseo: Number(editForm.compPaseo || 0),
+      competitorPrices: editForm.competitorPrices || {},
       feedbackStore: editForm.feedback,
       competitorPromotion: editForm.competitorPromo,
       remark: editForm.remark,

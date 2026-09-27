@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
+import { normalizeCompetitorPrices } from "@/utils/competitor-prices";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -52,6 +53,7 @@ export interface FullActivityReportInput {
   priceCompCellox: number;
   priceCompKleenex: number;
   priceCompPaseo: number;
+  competitorPrices?: Record<string, number | string>;
   feedbackStore: string;
   competitorPromotion: string;
   remark?: string;
@@ -232,6 +234,9 @@ export async function submitFullDailyActivityReportAction(
     const giftNourishBefore = Number(payload.giftNourishBefore || 0);
     const giftNourishGiven = Number(payload.giftNourishGiven || 0);
     const giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
+    const competitorPrices = normalizeCompetitorPrices(
+      payload.competitorPrices,
+    );
 
     // อัปโหลดรูปภาพกิจกรรมแยกตามประเภท
     let photoStaffHolding = "";
@@ -285,6 +290,8 @@ export async function submitFullDailyActivityReportAction(
       price_comp_cellox: Number(payload.priceCompCellox || 0),
       price_comp_kleenex: Number(payload.priceCompKleenex || 0),
       price_comp_paseo: Number(payload.priceCompPaseo || 0),
+      competitor_prices: competitorPrices,
+      ...competitorPrices,
       feedback_store: payload.feedbackStore || "",
       remark: payload.remark || "",
       competitor_promotion: payload.competitorPromotion || "",

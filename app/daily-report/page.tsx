@@ -637,6 +637,7 @@ export default function DailyReportPage() {
               Number(competitorPrices["kleenex_silky_4"] || 0) || 0,
             priceCompPaseo:
               Number(competitorPrices["scott_safesoft_4"] || 0) || 0,
+            competitorPrices,
             feedbackStore: feedback,
             competitorPromotion: compPromo,
             remark: remark,
