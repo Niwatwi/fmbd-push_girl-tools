@@ -209,9 +209,9 @@ export async function getCustomerSalesVsTargetReport() {
       .from("store_targets")
       .select("*");
 
-    const { data: reports = [] } = await supabase
-      .from("pg_daily_activity_reports")
-      .select(`
+    const { data: reports = [] } = await supabase.from(
+      "pg_daily_activity_reports",
+    ).select(`
         store_code,
         sales_qty_green90,
         sales_qty_blue90,
@@ -315,7 +315,9 @@ export async function saveStoreTargetAction(payload: {
 
     const priceGreen = Number(payload.price_green90 ?? payload.price1 ?? 150);
     const priceBlue = Number(payload.price_blue90 ?? payload.price2 ?? 142);
-    const priceOrange = Number(payload.price_orange100 ?? payload.price3 ?? 100);
+    const priceOrange = Number(
+      payload.price_orange100 ?? payload.price3 ?? 100,
+    );
 
     const isBigC = checkIsBigC(payload.store_code, payload.store_name);
 
@@ -338,13 +340,6 @@ export async function saveStoreTargetAction(payload: {
       target_revenue: totalRevenue,
       target_month: new Date().toISOString().split("T")[0],
     };
-
-    if (payload.promotion_id !== undefined) upsertData.promotion_id = payload.promotion_id;
-    if (payload.promotion_name !== undefined) upsertData.promotion_name = payload.promotion_name;
-    if (payload.promotion_title !== undefined) upsertData.promotion_title = payload.promotion_title;
-    if (payload.target_type !== undefined) upsertData.target_type = payload.target_type;
-    if (payload.target_value !== undefined) upsertData.target_value = payload.target_value;
-    if (payload.target_round !== undefined) upsertData.target_round = payload.target_round;
 
     const { data, error } = await supabase
       .from("store_targets")
@@ -788,7 +783,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
           : saleBreakdown.blueSets,
       );
       userGroup.orangeSets += Number(
-        rep.sales_qty_orange100 !== undefined && rep.sales_qty_orange100 !== null
+        rep.sales_qty_orange100 !== undefined &&
+          rep.sales_qty_orange100 !== null
           ? rep.sales_qty_orange100
           : saleBreakdown.orangeSets,
       );
@@ -1049,7 +1045,8 @@ export async function getCustomerFullActivityReport() {
     for (const tableName of tableCandidates) {
       const { data, error } = await supabase
         .from(tableName)
-        .select(`
+        .select(
+          `
           *,
           pg_daily_report_products (
             id,
@@ -1065,7 +1062,8 @@ export async function getCustomerFullActivityReport() {
             img_stock_scanner,
             created_at
           )
-        `)
+        `,
+        )
         .order("report_date", { ascending: false });
 
       if (!error) {
@@ -1085,12 +1083,19 @@ export async function getCustomerFullActivityReport() {
     const storeLookup = new Map<string, any>();
 
     const profileQueries = [
-      supabase.from("user_profiles").select("id, display_name, username, employee_id"),
-      supabase.from("profiles").select("id, display_name, username, employee_id"),
+      supabase
+        .from("user_profiles")
+        .select("id, display_name, username, employee_id"),
+      supabase
+        .from("profiles")
+        .select("id, display_name, username, employee_id"),
     ];
 
     const [userProfilesRes, profilesRes] = await Promise.all(profileQueries);
-    const profileRows = [...(userProfilesRes.data || []), ...(profilesRes.data || [])];
+    const profileRows = [
+      ...(userProfilesRes.data || []),
+      ...(profilesRes.data || []),
+    ];
     for (const profile of profileRows) {
       if (!profile) continue;
       userLookup.set(String(profile.id), profile);
@@ -1111,9 +1116,7 @@ export async function getCustomerFullActivityReport() {
           userLookup.set(key, {
             id: logAny.user_id,
             display_name:
-              logAny.user_name ||
-              logAny.display_name ||
-              `PG-${logAny.user_id}`,
+              logAny.user_name || logAny.display_name || `PG-${logAny.user_id}`,
             username: logAny.username || `PG-${logAny.user_id}`,
             employee_id: logAny.employee_id || `PG-${logAny.user_id}`,
           });
@@ -1133,7 +1136,10 @@ export async function getCustomerFullActivityReport() {
     ];
 
     const [storesRes, targetsRes] = await Promise.all(storeQueries);
-    for (const item of [...(storesRes.data || []), ...(targetsRes.data || [])]) {
+    for (const item of [
+      ...(storesRes.data || []),
+      ...(targetsRes.data || []),
+    ]) {
       if (!item?.store_code) continue;
       const key = String(item.store_code).trim();
       if (!storeLookup.has(key)) {
@@ -1149,8 +1155,12 @@ export async function getCustomerFullActivityReport() {
       const storeCode = row.store_code ?? row.storeCode ?? "";
       const attendanceMatch =
         (row.attendance_log_id &&
-          attendanceRows.find((log: any) => String(log.id) === String(row.attendance_log_id))) ||
-        attendanceRows.find((log: any) => String(log.user_id) === String(userId)) ||
+          attendanceRows.find(
+            (log: any) => String(log.id) === String(row.attendance_log_id),
+          )) ||
+        attendanceRows.find(
+          (log: any) => String(log.user_id) === String(userId),
+        ) ||
         null;
 
       const profileMatch =
@@ -1175,17 +1185,22 @@ export async function getCustomerFullActivityReport() {
         "";
 
       const resolvedStoreCode =
-        row.store_code ??
-        row.storeCode ??
-        attendanceMatch?.store_code ??
-        "";
+        row.store_code ?? row.storeCode ?? attendanceMatch?.store_code ?? "";
 
       const directPhotoEntries: any[] = [];
       const directPhotoFields = [
         ["photo_staff_holding", "staff_holding", "พนักงานถือสินค้า"],
         ["photo_cheer_sales", "cheer_sales", "รูปยืนเชียร์"],
-        ["photo_customer_basket_1", "customer_basket_1", "ถ่ายคู่กับลูกค้า/ตะกร้า #1"],
-        ["photo_customer_basket_2", "customer_basket_2", "ถ่ายคู่กับลูกค้า/ตะกร้า #2"],
+        [
+          "photo_customer_basket_1",
+          "customer_basket_1",
+          "ถ่ายคู่กับลูกค้า/ตะกร้า #1",
+        ],
+        [
+          "photo_customer_basket_2",
+          "customer_basket_2",
+          "ถ่ายคู่กับลูกค้า/ตะกร้า #2",
+        ],
         ["photo_atmosphere_1", "atmosphere_1", "บรรยากาศหน้าร้าน #1"],
         ["photo_atmosphere_2", "atmosphere_2", "บรรยากาศหน้าร้าน #2"],
       ];
@@ -1211,11 +1226,16 @@ export async function getCustomerFullActivityReport() {
       for (const product of productRows) {
         if (!product || typeof product !== "object") continue;
 
-        const productLabel = product.descriptions || product.barcode || "สินค้า";
+        const productLabel =
+          product.descriptions || product.barcode || "สินค้า";
         const photoFieldMap = [
           [product.img_product, "img_product", `รูปสินค้า: ${productLabel}`],
           [product.img_shelf, "img_shelf", `รูปเชลฟ์ชั้นวาง: ${productLabel}`],
-          [product.img_stock_scanner, "img_stock_scanner", `รูปสแกนสต๊อก: ${productLabel}`],
+          [
+            product.img_stock_scanner,
+            "img_stock_scanner",
+            `รูปสแกนสต๊อก: ${productLabel}`,
+          ],
         ];
 
         for (const [photoUrl, typeName, label] of photoFieldMap) {
@@ -1255,8 +1275,7 @@ export async function getCustomerFullActivityReport() {
         closedSales: Number(row.closed_sales_count ?? row.closedSales ?? 0),
         targetPacks: Number(row.target_packs ?? row.target ?? 0),
         feedback: row.feedback_store ?? row.feedback ?? "",
-        competitorPromo:
-          row.competitor_promotion ?? row.competitorPromo ?? "",
+        competitorPromo: row.competitor_promotion ?? row.competitorPromo ?? "",
         remark: row.remark ?? row.remark_store ?? row.remarkStore ?? "",
         activityPhotos: mergedPhotos,
         products:
@@ -1277,6 +1296,10 @@ export async function getCustomerFullActivityReport() {
     return { success: true, data: normalized };
   } catch (error: any) {
     console.error("Error fetching full customer activity report:", error);
-    return { success: false, data: [], message: error.message || "Unknown error" };
+    return {
+      success: false,
+      data: [],
+      message: error.message || "Unknown error",
+    };
   }
 }
