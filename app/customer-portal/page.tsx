@@ -1264,6 +1264,11 @@ export default function CustomerReportPortal() {
       compKleenex: row.compKleenex || 0,
       compPaseo: row.compPaseo || 0,
       competitorPrices: row.competitorPrices || {},
+      products:
+        row.pg_daily_report_products ||
+        row.products ||
+        row.report_products ||
+        [],
       feedback: row.feedback || "",
       competitorPromo: row.competitorPromo || "",
       remark:
@@ -1402,6 +1407,7 @@ export default function CustomerReportPortal() {
       stockBeforeOrange100: Number(editForm.stockBeforeOrange || 0),
       salesQtyOrange100: Number(editForm.salesOrange || 0),
       stockAfterOrange100: Number(editForm.stockAfterOrange || 0),
+      products: Array.isArray(editForm.products) ? editForm.products : [],
     });
 
     setSavingAdmin(false);

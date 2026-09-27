@@ -1001,6 +1001,7 @@ export async function adminSaveReportWithImagesAction(payload: any) {
       gift_nourish_after: payload.giftNourishBefore - payload.giftNourishGiven,
     };
 
+    let reportId = payload.reportId ? Number(payload.reportId) : null;
     if (payload.reportId) {
       const { error } = await supabase
         .from("pg_daily_activity_reports")
@@ -1008,10 +1009,52 @@ export async function adminSaveReportWithImagesAction(payload: any) {
         .eq("id", payload.reportId);
       if (error) throw error;
     } else {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("pg_daily_activity_reports")
-        .insert([dbData]);
+        .insert([dbData])
+        .select("id")
+        .single();
       if (error) throw error;
+      reportId = data.id;
+    }
+
+    if (reportId && Array.isArray(payload.products)) {
+      const productRows = payload.products
+        .filter((product: any) => product?.barcode)
+        .map((product: any) => ({
+          ...(product.id ? { id: Number(product.id) } : {}),
+          report_id: reportId,
+          barcode: String(product.barcode),
+          descriptions: product.descriptions || "",
+          price_our: Number(product.priceOur ?? product.price_our ?? 0),
+          stock_before: Number(
+            product.stockBefore ?? product.stock_before ?? 0,
+          ),
+          sales_qty: Number(product.salesQty ?? product.sales_qty ?? 0),
+          stock_after: Number(product.stockAfter ?? product.stock_after ?? 0),
+          img_product: product.imgProduct ?? product.img_product ?? "",
+          img_shelf: product.imgShelf ?? product.img_shelf ?? "",
+          img_stock_scanner:
+            product.imgStockScanner ?? product.img_stock_scanner ?? "",
+        }));
+
+      for (const product of productRows) {
+        const productId = product.id;
+        const productData = { ...product };
+        delete productData.id;
+
+        const { error } = productId
+          ? await supabase
+              .from("pg_daily_report_products")
+              .update(productData)
+              .eq("id", productId)
+              .eq("report_id", reportId)
+          : await supabase
+              .from("pg_daily_report_products")
+              .insert([{ ...productData, report_id: reportId }]);
+
+        if (error) throw error;
+      }
     }
 
     return { success: true };
