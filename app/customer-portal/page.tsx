@@ -910,9 +910,24 @@ export default function CustomerReportPortal() {
     );
 
     return [
-      { name: "Traffic", value: totals.traffic, fill: "#64748b" },
-      { name: "Approach", value: totals.approach, fill: "#2563eb" },
-      { name: "Closed Sales", value: totals.closedSales, fill: "#059669" },
+      {
+        name: "Traffic",
+        value: totals.traffic,
+        fill: "#64748b",
+        depthFill: "#334155",
+      },
+      {
+        name: "Approach",
+        value: totals.approach,
+        fill: "#2563eb",
+        depthFill: "#1e40af",
+      },
+      {
+        name: "Closed Sales",
+        value: totals.closedSales,
+        fill: "#059669",
+        depthFill: "#047857",
+      },
     ].filter((item) => item.value > 0);
   }, [chart1And2Data]);
 
@@ -2348,12 +2363,38 @@ export default function CustomerReportPortal() {
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
-                      cy="45%"
-                      outerRadius={78}
+                      cy="52%"
+                      innerRadius={43}
+                      outerRadius={76}
+                      paddingAngle={2}
+                      legendType="none"
+                      isAnimationActive={false}
+                    >
+                      {chart2Data.map((entry) => (
+                        <Cell
+                          key={`depth-${entry.name}`}
+                          fill={entry.depthFill}
+                          stroke={entry.depthFill}
+                        />
+                      ))}
+                    </Pie>
+                    <Pie
+                      data={chart2Data}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="44%"
+                      innerRadius={43}
+                      outerRadius={76}
                       paddingAngle={2}
                     >
                       {chart2Data.map((entry) => (
-                        <Cell key={entry.name} fill={entry.fill} />
+                        <Cell
+                          key={entry.name}
+                          fill={entry.fill}
+                          stroke="#ffffff"
+                          strokeWidth={1.5}
+                        />
                       ))}
                     </Pie>
                   </PieChart>
