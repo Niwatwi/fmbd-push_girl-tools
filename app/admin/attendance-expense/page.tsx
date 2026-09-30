@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Clock,
   Calendar,
@@ -28,6 +28,27 @@ export default function AdminAttendanceExpensePage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [selectedEmployeeKey, setSelectedEmployeeKey] = useState<string>("");
+
+  const employeeOptions = useMemo(() => {
+    const employees = new Map<
+      string,
+      { key: string; displayName: string; empId: string }
+    >();
+
+    logs.forEach((log) => {
+      const empId = String(log.empId ?? "").trim();
+      const displayName = String(log.displayName ?? "").trim();
+      const key = empId || displayName;
+      if (key && !employees.has(key)) {
+        employees.set(key, { key, displayName, empId });
+      }
+    });
+
+    return Array.from(employees.values()).sort((a, b) =>
+      a.displayName.localeCompare(b.displayName, "th"),
+    );
+  }, [logs]);
 
   // 🇹🇭 ฟังก์ชันแปลงเวลา ISO เป็นเวลาประเทศไทย (Asia/Bangkok) สำหรับแสดงในตาราง
   const formatThaiDateTime = (dateStr: string | null | undefined) => {
@@ -79,14 +100,30 @@ export default function AdminAttendanceExpensePage() {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         (item) =>
-          item.displayName.toLowerCase().includes(q) ||
-          item.empId.toLowerCase().includes(q) ||
-          item.storeName.toLowerCase().includes(q) ||
-          item.storeCode.toLowerCase().includes(q),
+          String(item.displayName ?? "")
+            .toLowerCase()
+            .includes(q) ||
+          String(item.empId ?? "")
+            .toLowerCase()
+            .includes(q) ||
+          String(item.storeName ?? "")
+            .toLowerCase()
+            .includes(q) ||
+          String(item.storeCode ?? "")
+            .toLowerCase()
+            .includes(q),
       );
     }
+    if (selectedEmployeeKey) {
+      result = result.filter((item) => {
+        const key =
+          String(item.empId ?? "").trim() ||
+          String(item.displayName ?? "").trim();
+        return key === selectedEmployeeKey;
+      });
+    }
     setFilteredLogs(result);
-  }, [searchQuery, logs]);
+  }, [searchQuery, selectedEmployeeKey, logs]);
 
   // ✏️ ฟังก์ชันเปิด Modal แก้ไขข้อมูล Check-In / Check-Out
   const handleEditLog = (log: any) => {
@@ -410,6 +447,24 @@ export default function AdminAttendanceExpensePage() {
                 className="pl-8 pr-4 py-1.5 border rounded-xl font-medium bg-slate-50 text-xs w-64 focus:bg-white"
               />
             </div>
+
+            <label className="sr-only" htmlFor="employee-filter">
+              เลือกบุคคล
+            </label>
+            <select
+              id="employee-filter"
+              value={selectedEmployeeKey}
+              onChange={(e) => setSelectedEmployeeKey(e.target.value)}
+              className="px-3 py-1.5 border rounded-xl font-bold bg-slate-50 text-slate-700 min-w-48 focus:bg-white"
+            >
+              <option value="">ทุกบุคคล</option>
+              {employeeOptions.map((employee) => (
+                <option key={employee.key} value={employee.key}>
+                  {employee.displayName || employee.empId}
+                  {employee.empId ? ` (${employee.empId})` : ""}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
