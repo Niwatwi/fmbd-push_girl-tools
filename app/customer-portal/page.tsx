@@ -18,7 +18,6 @@ import {
   Layers,
   DollarSign,
   Percent,
-  PieChart as PieChartIcon,
   PlusCircle,
   Edit3,
   X,
@@ -188,6 +187,39 @@ const REPORT_PRODUCTS: ReportProduct[] = [
     gradStart: "#fef08a",
     gradEnd: "#713f12",
   },
+];
+
+const PRICE_CHART_SERIES = [
+  ...REPORT_PRODUCTS.map((prod) => ({
+    dataKey: `our_${prod.barcode}`,
+    name: `${prod.shortLabel} (เรา)`,
+    color: prod.color,
+    type: "our" as const,
+    sourceKey: prod.barcode,
+  })),
+  ...COMPETITOR_ITEMS.map((comp, index) => ({
+    dataKey: `competitor_${comp.key}`,
+    name: comp.label.replace(" (บ.)", ""),
+    color: [
+      "#e11d48",
+      "#be123c",
+      "#9f1239",
+      "#c2410c",
+      "#d97706",
+      "#a16207",
+      "#4d7c0f",
+      "#15803d",
+      "#047857",
+      "#0f766e",
+      "#0891b2",
+      "#1d4ed8",
+      "#4338ca",
+      "#6b21a8",
+      "#a21caf",
+    ][index],
+    type: "competitor" as const,
+    sourceKey: comp.key,
+  })),
 ];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -478,10 +510,11 @@ const CustomSalesTooltip = ({ active, payload, label }: any) => {
 // 🎯 Custom Tooltip กราฟที่ 2
 const CustomFunnelTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
+    const name = payload[0].name || label;
     return (
       <div className="bg-slate-900/95 text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs z-50 backdrop-blur-md">
         <p className="font-black text-amber-400 mb-1 border-b border-slate-700 pb-1">
-          {label}
+          {name}
         </p>
         {payload.map((entry: any, index: number) => (
           <div
@@ -497,27 +530,6 @@ const CustomFunnelTooltip = ({ active, payload, label }: any) => {
             <span className="font-mono font-black">{entry.value} คน</span>
           </div>
         ))}
-      </div>
-    );
-  }
-  return null;
-};
-
-// 🎯 Custom Tooltip กราฟที่ 3
-const CustomPieTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0];
-    return (
-      <div className="bg-slate-900/95 text-white p-3 rounded-xl shadow-2xl border border-slate-700 text-xs z-50 backdrop-blur-md">
-        <p className="font-black text-purple-300 mb-1 border-b border-slate-700 pb-1">
-          {data.name}
-        </p>
-        <div className="flex justify-between gap-4 py-0.5">
-          <span className="text-slate-300 font-bold">ราคาเฉลี่ย:</span>
-          <span className="font-mono font-black text-amber-400">
-            {data.value} ฿
-          </span>
-        </div>
       </div>
     );
   }
@@ -838,79 +850,71 @@ export default function CustomerReportPortal() {
     }
   }, [filteredData, selectedStore]);
 
-  // 📊 ประมวลผลข้อมูลสำหรับ กราฟที่ 3 (เปรียบเทียบราคาเฉลี่ย สินค้าเรา 10 SKU vs คู่แข่ง 15 รายการ)
+  // 📊 ประมวลผลราคาของสินค้าและคู่แข่งแยกเป็นรายวันและราย SKU
   const chart3Data = useMemo(() => {
-    if (!filteredData || filteredData.length === 0)
-      return { latestDate: "-", slices: [] };
+    if (!filteredData || filteredData.length === 0) return [];
 
-    const dates = filteredData.map((r) => r.reportDate).filter(Boolean);
-    const maxDate =
-      dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : "";
+    const dateMap = new Map<string, any>();
+    filteredData.forEach((row) => {
+      if (!row.reportDate) return;
 
-    const latestRows = filteredData.filter((r) => r.reportDate === maxDate);
-    if (latestRows.length === 0) return { latestDate: "-", slices: [] };
+      if (!dateMap.has(row.reportDate)) {
+        const daily: any = { date: row.reportDate };
+        PRICE_CHART_SERIES.forEach((series) => {
+          daily[`${series.dataKey}_total`] = 0;
+          daily[`${series.dataKey}_count`] = 0;
+        });
+        dateMap.set(row.reportDate, daily);
+      }
 
-    const avg = (arr: number[]) => {
-      const valid = arr.filter(
-        (v) => typeof v === "number" && !isNaN(v) && v > 0,
-      );
-      return valid.length > 0
-        ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length)
-        : 0;
-    };
-
-    const slices: any[] = [];
-
-    REPORT_PRODUCTS.forEach((prod) => {
-      const prices = latestRows.map((r) => {
-        const acc = getAccountName(r.storeName, r.storeCode);
-        const info = getProductInfo(r, prod.barcode, acc === "Big C");
-        return typeof info.priceOur === "number" ? info.priceOur : 0;
+      const daily = dateMap.get(row.reportDate);
+      const accountName = getAccountName(row.storeName, row.storeCode);
+      PRICE_CHART_SERIES.forEach((series) => {
+        const price =
+          series.type === "our"
+            ? Number(
+                getProductInfo(row, series.sourceKey, accountName === "Big C")
+                  .priceOur,
+              )
+            : Number(getCompetitorVal(row, series.sourceKey));
+        if (Number.isFinite(price) && price > 0) {
+          daily[`${series.dataKey}_total`] += price;
+          daily[`${series.dataKey}_count`] += 1;
+        }
       });
-      const avgVal = avg(prices);
-      if (avgVal > 0) {
-        slices.push({
-          name: `${prod.shortLabel} (เรา)`,
-          value: avgVal,
-          fill: prod.color,
-        });
-      }
     });
 
-    const compColors = [
-      "#e11d48",
-      "#be123c",
-      "#9f1239",
-      "#881337",
-      "#b91c1c",
-      "#c2410c",
-      "#d97706",
-      "#b45309",
-      "#78350f",
-      "#4d7c0f",
-      "#15803d",
-      "#047857",
-      "#0f766e",
-      "#1d4ed8",
-      "#6b21a8",
-    ];
-
-    COMPETITOR_ITEMS.forEach((comp, idx) => {
-      const compPrices = latestRows.map(
-        (r) => Number(getCompetitorVal(r, comp.key)) || 0,
-      );
-      const compAvg = avg(compPrices);
-      if (compAvg > 0) {
-        slices.push({
-          name: comp.label.replace(" (บ.)", ""),
-          value: compAvg,
-          fill: compColors[idx % compColors.length],
+    return Array.from(dateMap.values())
+      .map((daily) => {
+        const result: any = { date: daily.date };
+        PRICE_CHART_SERIES.forEach((series) => {
+          const count = daily[`${series.dataKey}_count`];
+          result[series.dataKey] =
+            count > 0
+              ? Number((daily[`${series.dataKey}_total`] / count).toFixed(2))
+              : null;
         });
-      }
-    });
-
-    return { latestDate: maxDate, slices };
+        return result;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredData]);
+
+  const chart2Data = useMemo(() => {
+    const totals = chart1And2Data.reduce(
+      (sum, row) => ({
+        traffic: sum.traffic + Number(row.traffic || 0),
+        approach: sum.approach + Number(row.approach || 0),
+        closedSales: sum.closedSales + Number(row.closedSales || 0),
+      }),
+      { traffic: 0, approach: 0, closedSales: 0 },
+    );
+
+    return [
+      { name: "Traffic", value: totals.traffic, fill: "#64748b" },
+      { name: "Approach", value: totals.approach, fill: "#2563eb" },
+      { name: "Closed Sales", value: totals.closedSales, fill: "#059669" },
+    ].filter((item) => item.value > 0);
+  }, [chart1And2Data]);
 
   const chart4Data = useMemo(() => {
     if (!filteredData || filteredData.length === 0) return [];
@@ -2334,71 +2338,25 @@ export default function CustomerReportPortal() {
               </div>
               <div className="h-60 sm:h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={chart1And2Data}
-                    margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient
-                        id="c2-3dTraffic"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0%" stopColor="#94a3b8" />
-                        <stop offset="100%" stopColor="#475569" />
-                      </linearGradient>
-                      <linearGradient
-                        id="c2-3dBlue"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0%" stopColor="#60a5fa" />
-                        <stop offset="100%" stopColor="#1d4ed8" />
-                      </linearGradient>
-                      <linearGradient
-                        id="c2-3dGreen"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0%" stopColor="#34d399" />
-                        <stop offset="100%" stopColor="#059669" />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis
-                      dataKey="displayName"
-                      tick={{ fontSize: 10, fontWeight: "bold" }}
-                    />
-                    <YAxis tick={{ fontSize: 9, fontWeight: "bold" }} />
+                  <PieChart>
                     <Tooltip content={<CustomFunnelTooltip />} />
                     <Legend
                       wrapperStyle={{ fontSize: "10px", fontWeight: "bold" }}
                     />
-                    <Bar
-                      dataKey="traffic"
-                      name="Traffic"
-                      fill="url(#c2-3dTraffic)"
-                      radius={[6, 6, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="approach"
-                      name="Approach"
-                      fill="url(#c2-3dBlue)"
-                      radius={[6, 6, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="closedSales"
-                      name="Closed Sales"
-                      fill="url(#c2-3dGreen)"
-                      radius={[6, 6, 0, 0]}
-                    />
-                  </BarChart>
+                    <Pie
+                      data={chart2Data}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="45%"
+                      outerRadius={78}
+                      paddingAngle={2}
+                    >
+                      {chart2Data.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                  </PieChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -2407,45 +2365,57 @@ export default function CustomerReportPortal() {
             <div className="portal-card p-4 sm:p-5 rounded-2xl text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                  <PieChartIcon size={16} className="text-purple-600" />
+                  <TrendingUp size={16} className="text-sky-600" />
                   3. เปรียบเทียบราคาหน้าร้านทุก SKU vs คู่แข่ง (บาท)
                 </h3>
-                <span className="text-[9px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-md">
-                  ข้อมูล ณ {chart3Data.latestDate}
+                <span className="text-[9px] bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded-md">
+                  {chart3Data.length} วัน · {PRICE_CHART_SERIES.length} เส้น
                 </span>
               </div>
-              <div className="h-60 sm:h-64 w-full relative">
-                {chart3Data.slices.length === 0 ? (
+              <div className="h-80 sm:h-96 w-full relative">
+                {chart3Data.length === 0 ? (
                   <div className="h-full flex items-center justify-center text-xs text-slate-400 font-bold">
                     ไม่มีข้อมูลราคาในวันที่ระบุ
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Tooltip content={<CustomPieTooltip />} />
-                      <Legend
-                        wrapperStyle={{ fontSize: "9px", fontWeight: "bold" }}
+                    <LineChart
+                      data={chart3Data}
+                      margin={{ top: 10, right: 12, left: -12, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fontWeight: "bold" }}
                       />
-                      <Pie
-                        data={chart3Data.slices}
-                        cx="50%"
-                        cy="45%"
-                        innerRadius={45}
-                        outerRadius={75}
-                        paddingAngle={3}
-                        dataKey="value"
-                        cornerRadius={4}
-                      >
-                        {chart3Data.slices.map((entry: any, index: number) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={entry.fill}
-                            stroke="#ffffff"
-                            strokeWidth={1.5}
-                          />
-                        ))}
-                      </Pie>
-                    </PieChart>
+                      <YAxis
+                        tick={{ fontSize: 9, fontWeight: "bold" }}
+                        tickFormatter={(value) => `${value} ฿`}
+                      />
+                      <Tooltip
+                        formatter={(value, name) => [`${value} ฿`, name]}
+                        labelFormatter={(label) => `วันที่ ${label}`}
+                      />
+                      <Legend
+                        wrapperStyle={{
+                          fontSize: "9px",
+                          fontWeight: "bold",
+                          lineHeight: "18px",
+                        }}
+                      />
+                      {PRICE_CHART_SERIES.map((series) => (
+                        <Line
+                          key={series.dataKey}
+                          type="monotone"
+                          dataKey={series.dataKey}
+                          name={series.name}
+                          stroke={series.color}
+                          strokeWidth={2}
+                          dot={{ r: 2 }}
+                          activeDot={{ r: 4 }}
+                        />
+                      ))}
+                    </LineChart>
                   </ResponsiveContainer>
                 )}
               </div>
