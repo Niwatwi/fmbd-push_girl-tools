@@ -963,6 +963,87 @@ export default function CustomerReportPortal() {
     );
   }, [filteredData]);
 
+  const salesAlertSummary = useMemo(() => {
+    const productTotals = new Map<
+      string,
+      { product: ReportProduct; total: number; observations: number }
+    >(
+      REPORT_PRODUCTS.map((product) => [
+        product.barcode,
+        { product, total: 0, observations: 0 },
+      ]),
+    );
+    const storeTotals = new Map<string, { name: string; total: number }>();
+    let lowStockCount = 0;
+    const lowStockItems: Array<{
+      product: ReportProduct;
+      stockAfter: number;
+      storeName: string;
+      reportDate: string;
+    }> = [];
+
+    filteredData.forEach((row) => {
+      const accountName = getAccountName(row.storeName, row.storeCode);
+      const storeCode = String(
+        row.storeCode || row.storeName || "ไม่ระบุสาข",
+      ).trim();
+      if (!storeTotals.has(storeCode)) {
+        storeTotals.set(storeCode, {
+          name: row.storeName || storeCode,
+          total: 0,
+        });
+      }
+
+      REPORT_PRODUCTS.forEach((product) => {
+        const info = getProductInfo(
+          row,
+          product.barcode,
+          accountName === "Big C",
+        );
+        const productTotal = productTotals.get(product.barcode)!;
+
+        if (
+          typeof info.salesQty === "number" &&
+          Number.isFinite(info.salesQty)
+        ) {
+          productTotal.total += info.salesQty;
+          productTotal.observations += 1;
+          storeTotals.get(storeCode)!.total += info.salesQty;
+        }
+
+        if (
+          typeof info.stockAfter === "number" &&
+          Number.isFinite(info.stockAfter) &&
+          info.stockAfter < 3
+        ) {
+          lowStockCount += 1;
+          lowStockItems.push({
+            product,
+            stockAfter: info.stockAfter,
+            storeName: row.storeName || storeCode,
+            reportDate: row.reportDate || "ไม่ระบุวันที่",
+          });
+        }
+      });
+    });
+
+    const rankedProducts = Array.from(productTotals.values())
+      .filter((item) => item.observations > 0)
+      .sort((a, b) => b.total - a.total);
+    const rankedStores = Array.from(storeTotals.values()).sort(
+      (a, b) => b.total - a.total,
+    );
+
+    return {
+      lowStockCount,
+      lowStockItems,
+      highestProduct: rankedProducts[0] || null,
+      lowestProduct: rankedProducts[rankedProducts.length - 1] || null,
+      highestStore: rankedStores[0] || null,
+      lowestStore: rankedStores[rankedStores.length - 1] || null,
+    };
+  }, [filteredData]);
+
   const handleViewImage = (url: string, label: string) => {
     Swal.fire({
       title: label || "รูปภาพกิจกรรม PG หน้าร้าน",
@@ -2282,6 +2363,129 @@ export default function CustomerReportPortal() {
             </div>
           </div>
 
+          {/* 📣 STOCK AND SALES ALERTS */}
+          <section className="text-left" aria-label="แจ้งเตือนและอันดับยอดขาย">
+            <h2 className="mb-2 text-xs font-black text-slate-700">
+              แจ้งเตือนและอันดับยอดขาย
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+              <div
+                className="portal-card group relative z-0 p-4 rounded-2xl border-rose-200 bg-rose-50/50 hover:z-50 focus-within:z-50"
+                tabIndex={0}
+                aria-label="สินค้าเหลือน้อยกว่า 3 ชิ้น เลื่อนเมาส์หรือโฟกัสเพื่อดูรายการและสต๊อกจริง"
+                title={salesAlertSummary.lowStockItems
+                  .map(
+                    (item) =>
+                      `${item.product.shortLabel}: ${item.stockAfter} ชิ้น | ${item.storeName} | ${item.reportDate}`,
+                  )
+                  .join("\n")}
+              >
+                <p className="text-[10px] font-bold text-rose-700">
+                  สินค้าเหลือน้อยกว่า 3 ชิ้น
+                </p>
+                <p className="mt-1 text-xl font-black text-rose-700">
+                  {salesAlertSummary.lowStockCount.toLocaleString()} รายการ
+                </p>
+                <p className="text-[10px] font-bold text-slate-500">
+                  นับรายการสินค้า-สาขาที่สต๊อกหลังขายต่ำกว่า 3
+                </p>
+                <div
+                  id="low-stock-tooltip"
+                  role="tooltip"
+                  className="invisible absolute left-0 top-full z-[60] mt-2 max-h-64 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-rose-200 bg-white p-3 text-left opacity-0 shadow-xl transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+                >
+                  <p className="mb-2 border-b border-slate-100 pb-2 text-xs font-black text-slate-800">
+                    รายการสินค้าและสต๊อกคงเหลือจริง
+                  </p>
+                  {salesAlertSummary.lowStockItems.length > 0 ? (
+                    <div className="space-y-2">
+                      {salesAlertSummary.lowStockItems.map((item, index) => (
+                        <div
+                          key={`${item.product.barcode}-${item.storeName}-${item.reportDate}-${index}`}
+                          className="flex items-start justify-between gap-3 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-800">
+                              {item.product.shortLabel}
+                            </p>
+                            <p className="break-words text-[10px] text-slate-500">
+                              {item.storeName} | {item.reportDate}
+                            </p>
+                          </div>
+                          <span className="shrink-0 font-black text-rose-700">
+                            {item.stockAfter.toLocaleString()} ชิ้น
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      ไม่พบสินค้าเหลือน้อยกว่า 3 ชิ้น
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="portal-card p-4 rounded-2xl">
+                <p className="text-[10px] font-bold text-slate-500">
+                  สินค้าขายสูงสุด
+                </p>
+                <p className="mt-1 text-sm font-black text-emerald-700 break-words">
+                  {salesAlertSummary.highestProduct?.product.shortLabel ||
+                    "ไม่มีข้อมูล"}
+                </p>
+                <p className="text-[10px] font-bold text-slate-500">
+                  {salesAlertSummary.highestProduct
+                    ? `${salesAlertSummary.highestProduct.total.toLocaleString()} ชิ้น`
+                    : "-"}
+                </p>
+              </div>
+
+              <div className="portal-card p-4 rounded-2xl">
+                <p className="text-[10px] font-bold text-slate-500">
+                  สินค้าขายต่ำสุด
+                </p>
+                <p className="mt-1 text-sm font-black text-amber-700 break-words">
+                  {salesAlertSummary.lowestProduct?.product.shortLabel ||
+                    "ไม่มีข้อมูล"}
+                </p>
+                <p className="text-[10px] font-bold text-slate-500">
+                  {salesAlertSummary.lowestProduct
+                    ? `${salesAlertSummary.lowestProduct.total.toLocaleString()} ชิ้น`
+                    : "-"}
+                </p>
+              </div>
+
+              <div className="portal-card p-4 rounded-2xl">
+                <p className="text-[10px] font-bold text-slate-500">
+                  สาขาขายสูงสุด
+                </p>
+                <p className="mt-1 text-sm font-black text-blue-700 break-words">
+                  {salesAlertSummary.highestStore?.name || "ไม่มีข้อมูล"}
+                </p>
+                <p className="text-[10px] font-bold text-slate-500">
+                  {salesAlertSummary.highestStore
+                    ? `${salesAlertSummary.highestStore.total.toLocaleString()} ชิ้น`
+                    : "-"}
+                </p>
+              </div>
+
+              <div className="portal-card p-4 rounded-2xl">
+                <p className="text-[10px] font-bold text-slate-500">
+                  สาขาขายต่ำสุด
+                </p>
+                <p className="mt-1 text-sm font-black text-orange-700 break-words">
+                  {salesAlertSummary.lowestStore?.name || "ไม่มีข้อมูล"}
+                </p>
+                <p className="text-[10px] font-bold text-slate-500">
+                  {salesAlertSummary.lowestStore
+                    ? `${salesAlertSummary.lowestStore.total.toLocaleString()} ชิ้น`
+                    : "-"}
+                </p>
+              </div>
+            </div>
+          </section>
+
           {/* 📊 CHARTS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* CHART 1: ยอดขายครบทั้ง 10 SKU */}
@@ -2494,7 +2698,7 @@ export default function CustomerReportPortal() {
                       <Legend
                         wrapperStyle={{ fontSize: "9px", fontWeight: "bold" }}
                       />
-                      {REPORT_PRODUCTS.slice(0, 6).map((prod, index) => (
+                      {REPORT_PRODUCTS.map((prod, index) => (
                         <Line
                           key={prod.barcode}
                           type="monotone"
