@@ -236,7 +236,12 @@ export default function AdminAttendanceExpensePage() {
 
   // 🗺️ ดูพิกัดแผนที่
   const handleViewMap = (lat: number, lon: number) => {
-    if (!lat || !lon) {
+    if (
+      lat === null ||
+      lat === undefined ||
+      lon === null ||
+      lon === undefined
+    ) {
       Swal.fire("ไม่พบพิกัด", "รายการนี้ไม่มีการบันทึกพิกัด GPS", "warning");
       return;
     }

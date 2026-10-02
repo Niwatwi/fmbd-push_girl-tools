@@ -750,6 +750,8 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
         storeName: log.store_name,
         checkInAt: log.check_in_at,
         checkOutAt: log.check_out_at,
+        checkInLat: log.check_in_latitude,
+        checkInLon: log.check_in_longitude,
         workedHours,
         dayValue,
         baseSalaryRate,
