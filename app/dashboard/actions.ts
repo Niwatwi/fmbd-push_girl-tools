@@ -696,8 +696,8 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   endDate?: string;
   storeCode?: string;
 }) {
-  const supabase = await getAdminClientInstance();
   try {
+    const supabase = await getAdminClientInstance();
     const { data: userProfiles, error: userError } = await supabase
       .from("user_profiles")
       .select(
@@ -781,8 +781,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
 }) {
-  const supabase = await getAdminClientInstance();
   try {
+    const supabase = await getAdminClientInstance();
     const expenseRes = await getAdminAttendanceExpenseReportAction(params);
     if (!expenseRes.success) throw new Error(expenseRes.message);
 
@@ -1145,9 +1145,8 @@ export async function getProducts() {
 
 // ดึงรายงานเต็มแบบ Customer Portal แบบปลอดภัย โดยรองรับตารางปัจจุบันและ legacy
 export async function getCustomerFullActivityReport() {
-  const supabase = await getAdminClientInstance();
-
   try {
+    const supabase = await getAdminClientInstance();
     const tableCandidates = ["pg_daily_activity_reports", "pg_daily_reports"];
 
     let rows: any[] = [];

@@ -667,27 +667,38 @@ export default function CustomerReportPortal() {
 
   const loadPortalData = async () => {
     setLoading(true);
-    const res = await getCustomerFullActivityReport();
-    const salaryRes = await getAdminSalarySummaryReportAction();
-    const promoRes = await fetchPromotionsData();
+    try {
+      const res = await getCustomerFullActivityReport();
+      if (!res.success) {
+        throw new Error(res.message || "ไม่สามารถโหลดรายงานกิจกรรมได้");
+      }
 
-    if (res.success) {
       const normalizedRows = withPackTotals(res.data || []);
       setReportData(normalizedRows);
       setFilteredData(normalizedRows);
-      // attendanceWages may not exist on all response shapes, guard access
       setAttendanceWages((res as any).attendanceWages || []);
-    }
 
-    if (salaryRes.success) {
-      setSalarySummaryData(salaryRes.data || []);
-    }
+      const salaryRes = await getAdminSalarySummaryReportAction();
+      if (salaryRes.success) {
+        setSalarySummaryData(salaryRes.data || []);
+      } else {
+        throw new Error(salaryRes.message || "ไม่สามารถโหลดรายงานเงินเดือนได้");
+      }
 
-    if (promoRes.success) {
-      setPromotions(promoRes.data || []);
+      const promoRes = await fetchPromotionsData();
+      if (promoRes.success) {
+        setPromotions(promoRes.data || []);
+      }
+    } catch (error: any) {
+      console.error("Customer portal data load error:", error);
+      Swal.fire(
+        "โหลดข้อมูลไม่สำเร็จ",
+        error.message || "กรุณาเข้าสู่ระบบใหม่ด้วยบัญชีผู้ดูแลระบบ",
+        "error",
+      );
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   useEffect(() => {

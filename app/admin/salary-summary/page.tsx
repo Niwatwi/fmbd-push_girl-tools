@@ -18,6 +18,7 @@ import {
   Award,
   ArrowLeft,
 } from "lucide-react";
+import Swal from "sweetalert2";
 import { getAdminSalarySummaryReportAction } from "@/app/dashboard/actions";
 
 function getDefaultPayoutPeriod() {
@@ -61,15 +62,30 @@ export default function AdminSalarySummaryPage() {
 
   const loadData = async () => {
     setLoading(true);
-    const res = await getAdminSalarySummaryReportAction({
-      startDate,
-      endDate,
-    });
-    if (res.success) {
+    try {
+      const res = await getAdminSalarySummaryReportAction({
+        startDate,
+        endDate,
+      });
+      if (!res.success) {
+        throw new Error(res.message || "ไม่สามารถโหลดข้อมูลสรุปเงินเดือนได้");
+      }
       setDataList(res.data);
       setFilteredData(res.data);
+    } catch (error) {
+      console.error("Salary summary load error:", error);
+      setDataList([]);
+      setFilteredData([]);
+      Swal.fire(
+        "โหลดข้อมูลไม่สำเร็จ",
+        error instanceof Error
+          ? error.message
+          : "กรุณาเข้าสู่ระบบใหม่ด้วยบัญชีผู้ดูแลระบบ",
+        "error",
+      );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
