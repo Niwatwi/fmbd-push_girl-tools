@@ -1,16 +1,27 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { verifyUserSessionToken } from "@/utils/session-token";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 🔓 1. ข้ามการตรวจสอบสิทธิ์สำหรับหน้า /customer-portal (เข้าชมได้ฟรีโดยไม่ต้องล็อกอิน)
-  if (pathname.startsWith("/customer-portal")) {
+  const requiresAdmin =
+    pathname.startsWith("/admin") || pathname.startsWith("/customer-portal");
+  if (!requiresAdmin) {
     return NextResponse.next();
   }
 
-  // -------------------------------------------------------------
-  // 🔒 2. โค้ดสำหรับตรวจสอบการ Login / Session เดิมของคุณ (ถ้ามี)
-  // -------------------------------------------------------------
+  const session = await verifyUserSessionToken(
+    request.cookies.get("user_session")?.value,
+  );
+  if (!session) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  if (session.role !== "admin") {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
 
   return NextResponse.next();
 }
@@ -23,8 +34,7 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - ไฟล์รูปภาพใน public (png, jpg, svg, ฯลฯ)
-     * - customer-portal (หน้าพอร์ตัลลูกค้า)
      */
-    "/((?!_next/static|_next/image|favicon.ico|customer-portal|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

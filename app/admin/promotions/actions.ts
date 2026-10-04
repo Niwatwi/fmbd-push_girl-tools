@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
+import { requireAdminSession } from "@/utils/auth";
 
 // ----------------------------------------------------------------
 // Interfaces & Types
@@ -159,6 +160,7 @@ export async function getPromotionByStoreAction(
 }
 
 export async function savePromotionAction(payload: SavePromotionPayload) {
+  await requireAdminSession();
   const supabase = await createClient();
   const { id, items, ...promoData } = payload;
 
@@ -213,6 +215,7 @@ export async function savePromotionAction(payload: SavePromotionPayload) {
 }
 
 export async function deletePromotionAction(id: number | string) {
+  await requireAdminSession();
   const supabase = await createClient();
 
   await supabase.from("promotion_items").delete().eq("promotion_id", id);

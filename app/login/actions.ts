@@ -2,6 +2,8 @@
 
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
+import { createUserSessionToken } from "@/utils/session-token";
+import { userSessionCookie, userSessionMaxAge } from "@/utils/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -11,6 +13,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const ADMIN_IDENTIFIERS = new Set(["FMBD03", "ADMIN", "ADMIN_NIWAT"]);
 
 // --- 1. ฟังก์ชันจัดเก็บรูปถ่ายเข้า Bucket และดึง Public URL มาตรฐาน ---
 async function uploadPhoto(
@@ -174,6 +177,17 @@ export async function handleLogin(
   passwordInput: string,
 ) {
   try {
+    if (
+      !process.env.APP_SESSION_SECRET ||
+      process.env.APP_SESSION_SECRET.length < 32
+    ) {
+      console.error("APP_SESSION_SECRET must contain at least 32 characters");
+      return {
+        success: false,
+        message: "ระบบยังตั้งค่าความปลอดภัยไม่ครบ กรุณาติดต่อผู้ดูแลระบบ",
+      };
+    }
+
     const cleanUsername = usernameInput.trim();
     const cleanPassword = passwordInput.trim();
 
@@ -181,7 +195,7 @@ export async function handleLogin(
     const { data: user, error } = await supabase
       .from("user_profiles")
       .select(
-        "id, username, password_text, display_name, company_tag, area, is_active, image_url",
+        "id, username, employee_id, password_text, display_name, company_tag, area, is_active, image_url",
       )
       .eq("username", cleanUsername)
       .maybeSingle();
@@ -210,30 +224,40 @@ export async function handleLogin(
       };
     }
 
-    // สร้าง Session ผ่าน Cookie
+    const role = [user.username, user.employee_id, user.company_tag].some(
+      (identifier) =>
+        ADMIN_IDENTIFIERS.has(
+          String(identifier || "")
+            .trim()
+            .toUpperCase(),
+        ),
+    )
+      ? "admin"
+      : "staff";
+    const sessionToken = await createUserSessionToken({
+      id: user.id,
+      display_name: user.display_name || "",
+      company_tag: user.company_tag || "",
+      area: user.area || "",
+      image_url: user.image_url || "",
+      role,
+    });
+
     const cookieStore = await cookies();
-    cookieStore.set(
-      "user_session",
-      JSON.stringify({
-        id: user.id,
-        display_name: user.display_name,
-        company_tag: user.company_tag,
-        area: user.area,
-        image_url: user.image_url,
-      }),
-      {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 60 * 60 * 24 * 7, // 7 วัน
-        path: "/",
-      },
-    );
+    cookieStore.set(userSessionCookie, sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: userSessionMaxAge,
+      path: "/",
+    });
 
     return {
       success: true,
       user: {
         display_name: user.display_name,
         company_tag: user.company_tag,
+        role,
       },
     };
   } catch (error) {
@@ -249,7 +273,7 @@ export async function handleLogin(
 export async function handleLogout() {
   try {
     const cookieStore = await cookies();
-    cookieStore.delete("user_session");
+    cookieStore.delete(userSessionCookie);
     return { success: true };
   } catch (error) {
     console.error("Logout error:", error);

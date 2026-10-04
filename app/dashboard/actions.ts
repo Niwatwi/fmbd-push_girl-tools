@@ -1,18 +1,25 @@
 "use server";
 
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { normalizeCompetitorPrices } from "@/utils/competitor-prices";
+import { requireAdminSession, requireUserOrAdminSession } from "@/utils/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 async function getClientInstance() {
+  return await createClient();
+}
+
+async function getAdminClientInstance() {
+  await requireAdminSession();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!serviceKey) {
-    console.warn(
-      "⚠️ [Warning] ไม่พบ SUPABASE_SERVICE_ROLE_KEY ในระบบ สลับไปใช้ Anon Key แทนชั่วคราว",
-    );
+  if (serviceKey) {
+    return createSupabaseClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
   }
 
   return await createClient();
@@ -205,7 +212,7 @@ function parsePhotoArray(fieldData: any) {
 
 // 1. 📅 ดึงข้อมูล Time Attendance สำหรับส่งฝ่ายบัญชีทำค่าใช้จ่าย
 export async function getAttendanceReportForAccounting() {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const { data, error } = await supabase
       .from("pg_attendance_logs")
@@ -233,7 +240,7 @@ export async function getAttendanceReportForAccounting() {
 
 // 2. 📊 ดึงยอดขายสะสมเปรียบเทียบกับเป้าหมาย (Target) แยกตามสาขา
 export async function getCustomerSalesVsTargetReport() {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const { data: targets = [] } = await supabase
       .from("store_targets")
@@ -296,7 +303,7 @@ export async function getCustomerSalesVsTargetReport() {
 
 // 3. ดึงรายชื่อสาขาและเป้าหมายทั้งหมด
 export async function getStoreTargets() {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const { data, error } = await supabase
       .from("store_targets")
@@ -342,7 +349,7 @@ export async function saveStoreTargetAction(payload: {
     price: number;
   }>;
 }) {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const productRows = (
       payload.products ?? [
@@ -436,7 +443,7 @@ export async function saveStoreTargetAction(payload: {
 
 // 5. ดึงรายชื่อร้านค้าทั้งหมด
 export async function getAvailableStores() {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const { data, error } = await supabase
       .from("pg_stores")
@@ -453,6 +460,7 @@ export async function getAvailableStores() {
 
 // 6. 🏆 ดึงโปรไฟล์พนักงาน + สถานที่ Check-in + ยอดขายจริงวันนี้ + ยอดสะสมประจำเดือน
 export async function getUserDashboardDataAction(userIdInput: number | string) {
+  await requireUserOrAdminSession(Number(userIdInput));
   const supabase = await getClientInstance();
   const userId = Number(userIdInput);
 
@@ -568,7 +576,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
 // 7. ลบเป้าหมายสาขาออกจากระบบ
 export async function deleteStoreTargetAction(storeCode: string) {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const { error } = await supabase
       .from("store_targets")
@@ -688,7 +696,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   endDate?: string;
   storeCode?: string;
 }) {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const { data: userProfiles, error: userError } = await supabase
       .from("user_profiles")
@@ -773,7 +781,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
 }) {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const expenseRes = await getAdminAttendanceExpenseReportAction(params);
     if (!expenseRes.success) throw new Error(expenseRes.message);
@@ -885,7 +893,7 @@ export async function updateAdminAttendanceLogAction(payload: {
   storeCode?: string;
   storeName?: string;
 }) {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const updateData: any = {};
     if (payload.checkInAt !== undefined)
@@ -915,7 +923,7 @@ export async function updateAdminAttendanceLogAction(payload: {
 
 // 13. 🛠️ ฟังก์ชันสำหรับ Admin บันทึกรายงานย้อนหลัง พร้อมระบบแปลง Base64 และอัปโหลดรูปภาพ
 export async function adminSaveReportWithImagesAction(payload: any) {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
   try {
     const competitorPrices = normalizeCompetitorPrices(
       payload.competitorPrices,
@@ -1005,11 +1013,14 @@ export async function adminSaveReportWithImagesAction(payload: any) {
 
     let reportId = payload.reportId ? Number(payload.reportId) : null;
     if (payload.reportId) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("pg_daily_activity_reports")
         .update(dbData)
-        .eq("id", payload.reportId);
+        .eq("id", reportId)
+        .select("id")
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error("ไม่พบรายงาน หรือไม่มีสิทธิ์แก้ไขข้อมูลนี้");
     } else {
       const { data, error } = await supabase
         .from("pg_daily_activity_reports")
@@ -1068,6 +1079,7 @@ export async function adminSaveReportWithImagesAction(payload: any) {
 
 // 14. 📌 ดึงรายชื่อสาขาที่ User ได้รับมอบหมายตามรอบจัดเชียร์ขายใน pg_user_store_schedules
 export async function getAssignedStoresByUserAction(userId: number) {
+  await requireUserOrAdminSession(userId);
   const supabase = await getClientInstance();
   try {
     const today = new Date().toISOString().split("T")[0];
@@ -1133,7 +1145,7 @@ export async function getProducts() {
 
 // ดึงรายงานเต็มแบบ Customer Portal แบบปลอดภัย โดยรองรับตารางปัจจุบันและ legacy
 export async function getCustomerFullActivityReport() {
-  const supabase = await getClientInstance();
+  const supabase = await getAdminClientInstance();
 
   try {
     const tableCandidates = ["pg_daily_activity_reports", "pg_daily_reports"];
