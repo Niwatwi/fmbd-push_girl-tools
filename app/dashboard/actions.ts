@@ -923,8 +923,8 @@ export async function updateAdminAttendanceLogAction(payload: {
 
 // 13. 🛠️ ฟังก์ชันสำหรับ Admin บันทึกรายงานย้อนหลัง พร้อมระบบแปลง Base64 และอัปโหลดรูปภาพ
 export async function adminSaveReportWithImagesAction(payload: any) {
-  const supabase = await getAdminClientInstance();
   try {
+    const supabase = await getAdminClientInstance();
     const competitorPrices = normalizeCompetitorPrices(
       payload.competitorPrices,
     );

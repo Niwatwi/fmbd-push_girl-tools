@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { verifyUserSessionToken } from "@/utils/session-token";
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -33,6 +34,26 @@ export async function middleware(request: NextRequest) {
 
   // รีเฟรช auth session
   await supabase.auth.getUser();
+
+  const { pathname } = request.nextUrl;
+  if (
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/customer-portal")
+  ) {
+    const session = await verifyUserSessionToken(
+      request.cookies.get("user_session")?.value,
+    );
+
+    if (!session) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("next", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    if (session.role !== "admin") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+  }
 
   return response;
 }

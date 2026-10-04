@@ -654,7 +654,7 @@ export default function CustomerReportPortal() {
       const { data, error } = await supabase
         .from("promotions")
         .select("*")
-        .order("start_date", { ascending: false });
+        .order("created_at", { ascending: false });
 
       if (!error && data) {
         return { success: true, data };
@@ -1444,95 +1444,103 @@ export default function CustomerReportPortal() {
     }
 
     setSavingAdmin(true);
+    try {
+      const formattedPhotos = [
+        ...photoFiles.staffHolding.map((url) => ({
+          url,
+          base64: url,
+          type: "staff_holding",
+          label: "พนักงานถือสินค้า",
+        })),
+        ...photoFiles.customerBasket.map((url) => ({
+          url,
+          base64: url,
+          type: "customer_basket",
+          label: "ถ่ายคู่กับลูกค้า/ตะกร้า",
+        })),
+        ...photoFiles.atmosphere.map((url) => ({
+          url,
+          base64: url,
+          type: "atmosphere",
+          label: "บรรยากาศหน้าร้าน",
+        })),
+        ...photoFiles.product.map((url) => ({
+          url,
+          base64: url,
+          type: "img_product",
+          label: "รูปสินค้า",
+        })),
+        ...photoFiles.shelf.map((url) => ({
+          url,
+          base64: url,
+          type: "img_shelf",
+          label: "รูปเชลฟ์ชั้นวาง",
+        })),
+        ...photoFiles.stockScanner.map((url) => ({
+          url,
+          base64: url,
+          type: "img_stock_scanner",
+          label: "รูปสแกนสต๊อก",
+        })),
+      ];
 
-    const formattedPhotos = [
-      ...photoFiles.staffHolding.map((url) => ({
-        url,
-        base64: url,
-        type: "staff_holding",
-        label: "พนักงานถือสินค้า",
-      })),
-      ...photoFiles.customerBasket.map((url) => ({
-        url,
-        base64: url,
-        type: "customer_basket",
-        label: "ถ่ายคู่กับลูกค้า/ตะกร้า",
-      })),
-      ...photoFiles.atmosphere.map((url) => ({
-        url,
-        base64: url,
-        type: "atmosphere",
-        label: "บรรยากาศหน้าร้าน",
-      })),
-      ...photoFiles.product.map((url) => ({
-        url,
-        base64: url,
-        type: "img_product",
-        label: "รูปสินค้า",
-      })),
-      ...photoFiles.shelf.map((url) => ({
-        url,
-        base64: url,
-        type: "img_shelf",
-        label: "รูปเชลฟ์ชั้นวาง",
-      })),
-      ...photoFiles.stockScanner.map((url) => ({
-        url,
-        base64: url,
-        type: "img_stock_scanner",
-        label: "รูปสแกนสต๊อก",
-      })),
-    ];
+      const res = await adminSaveReportWithImagesAction({
+        reportId: editForm.id ? Number(editForm.id) : undefined,
+        reportDateInput: editForm.reportDate,
+        userId: Number(editForm.userId),
+        storeCode: editForm.storeCode,
+        promotionId: editForm.promotionId
+          ? Number(editForm.promotionId)
+          : undefined,
+        trafficCount: Number(editForm.traffic || 0),
+        approachCount: Number(editForm.approach || 0),
+        closedSalesCount: Number(editForm.closedSales || 0),
+        priceCompCellox: Number(editForm.compCellox || 0),
+        priceCompKleenex: Number(editForm.compKleenex || 0),
+        priceCompPaseo: Number(editForm.compPaseo || 0),
+        competitorPrices: editForm.competitorPrices || {},
+        feedbackStore: editForm.feedback,
+        competitorPromotion: editForm.competitorPromo,
+        remark: editForm.remark,
+        activityPhotos: formattedPhotos,
 
-    const res = await adminSaveReportWithImagesAction({
-      reportId: editForm.id ? Number(editForm.id) : undefined,
-      reportDateInput: editForm.reportDate,
-      userId: Number(editForm.userId),
-      storeCode: editForm.storeCode,
-      promotionId: editForm.promotionId
-        ? Number(editForm.promotionId)
-        : undefined,
-      trafficCount: Number(editForm.traffic || 0),
-      approachCount: Number(editForm.approach || 0),
-      closedSalesCount: Number(editForm.closedSales || 0),
-      priceCompCellox: Number(editForm.compCellox || 0),
-      priceCompKleenex: Number(editForm.compKleenex || 0),
-      priceCompPaseo: Number(editForm.compPaseo || 0),
-      competitorPrices: editForm.competitorPrices || {},
-      feedbackStore: editForm.feedback,
-      competitorPromotion: editForm.competitorPromo,
-      remark: editForm.remark,
-      activityPhotos: formattedPhotos,
+        priceOurGreen90: Number(editForm.priceGreen || 0),
+        stockBeforeGreen90: Number(editForm.stockBeforeGreen || 0),
+        salesQtyGreen90: Number(editForm.salesGreen || 0),
+        stockAfterGreen90: Number(editForm.stockAfterGreen || 0),
 
-      priceOurGreen90: Number(editForm.priceGreen || 0),
-      stockBeforeGreen90: Number(editForm.stockBeforeGreen || 0),
-      salesQtyGreen90: Number(editForm.salesGreen || 0),
-      stockAfterGreen90: Number(editForm.stockAfterGreen || 0),
+        priceOurBlue90: Number(editForm.priceBlue || 0),
+        stockBeforeBlue90: Number(editForm.stockBeforeBlue || 0),
+        salesQtyBlue90: Number(editForm.salesBlue || 0),
+        stockAfterBlue90: Number(editForm.stockAfterBlue || 0),
 
-      priceOurBlue90: Number(editForm.priceBlue || 0),
-      stockBeforeBlue90: Number(editForm.stockBeforeBlue || 0),
-      salesQtyBlue90: Number(editForm.salesBlue || 0),
-      stockAfterBlue90: Number(editForm.stockAfterBlue || 0),
+        priceOurOrange100: Number(editForm.priceOrange || 0),
+        stockBeforeOrange100: Number(editForm.stockBeforeOrange || 0),
+        salesQtyOrange100: Number(editForm.salesOrange || 0),
+        stockAfterOrange100: Number(editForm.stockAfterOrange || 0),
+        products: Array.isArray(editForm.products) ? editForm.products : [],
+      });
 
-      priceOurOrange100: Number(editForm.priceOrange || 0),
-      stockBeforeOrange100: Number(editForm.stockBeforeOrange || 0),
-      salesQtyOrange100: Number(editForm.salesOrange || 0),
-      stockAfterOrange100: Number(editForm.stockAfterOrange || 0),
-      products: Array.isArray(editForm.products) ? editForm.products : [],
-    });
-
-    setSavingAdmin(false);
-
-    if (res.success) {
+      if (res.success) {
+        Swal.fire(
+          "บันทึกสำเร็จ!",
+          "ข้อมูลและรูปภาพถูกอัปเดตเรียบร้อยแล้ว",
+          "success",
+        );
+        setIsEditModalOpen(false);
+        loadPortalData();
+      } else {
+        Swal.fire("เกิดข้อผิดพลาด!", res.message, "error");
+      }
+    } catch (error: any) {
+      console.error("Admin report save error:", error);
       Swal.fire(
-        "บันทึกสำเร็จ!",
-        "ข้อมูลและรูปภาพถูกอัปเดตเรียบร้อยแล้ว",
-        "success",
+        "บันทึกไม่สำเร็จ",
+        error.message || "กรุณาเข้าสู่ระบบใหม่ด้วยบัญชีผู้ดูแลระบบ",
+        "error",
       );
-      setIsEditModalOpen(false);
-      loadPortalData();
-    } else {
-      Swal.fire("เกิดข้อผิดพลาด!", res.message, "error");
+    } finally {
+      setSavingAdmin(false);
     }
   };
 
