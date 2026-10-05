@@ -1694,191 +1694,210 @@ export default function CustomerReportPortal() {
       return;
     }
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("PG Full Report");
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("PG Full Report");
 
-    const excelColumns: any[] = [
-      { header: "NO.", key: "no", width: 6 },
-      { header: "สาขา", key: "storeName", width: 25 },
-      { header: "พนักงาน", key: "userName", width: 22 },
-      { header: "วันที่", key: "reportDate", width: 14 },
-      { header: "TARGET (แพ็ค)", key: "target", width: 14 },
-      { header: "TRAFFIC", key: "traffic", width: 10 },
-      { header: "APPROACH", key: "approach", width: 10 },
-      { header: "CLOSED", key: "closedSales", width: 10 },
-    ];
-
-    REPORT_PRODUCTS.forEach((prod) => {
-      excelColumns.push({
-        header: `สต๊อกก่อน (${prod.shortLabel})`,
-        key: `sb_${prod.barcode}`,
-        width: 14,
-      });
-    });
-
-    REPORT_PRODUCTS.forEach((prod) => {
-      excelColumns.push({
-        header: `ขาย (${prod.shortLabel})`,
-        key: `sq_${prod.barcode}`,
-        width: 12,
-      });
-    });
-
-    REPORT_PRODUCTS.forEach((prod) => {
-      excelColumns.push({
-        header: `สต๊อกหลัง (${prod.shortLabel})`,
-        key: `sa_${prod.barcode}`,
-        width: 14,
-      });
-    });
-
-    REPORT_PRODUCTS.forEach((prod) => {
-      excelColumns.push({
-        header: `ราคา (${prod.shortLabel})`,
-        key: `pr_${prod.barcode}`,
-        width: 12,
-      });
-    });
-
-    COMPETITOR_ITEMS.forEach((comp) => {
-      excelColumns.push({
-        header: comp.label,
-        key: `comp_${comp.key}`,
-        width: 15,
-      });
-    });
-
-    excelColumns.push(
-      { header: "FEEDBACK หน้าร้าน", key: "feedback", width: 30 },
-      { header: "โปรคู่แข่ง", key: "competitorPromo", width: 30 },
-      { header: "หมายเหตุ", key: "remark", width: 25 },
-      { header: "รูปพนักงานถือสินค้า", key: "photo_staff_holding", width: 45 },
-      {
-        header: "รูปถ่ายคู่กับลูกค้า/ตะกร้า",
-        key: "photo_customer_basket",
-        width: 45,
-      },
-      { header: "รูปบรรยากาศหน้าร้าน", key: "photo_atmosphere", width: 45 },
-      { header: "รูปสินค้า", key: "photo_img_product", width: 45 },
-      { header: "รูปเชลฟ์ชั้นวาง", key: "photo_img_shelf", width: 45 },
-      { header: "รูปสแกนสต๊อก", key: "photo_img_stock_scanner", width: 45 },
-    );
-
-    worksheet.columns = excelColumns;
-
-    const baseColCount = 8 + 10 + 10 + 10 + 10 + 15 + 3;
-    const photoCategoryMap = [
-      { key: "staff_holding", colIndex: baseColCount },
-      { key: "customer_basket", colIndex: baseColCount + 1 },
-      { key: "atmosphere", colIndex: baseColCount + 2 },
-      { key: "img_product", colIndex: baseColCount + 3 },
-      { key: "img_shelf", colIndex: baseColCount + 4 },
-      { key: "img_stock_scanner", colIndex: baseColCount + 5 },
-    ];
-
-    for (let i = 0; i < dataToExport.length; i++) {
-      const item = dataToExport[i];
-      const excelRowIndex = i + 1;
-
-      const accountName = getAccountName(item.storeName, item.storeCode);
-      const isBigC = accountName === "Big C";
-
-      const rowObj: any = {
-        no: i + 1,
-        storeName: item.storeName || item.store_code || "-",
-        userName: item.userName || item.user_id || "-",
-        reportDate: item.reportDate || item.report_date || "-",
-        target: Number(item.targetPacks ?? item.target ?? 0),
-        traffic: Number(item.traffic ?? item.traffic_count ?? 0),
-        approach: Number(item.approach ?? item.approach_count ?? 0),
-        closedSales: Number(item.closedSales ?? item.closed_sales_count ?? 0),
-      };
+      const excelColumns: any[] = [
+        { header: "NO.", key: "no", width: 6 },
+        { header: "สาขา", key: "storeName", width: 25 },
+        { header: "พนักงาน", key: "userName", width: 22 },
+        { header: "วันที่", key: "reportDate", width: 14 },
+        { header: "TARGET (แพ็ค)", key: "target", width: 14 },
+        { header: "TRAFFIC", key: "traffic", width: 10 },
+        { header: "APPROACH", key: "approach", width: 10 },
+        { header: "CLOSED", key: "closedSales", width: 10 },
+      ];
 
       REPORT_PRODUCTS.forEach((prod) => {
-        const info = getProductInfo(item, prod.barcode, isBigC);
-        rowObj[`sb_${prod.barcode}`] = info.stockBefore;
-        rowObj[`sq_${prod.barcode}`] = info.salesQty;
-        rowObj[`sa_${prod.barcode}`] = info.stockAfter;
-        rowObj[`pr_${prod.barcode}`] = info.priceOur;
+        excelColumns.push({
+          header: `สต๊อกก่อน (${prod.shortLabel})`,
+          key: `sb_${prod.barcode}`,
+          width: 14,
+        });
+      });
+
+      REPORT_PRODUCTS.forEach((prod) => {
+        excelColumns.push({
+          header: `ขาย (${prod.shortLabel})`,
+          key: `sq_${prod.barcode}`,
+          width: 12,
+        });
+      });
+
+      REPORT_PRODUCTS.forEach((prod) => {
+        excelColumns.push({
+          header: `สต๊อกหลัง (${prod.shortLabel})`,
+          key: `sa_${prod.barcode}`,
+          width: 14,
+        });
+      });
+
+      REPORT_PRODUCTS.forEach((prod) => {
+        excelColumns.push({
+          header: `ราคา (${prod.shortLabel})`,
+          key: `pr_${prod.barcode}`,
+          width: 12,
+        });
       });
 
       COMPETITOR_ITEMS.forEach((comp) => {
-        rowObj[`comp_${comp.key}`] = getCompetitorVal(item, comp.key);
+        excelColumns.push({
+          header: comp.label,
+          key: `comp_${comp.key}`,
+          width: 15,
+        });
       });
 
-      rowObj.feedback = item.feedback || item.feedback_store || "-";
-      rowObj.competitorPromo =
-        item.competitorPromo || item.competitor_promotion || "-";
-      rowObj.remark = item.remark || item.remark_store || "-";
+      excelColumns.push(
+        { header: "FEEDBACK หน้าร้าน", key: "feedback", width: 30 },
+        { header: "โปรคู่แข่ง", key: "competitorPromo", width: 30 },
+        { header: "หมายเหตุ", key: "remark", width: 25 },
+        {
+          header: "รูปพนักงานถือสินค้า",
+          key: "photo_staff_holding",
+          width: 45,
+        },
+        {
+          header: "รูปถ่ายคู่กับลูกค้า/ตะกร้า",
+          key: "photo_customer_basket",
+          width: 45,
+        },
+        { header: "รูปบรรยากาศหน้าร้าน", key: "photo_atmosphere", width: 45 },
+        { header: "รูปสินค้า", key: "photo_img_product", width: 45 },
+        { header: "รูปเชลฟ์ชั้นวาง", key: "photo_img_shelf", width: 45 },
+        { header: "รูปสแกนสต๊อก", key: "photo_img_stock_scanner", width: 45 },
+      );
 
-      const row = worksheet.addRow(rowObj);
-      row.height = 65;
-      row.alignment = {
-        vertical: "middle",
-        horizontal: "center",
-        wrapText: true,
-      };
+      worksheet.columns = excelColumns;
 
-      const IMG_WIDTH = 55;
-      const IMG_HEIGHT = 55;
-      const EMU_PER_PX = 9525;
+      const baseColCount = 8 + 10 + 10 + 10 + 10 + 15 + 3;
+      const photoCategoryMap = [
+        { key: "staff_holding", colIndex: baseColCount },
+        { key: "customer_basket", colIndex: baseColCount + 1 },
+        { key: "atmosphere", colIndex: baseColCount + 2 },
+        { key: "img_product", colIndex: baseColCount + 3 },
+        { key: "img_shelf", colIndex: baseColCount + 4 },
+        { key: "img_stock_scanner", colIndex: baseColCount + 5 },
+      ];
 
-      for (const cat of photoCategoryMap) {
-        const urls = getPhotoUrlsArray(item, cat.key);
-        const validUrls = urls.slice(0, 10);
-        const totalImgs = validUrls.length;
+      for (let i = 0; i < dataToExport.length; i++) {
+        const item = dataToExport[i];
+        const excelRowIndex = i + 1;
 
-        for (let imgIdx = 0; imgIdx < totalImgs; imgIdx++) {
-          const url = validUrls[imgIdx];
-          const imageData = await fetchImageAsBuffer(url);
+        const accountName = getAccountName(item.storeName, item.storeCode);
+        const isBigC = accountName === "Big C";
 
-          if (imageData) {
-            try {
-              const imageId = workbook.addImage({
-                buffer: imageData.buffer,
-                extension: imageData.extension,
-              });
+        const rowObj: any = {
+          no: i + 1,
+          storeName: item.storeName || item.store_code || "-",
+          userName: item.userName || item.user_id || "-",
+          reportDate: item.reportDate || item.report_date || "-",
+          target: Number(item.targetPacks ?? item.target ?? 0),
+          traffic: Number(item.traffic ?? item.traffic_count ?? 0),
+          approach: Number(item.approach ?? item.approach_count ?? 0),
+          closedSales: Number(item.closedSales ?? item.closed_sales_count ?? 0),
+        };
 
-              const pixelLeft =
-                totalImgs === 1 ? 40 : 10 + imgIdx * (IMG_WIDTH + 30);
-              const pixelTop = 10;
+        REPORT_PRODUCTS.forEach((prod) => {
+          const info = getProductInfo(item, prod.barcode, isBigC);
+          rowObj[`sb_${prod.barcode}`] = info.stockBefore;
+          rowObj[`sq_${prod.barcode}`] = info.salesQty;
+          rowObj[`sa_${prod.barcode}`] = info.stockAfter;
+          rowObj[`pr_${prod.barcode}`] = info.priceOur;
+        });
 
-              worksheet.addImage(imageId, {
-                tl: {
-                  nativeCol: cat.colIndex,
-                  nativeColOff: pixelLeft * EMU_PER_PX,
-                  nativeRow: excelRowIndex,
-                  nativeRowOff: pixelTop * EMU_PER_PX,
-                } as any,
-                ext: { width: IMG_WIDTH, height: IMG_HEIGHT },
-                editAs: "oneCell",
-              });
-            } catch (err) {
-              console.error("Embed Image Error:", err);
+        COMPETITOR_ITEMS.forEach((comp) => {
+          rowObj[`comp_${comp.key}`] = getCompetitorVal(item, comp.key);
+        });
+
+        rowObj.feedback = item.feedback || item.feedback_store || "-";
+        rowObj.competitorPromo =
+          item.competitorPromo || item.competitor_promotion || "-";
+        rowObj.remark = item.remark || item.remark_store || "-";
+
+        const row = worksheet.addRow(rowObj);
+        row.height = 65;
+        row.alignment = {
+          vertical: "middle",
+          horizontal: "center",
+          wrapText: true,
+        };
+
+        const IMG_WIDTH = 55;
+        const IMG_HEIGHT = 55;
+        const EMU_PER_PX = 9525;
+
+        const photosByCategory = await Promise.all(
+          photoCategoryMap.map(async (cat) => {
+            const validUrls = getPhotoUrlsArray(item, cat.key).slice(0, 10);
+            const images = await Promise.all(
+              validUrls.map((url) => fetchImageAsBuffer(url)),
+            );
+            return { cat, validUrls, images };
+          }),
+        );
+
+        for (const { cat, validUrls, images } of photosByCategory) {
+          const totalImgs = validUrls.length;
+
+          for (let imgIdx = 0; imgIdx < totalImgs; imgIdx++) {
+            const imageData = images[imgIdx];
+            if (imageData) {
+              try {
+                const imageId = workbook.addImage({
+                  buffer: imageData.buffer,
+                  extension: imageData.extension,
+                });
+
+                const pixelLeft =
+                  totalImgs === 1 ? 40 : 10 + imgIdx * (IMG_WIDTH + 30);
+                const pixelTop = 10;
+
+                worksheet.addImage(imageId, {
+                  tl: {
+                    nativeCol: cat.colIndex,
+                    nativeColOff: pixelLeft * EMU_PER_PX,
+                    nativeRow: excelRowIndex,
+                    nativeRowOff: pixelTop * EMU_PER_PX,
+                  } as any,
+                  ext: { width: IMG_WIDTH, height: IMG_HEIGHT },
+                  editAs: "oneCell",
+                });
+              } catch (err) {
+                console.error("Embed Image Error:", err);
+              }
             }
           }
         }
       }
+
+      const headerRow = worksheet.getRow(1);
+      headerRow.height = 28;
+      headerRow.font = { bold: true, color: { argb: "FFFFFF" } };
+      headerRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "1E40AF" },
+      };
+      headerRow.alignment = { vertical: "middle", horizontal: "center" };
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      saveAs(
+        blob,
+        `PG_Report_Full_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+    } catch (error) {
+      console.error("Customer portal Excel export failed:", error);
+      Swal.fire(
+        "Export ไม่สำเร็จ",
+        error instanceof Error ? error.message : "กรุณาลองใหม่อีกครั้ง",
+        "error",
+      );
     }
-
-    const headerRow = worksheet.getRow(1);
-    headerRow.height = 28;
-    headerRow.font = { bold: true, color: { argb: "FFFFFF" } };
-    headerRow.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "1E40AF" },
-    };
-    headerRow.alignment = { vertical: "middle", horizontal: "center" };
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    saveAs(
-      blob,
-      `PG_Report_Full_${new Date().toISOString().slice(0, 10)}.xlsx`,
-    );
   };
 
   return (
