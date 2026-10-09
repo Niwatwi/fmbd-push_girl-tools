@@ -678,13 +678,6 @@ export default function CustomerReportPortal() {
       setFilteredData(normalizedRows);
       setAttendanceWages((res as any).attendanceWages || []);
 
-      const salaryRes = await getAdminSalarySummaryReportAction();
-      if (salaryRes.success) {
-        setSalarySummaryData(salaryRes.data || []);
-      } else {
-        throw new Error(salaryRes.message || "ไม่สามารถโหลดรายงานเงินเดือนได้");
-      }
-
       const promoRes = await fetchPromotionsData();
       if (promoRes.success) {
         setPromotions(promoRes.data || []);
@@ -704,6 +697,40 @@ export default function CustomerReportPortal() {
   useEffect(() => {
     loadPortalData();
   }, []);
+
+  useEffect(() => {
+    const selectedPromo = promotions.find(
+      (promotion) => String(promotion.id) === String(selectedPromotion),
+    );
+    const promoStartDate = selectedPromo?.start_date?.split("T")[0] || "";
+    const promoEndDate = selectedPromo?.end_date?.split("T")[0] || "";
+    const startDates = [startDate, promoStartDate].filter(Boolean).sort();
+    const endDates = [endDate, promoEndDate].filter(Boolean).sort();
+    const effectiveStartDate = startDates[startDates.length - 1];
+    const effectiveEndDate = endDates[0];
+
+    if (
+      effectiveStartDate &&
+      effectiveEndDate &&
+      effectiveStartDate > effectiveEndDate
+    ) {
+      setSalarySummaryData([]);
+      return;
+    }
+
+    let active = true;
+    getAdminSalarySummaryReportAction({
+      startDate: effectiveStartDate,
+      endDate: effectiveEndDate,
+    }).then((result) => {
+      if (!active) return;
+      setSalarySummaryData(result.success ? result.data || [] : []);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [startDate, endDate, selectedPromotion, promotions]);
 
   // 🔍 กรองข้อมูลตาม Account, สาขา, พนักงาน, รอบโปรโมชั่น และวันที่
   useEffect(() => {
@@ -1235,8 +1262,15 @@ export default function CustomerReportPortal() {
       );
     }
 
+    if (selectedAccount !== "ALL") {
+      result = result.filter(
+        (item) =>
+          getAccountName(item.storeName, item.storeCode) === selectedAccount,
+      );
+    }
+
     return result;
-  }, [salarySummaryData, selectedUser, selectedStore]);
+  }, [salarySummaryData, selectedAccount, selectedUser, selectedStore]);
 
   const totalBaseWage = useMemo(() => {
     if (filteredSalarySummary.length > 0) {
