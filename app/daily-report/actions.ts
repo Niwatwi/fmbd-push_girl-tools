@@ -314,11 +314,20 @@ export async function submitFullDailyActivityReportAction(
 
     const { data: reportData, error: reportError } = await supabase
       .from("pg_daily_activity_reports")
-      .insert([recordToInsert])
+      .upsert([recordToInsert], {
+        onConflict: "user_id,store_code,report_date",
+      })
       .select()
       .single();
 
     if (reportError) throw reportError;
+
+    const { error: deleteProductsError } = await supabase
+      .from("pg_daily_report_products")
+      .delete()
+      .eq("report_id", reportData.id);
+
+    if (deleteProductsError) throw deleteProductsError;
 
     // บันทึกรายการสินค้าเข้าตาราง pg_daily_report_products (Dynamic)
     if (
