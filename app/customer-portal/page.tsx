@@ -293,7 +293,18 @@ const TOTAL_PHOTO_COLS = PHOTO_COLUMNS_CONFIG.reduce(
 );
 
 //  Helper เช็คชื่อ Account
-function getAccountName(storeName: string = "", storeCode: string = "") {
+function getAccountName(
+  storeName: string = "",
+  storeCode: string = "",
+  account: string = "",
+) {
+  const explicitAccount = account.trim();
+  const normalizedAccount = explicitAccount.toLowerCase().replace(/\s+/g, "");
+  if (normalizedAccount.includes("bigc")) return "Big C";
+  if (normalizedAccount.includes("tops")) return "Tops";
+  if (normalizedAccount.includes("lotus")) return "Lotus's";
+  if (explicitAccount) return explicitAccount;
+
   const name = (storeName || "").toLowerCase().replace(/\s+/g, "");
   const code = (storeCode || "").toLowerCase().replace(/\s+/g, "");
   if (name.includes("bigc") || code.includes("bigc") || code.includes("pgbc")) {
@@ -378,6 +389,7 @@ function getRowTotalSalesPcs(row: any): number {
   const accountName = getAccountName(
     row.storeName || row.store_name,
     row.storeCode || row.store_code,
+    row.account,
   );
   const isBigC = accountName === "Big C";
   const productRows = row.products || row.pg_daily_report_products || row.items;
@@ -739,7 +751,8 @@ export default function CustomerReportPortal() {
     if (selectedAccount !== "ALL") {
       result = result.filter(
         (item) =>
-          getAccountName(item.storeName, item.storeCode) === selectedAccount,
+          getAccountName(item.storeName, item.storeCode, item.account) ===
+          selectedAccount,
       );
     }
 
@@ -794,7 +807,7 @@ export default function CustomerReportPortal() {
     return Array.from(
       new Set(
         reportData.map((item) =>
-          getAccountName(item.storeName, item.storeCode),
+          getAccountName(item.storeName, item.storeCode, item.account),
         ),
       ),
     );
@@ -821,7 +834,7 @@ export default function CustomerReportPortal() {
     if (selectedStore === "ALL") {
       const map = new Map<string, any>();
       filteredData.forEach((row) => {
-        const acc = getAccountName(row.storeName, row.storeCode);
+        const acc = getAccountName(row.storeName, row.storeCode, row.account);
         const isBigC = acc === "Big C";
 
         if (!map.has(acc)) {
@@ -854,7 +867,11 @@ export default function CustomerReportPortal() {
       const map = new Map<string, any>();
       filteredData.forEach((row) => {
         const dateKey = row.reportDate || "ไม่ระบุวัน";
-        const accountName = getAccountName(row.storeName, row.storeCode);
+        const accountName = getAccountName(
+          row.storeName,
+          row.storeCode,
+          row.account,
+        );
         const isBigC = accountName === "Big C";
 
         if (!map.has(dateKey)) {
@@ -906,7 +923,11 @@ export default function CustomerReportPortal() {
       }
 
       const daily = dateMap.get(row.reportDate);
-      const accountName = getAccountName(row.storeName, row.storeCode);
+      const accountName = getAccountName(
+        row.storeName,
+        row.storeCode,
+        row.account,
+      );
       PRICE_CHART_SERIES.forEach((series) => {
         const price =
           series.type === "our"
@@ -985,7 +1006,7 @@ export default function CustomerReportPortal() {
       }
 
       const current = dateMap.get(dateKey);
-      const acc = getAccountName(row.storeName, row.storeCode);
+      const acc = getAccountName(row.storeName, row.storeCode, row.account);
       const isBigC = acc === "Big C";
 
       REPORT_PRODUCTS.forEach((prod) => {
@@ -1021,7 +1042,11 @@ export default function CustomerReportPortal() {
     }> = [];
 
     filteredData.forEach((row) => {
-      const accountName = getAccountName(row.storeName, row.storeCode);
+      const accountName = getAccountName(
+        row.storeName,
+        row.storeCode,
+        row.account,
+      );
       const storeCode = String(
         row.storeCode || row.storeName || "ไม่ระบุสาข",
       ).trim();
@@ -1226,7 +1251,11 @@ export default function CustomerReportPortal() {
   // 💰 ยอดขายรวมคำนวณจากทุก 10 SKU
   const totalRevenue = useMemo(() => {
     return filteredData.reduce((sum, row) => {
-      const accountName = getAccountName(row.storeName, row.storeCode);
+      const accountName = getAccountName(
+        row.storeName,
+        row.storeCode,
+        row.account,
+      );
       const isBigC = accountName === "Big C";
       let rowRev = 0;
       REPORT_PRODUCTS.forEach((prod) => {
@@ -1265,7 +1294,8 @@ export default function CustomerReportPortal() {
     if (selectedAccount !== "ALL") {
       result = result.filter(
         (item) =>
-          getAccountName(item.storeName, item.storeCode) === selectedAccount,
+          getAccountName(item.storeName, item.storeCode, item.account) ===
+          selectedAccount,
       );
     }
 
@@ -1819,7 +1849,11 @@ export default function CustomerReportPortal() {
         const item = dataToExport[i];
         const excelRowIndex = i + 1;
 
-        const accountName = getAccountName(item.storeName, item.storeCode);
+        const accountName = getAccountName(
+          item.storeName,
+          item.storeCode,
+          item.account,
+        );
         const isBigC = accountName === "Big C";
 
         const rowObj: any = {
@@ -3008,6 +3042,7 @@ export default function CustomerReportPortal() {
                       const accountName = getAccountName(
                         row.storeName,
                         row.storeCode,
+                        row.account,
                       );
                       const isBigC = accountName === "Big C";
                       const safeStoreName =

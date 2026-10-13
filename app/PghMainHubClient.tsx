@@ -355,15 +355,24 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
             </p>
             {attendanceStatus === "not_checked_in" ? (
               <select
-                value={selectedStoreIndex}
+                value={storesList.length > 0 ? selectedStoreIndex : ""}
                 onChange={(e) => setSelectedStoreIndex(Number(e.target.value))}
+                disabled={storesList.length === 0}
                 className="w-full p-2 border rounded-lg text-xs font-bold bg-white text-slate-800"
               >
-                {storesList.map((s, idx) => (
-                  <option key={s.store_code} value={idx}>
-                    {s.store_name}
+                {storesList.length === 0 ? (
+                  <option value="" disabled>
+                    {isRefreshing
+                      ? "กำลังโหลดรายชื่อสาขา..."
+                      : "ไม่พบสาขาที่เปิดใช้งานในพื้นที่นี้"}
                   </option>
-                ))}
+                ) : (
+                  storesList.map((s, idx) => (
+                    <option key={s.store_code} value={idx}>
+                      {s.store_name}
+                    </option>
+                  ))
+                )}
               </select>
             ) : (
               <h4 className="text-sm font-black text-blue-800">

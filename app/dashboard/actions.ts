@@ -802,6 +802,18 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
     const { data: dailyReports } = await reportsQuery;
 
+    const { data: storeAccounts } = await supabase
+      .from("pg_stores")
+      .select("store_code, account");
+    const storeAccountLookup = new Map<string, string>();
+    for (const store of storeAccounts || []) {
+      if (store.store_code == null) continue;
+      storeAccountLookup.set(
+        String(store.store_code).trim(),
+        store.account || "",
+      );
+    }
+
     // สะสมข้อมูลแยกตาม User ID
     const userSummaryMap = new Map<number, any>();
 
@@ -814,6 +826,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
           displayName: log.displayName,
           storeCode: log.storeCode,
           storeName: log.storeName,
+          account:
+            storeAccountLookup.get(String(log.storeCode || "").trim()) || "",
           workDaysCount: 0,
           baseSalaryRate: log.baseSalaryRate,
           totalDailyWage: 0,
@@ -864,6 +878,10 @@ export async function getAdminSalarySummaryReportAction(params?: {
           displayName: item.displayName,
           storeCode: item.storeCode,
           storeName: item.storeName,
+          account:
+            item.account ||
+            storeAccountLookup.get(String(item.storeCode || "").trim()) ||
+            "",
           workDaysCount: item.workDaysCount,
           baseSalaryRate: item.baseSalaryRate,
           totalDailyWage: item.totalDailyWage,
@@ -1241,7 +1259,7 @@ export async function getCustomerFullActivityReport() {
     }
 
     const storeQueries = [
-      supabase.from("stores").select("store_code, store_name"),
+      supabase.from("pg_stores").select("store_code, store_name, account"),
       supabase.from("store_targets").select("*"),
     ];
 
@@ -1255,17 +1273,23 @@ export async function getCustomerFullActivityReport() {
       );
     }
 
-    for (const item of [
-      ...(storesRes.data || []),
-      ...(targetsRes.data || []),
-    ]) {
+    for (const item of storesRes.data || []) {
+      if (!item?.store_code) continue;
+      const key = String(item.store_code).trim();
+      const existing = storeLookup.get(key);
+      storeLookup.set(key, {
+        ...existing,
+        store_code: item.store_code,
+        store_name: item.store_name || existing?.store_name || "",
+        account: item.account || existing?.account || "",
+      });
+    }
+
+    for (const item of targetsRes.data || []) {
       if (!item?.store_code) continue;
       const key = String(item.store_code).trim();
       if (!storeLookup.has(key)) {
-        storeLookup.set(key, {
-          store_code: item.store_code,
-          store_name: item.store_name || "",
-        });
+        storeLookup.set(key, { store_code: item.store_code, store_name: "" });
       }
     }
 
@@ -1305,6 +1329,12 @@ export async function getCustomerFullActivityReport() {
 
       const resolvedStoreCode =
         row.store_code ?? row.storeCode ?? attendanceMatch?.store_code ?? "";
+      const resolvedStoreAccount =
+        row.account ??
+        row.store_account ??
+        attendanceMatch?.account ??
+        storeLookup.get(String(resolvedStoreCode).trim())?.account ??
+        "";
 
       const directPhotoEntries: any[] = [];
       const directPhotoFields = [
@@ -1411,6 +1441,7 @@ export async function getCustomerFullActivityReport() {
         userName: resolvedUserName,
         storeCode: resolvedStoreCode,
         storeName: resolvedStoreName,
+        account: resolvedStoreAccount,
         reportDate: row.report_date ?? row.reportDate ?? "",
         traffic: Number(row.traffic_count ?? row.traffic ?? 0),
         approach: Number(row.approach_count ?? row.approach ?? 0),

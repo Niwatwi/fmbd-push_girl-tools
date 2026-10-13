@@ -284,12 +284,15 @@ export async function handleLogout() {
 // ฟังก์ชันดึงรายชื่อร้านค้าตามเขตพื้นที่ของพนักงาน
 // ในไฟล์ app/login/actions.ts
 export async function getStoresByArea(area: string) {
-  // สำคัญ: ต้องเช็ค area ให้ตรง และกรองเฉพาะที่ is_active เป็น true
+  const areaCode = area.trim();
+  if (!areaCode) return { success: true, stores: [] };
+
   const { data, error } = await supabase
     .from("pg_stores")
     .select("*")
-    .eq("area", area) // เช่น PGTO01
-    .eq("is_active", true); // เพิ่มเงื่อนไขเช็คสถานะร้าน
+    .or(`area.eq.${areaCode},mer_code.eq.${areaCode}`)
+    .eq("is_active", true)
+    .order("store_name", { ascending: true });
 
   if (error) {
     console.error("Error fetching stores:", error);
