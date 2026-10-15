@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -11,12 +11,33 @@ import {
   ChevronRight,
   Play,
   Film,
+  Tag,
 } from "lucide-react";
+import { getCurrentUserPromotionBriefAction } from "@/app/admin/promotions/actions";
 
 export default function PromotionsBriefPage() {
   const router = useRouter();
   const [activeImageIndex, setActiveImageIndex] = useState<number | null>(null);
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [campaignLoading, setCampaignLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    getCurrentUserPromotionBriefAction()
+      .then((result) => {
+        if (active) setCampaigns(result.success ? result.promotions || [] : []);
+      })
+      .catch(() => {
+        if (active) setCampaigns([]);
+      })
+      .finally(() => {
+        if (active) setCampaignLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // 🎥 รายชื่อคลิปวิดีโอตัวอย่างทั้ง 3 คลิป
   // พี่นำไฟล์วิดีโอไปวางใน public/briefs/ ตามชื่อเหล่านี้ได้เลยครับ
@@ -122,6 +143,147 @@ export default function PromotionsBriefPage() {
 
       {/* 📄 MAIN CONTENT CONTAINER */}
       <main className="max-w-md mx-auto px-4 mt-6 space-y-5">
+        <section className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-xs text-left">
+          <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
+            <div>
+              <h2 className="text-sm font-black text-slate-800">
+                แคมเปญประจำสาขา
+              </h2>
+              <p className="mt-0.5 text-[10px] font-medium text-slate-500">
+                รายการสินค้าและเป้าหมายสำหรับรอบปัจจุบัน
+              </p>
+            </div>
+            <Tag size={16} className="text-emerald-700" />
+          </div>
+          {campaignLoading ? (
+            <p className="text-xs text-slate-500">กำลังโหลดแคมเปญ...</p>
+          ) : campaigns.length === 0 ? (
+            <p className="text-xs text-slate-500">
+              ไม่พบแคมเปญที่ตรงกับกลุ่มพนักงานและสาขาที่ Check-in
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {campaigns.map((campaign) => (
+                <article
+                  key={campaign.id}
+                  className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-xs font-black text-emerald-950">
+                        {campaign.campaign_title}
+                      </h3>
+                      <p className="mt-1 text-[10px] font-bold text-slate-600">
+                        {campaign.target_type === "STORE_CODE"
+                          ? `สาขา ${campaign.target_value}`
+                          : campaign.target_type === "COMPANY_TAG"
+                            ? `Account ${campaign.target_value}`
+                            : "ทุก Account"}
+                        {` · ${campaign.staff_group === "ALL" ? "BA และ PG" : campaign.staff_group || "BA และ PG"}`}
+                      </p>
+                    </div>
+                    <span className="rounded-md bg-white px-2 py-1 text-[9px] font-black text-emerald-800">
+                      {campaign.items?.length || 0} SKU
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    {(campaign.items || []).map((item: any, index: number) => (
+                      <div
+                        key={item.id || index}
+                        className="flex items-start justify-between gap-2 border-t border-emerald-100 pt-1.5 text-[10px]"
+                      >
+                        <div className="min-w-0">
+                          <p className="break-words font-bold text-slate-800">
+                            {item.products?.descriptions ||
+                              item.product_name ||
+                              item.label ||
+                              "สินค้า"}
+                          </p>
+                          <p className="font-mono text-[9px] text-slate-500">
+                            {item.products?.sku_code ||
+                              item.sku_code ||
+                              item.barcode ||
+                              ""}
+                            {item.item_scope === "COMPETITOR"
+                              ? " · คู่แข่ง"
+                              : " · สินค้าเรา"}
+                          </p>
+                          {item.condition && (
+                            <p className="mt-0.5 text-amber-800">
+                              {item.condition}
+                            </p>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-right font-bold text-slate-700">
+                          {item.item_scope === "COMPETITOR" ? (
+                            <span>ราคา {item.price || "-"} บาท</span>
+                          ) : (
+                            <>
+                              <span className="block">
+                                Target{" "}
+                                {Number(item.target_qty || 0).toLocaleString()}
+                              </span>
+                              <span className="block text-slate-500">
+                                นับ ×
+                                {Number(
+                                  item.credit_factor ?? 1,
+                                ).toLocaleString()}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {campaign.commission_rules?.tiers?.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2">
+                      <p className="text-[10px] font-black text-amber-900">
+                        คอมมิชชั่นตาม % เป้าหมาย
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-bold text-amber-900">
+                        {campaign.commission_rules.tiers.map(
+                          (tier: any, index: number) => (
+                            <span key={index}>
+                              {tier.min_credited_qty != null
+                                ? `${Number(tier.min_credited_qty).toLocaleString()} หน่วย · ${tier.achievement_percent}%`
+                                : `${tier.achievement_percent}%`}{" "}
+                              = ฿{Number(tier.payout || 0).toLocaleString()}
+                            </span>
+                          ),
+                        )}
+                        <span>
+                          เกิน{" "}
+                          {campaign.commission_rules.step?.start_qty ??
+                            campaign.commission_rules.step?.start_percent}{" "}
+                          หน่วย ทุก{" "}
+                          {campaign.commission_rules.step?.step_qty ??
+                            campaign.commission_rules.step?.step_percent}{" "}
+                          หน่วย เพิ่ม ฿
+                          {Number(
+                            campaign.commission_rules.step?.payout || 0,
+                          ).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {campaign.special_tier_text && (
+                    <p className="mt-2 text-[10px] font-bold text-rose-700">
+                      {campaign.special_tier_text}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => router.push("/daily-report")}
+                    className="mt-3 w-full rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800"
+                  >
+                    เปิดแบบฟอร์มรายงานรอบนี้
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* Title Card */}
         <div className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200">
           <h2 className="text-sm font-black text-slate-800">

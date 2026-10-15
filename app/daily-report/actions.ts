@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { normalizeCompetitorPrices } from "@/utils/competitor-prices";
+import { requireUserOrAdminSession } from "@/utils/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -24,6 +25,10 @@ export interface ActivityPhotoPayload {
 export interface ProductReportPayload {
   barcode: string;
   descriptions: string;
+  item_scope?: "OUR" | "COMPETITOR";
+  credit_factor?: number;
+  promotion_target_qty?: number;
+  competitor_price?: number;
   price_our: number;
   stock_before: number;
   sales_qty: number;
@@ -36,17 +41,22 @@ export interface ProductReportPayload {
 export interface DbProductItem {
   id: number;
   code: string;
+  sku_code: string | null;
   descriptions: string;
   barcode: string;
   imageurl: string | null;
   brand: string | null;
   segment: string | null;
+  company?: string | null;
+  company_type?: string | null;
 }
 
 export interface FullActivityReportInput {
   attendanceLogId: number;
   userId: number;
   storeCode: string;
+  promotionId?: number | string;
+  promotionCommissionRules?: Record<string, unknown> | null;
   trafficCount: number;
   approachCount: number;
   closedSalesCount: number;
@@ -113,7 +123,9 @@ export async function getProductByBarcode(barcode: string) {
   try {
     const { data, error } = await supabase
       .from("products")
-      .select("id, code, descriptions, barcode, imageurl, brand, segment")
+      .select(
+        "id, code, sku_code, descriptions, barcode, imageurl, brand, segment, company, company_type",
+      )
       .eq("barcode", cleanBarcode)
       .eq("is_active", true)
       .order("id", { ascending: false })
@@ -130,6 +142,7 @@ export async function getProductByBarcode(barcode: string) {
 
 // 2. ดึงสถานะการเช็คอินวันนี้
 export async function getTodayActiveAttendance(userId: number) {
+  await requireUserOrAdminSession(userId);
   const supabase = getClientInstance();
   try {
     const now = new Date();
@@ -153,7 +166,32 @@ export async function getTodayActiveAttendance(userId: number) {
       .maybeSingle();
 
     if (error) throw error;
-    return { success: true, log: data };
+
+    const [profileResult, storeResult] = await Promise.all([
+      supabase
+        .from("user_profiles")
+        .select("company_tag")
+        .eq("id", userId)
+        .maybeSingle(),
+      data?.store_code
+        ? supabase
+            .from("pg_stores")
+            .select("company_tag")
+            .eq("store_code", data.store_code)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    return {
+      success: true,
+      log: data
+        ? {
+            ...data,
+            staff_group: profileResult.data?.company_tag || "",
+            store_company_tag: storeResult.data?.company_tag || "",
+          }
+        : data,
+    };
   } catch (error: any) {
     return { success: false, log: null, message: error.message };
   }
@@ -215,9 +253,82 @@ export async function getStoreInitialGiftsAction(storeCode: string) {
 export async function submitFullDailyActivityReportAction(
   payload: FullActivityReportInput,
 ) {
+  await requireUserOrAdminSession(payload.userId);
   const supabase = getClientInstance();
   try {
     const userId = payload.userId;
+
+    if (payload.promotionId) {
+      const { data: campaign, error: campaignError } = await supabase
+        .from("promotions")
+        .select("*, items:promotion_items(*, products(barcode))")
+        .eq("id", String(payload.promotionId))
+        .eq("is_active", true)
+        .maybeSingle();
+      if (campaignError || !campaign) {
+        throw new Error("ไม่พบแคมเปญหรือแคมเปญถูกปิดใช้งานแล้ว");
+      }
+
+      const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Bangkok",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+      if (
+        (campaign.start_date && String(campaign.start_date) > today) ||
+        (campaign.end_date && String(campaign.end_date) < today)
+      ) {
+        throw new Error("แคมเปญนี้อยู่นอกช่วงวันที่ใช้งาน");
+      }
+
+      const [profileResult, storeResult] = await Promise.all([
+        supabase
+          .from("user_profiles")
+          .select("company_tag")
+          .eq("id", userId)
+          .maybeSingle(),
+        supabase
+          .from("pg_stores")
+          .select("company_tag")
+          .eq("store_code", payload.storeCode)
+          .maybeSingle(),
+      ]);
+      const staffGroup = String(profileResult.data?.company_tag || "")
+        .trim()
+        .toUpperCase();
+      const allowedGroup = String(campaign.staff_group || "ALL")
+        .trim()
+        .toUpperCase();
+      if (allowedGroup !== "ALL" && allowedGroup !== staffGroup) {
+        throw new Error("กลุ่มพนักงานไม่มีสิทธิ์ส่งรายงานในแคมเปญนี้");
+      }
+
+      const storeCompanyTag = String(storeResult.data?.company_tag || "");
+      const targetMatches =
+        campaign.target_type === "ALL" ||
+        (campaign.target_type === "STORE_CODE" &&
+          String(campaign.target_value) === String(payload.storeCode)) ||
+        (campaign.target_type === "COMPANY_TAG" &&
+          String(campaign.target_value) === storeCompanyTag);
+      if (!targetMatches) {
+        throw new Error("แคมเปญนี้ไม่ได้กำหนดให้กับ Account/สาขานี้");
+      }
+
+      const allowedBarcodes = new Set<string>(
+        (campaign.items || [])
+          .map((item: any) =>
+            String(item.products?.barcode || item.barcode || "").trim(),
+          )
+          .filter(Boolean),
+      );
+      const invalidProduct = (payload.products || []).some(
+        (product) => !allowedBarcodes.has(String(product.barcode).trim()),
+      );
+      if (invalidProduct) {
+        throw new Error("พบสินค้าที่ไม่ได้ถูกกำหนดไว้ในแคมเปญนี้");
+      }
+    }
 
     const now = new Date();
     const reportDate = new Intl.DateTimeFormat("en-CA", {
@@ -283,6 +394,8 @@ export async function submitFullDailyActivityReportAction(
       attendance_log_id: payload.attendanceLogId,
       user_id: userId,
       store_code: payload.storeCode,
+      promotion_id: payload.promotionId ? String(payload.promotionId) : null,
+      promotion_commission_rules: payload.promotionCommissionRules || null,
       report_date: reportDate,
       traffic_count: Number(payload.trafficCount || 0),
       approach_count: Number(payload.approachCount || 0),
@@ -368,6 +481,10 @@ export async function submitFullDailyActivityReportAction(
           report_id: reportData.id,
           barcode: prod.barcode,
           descriptions: prod.descriptions,
+          item_scope: prod.item_scope || "OUR",
+          credit_factor: Number(prod.credit_factor ?? 1),
+          promotion_target_qty: Number(prod.promotion_target_qty || 0),
+          competitor_price: Number(prod.competitor_price || 0),
           price_our: Number(prod.price_our || 0),
           stock_before: Number(prod.stock_before || 0),
           sales_qty: Number(prod.sales_qty || 0),

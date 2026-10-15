@@ -34,10 +34,15 @@ import {
 
 interface ProductFormState {
   barcode: string;
+  sku_code: string;
+  item_scope: "OUR" | "COMPETITOR";
+  target_qty: number;
+  credit_factor: number;
   descriptions: string;
   imageurl: string;
   segment: string;
   price_our: string;
+  competitor_price: string;
   stock_before: string;
   sales_qty: string;
   img_product_base64: string;
@@ -141,6 +146,8 @@ export default function DailyReportPage() {
     id: number;
     store_code: string;
     store_name: string;
+    staff_group?: string;
+    store_company_tag?: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [promotionData, setPromotionData] = useState<PromotionConfig | null>(
@@ -341,7 +348,12 @@ export default function DailyReportPage() {
   useEffect(() => {
     const fetchPromotion = async () => {
       if (attendanceLog?.store_code) {
-        const res = await getPromotionByStoreAction(storeCode);
+        const res = await getPromotionByStoreAction(
+          storeCode,
+          attendanceLog.store_company_tag,
+          attendanceLog.staff_group,
+          user?.id,
+        );
         if (res.success && res.promotions && res.promotions.length > 0) {
           setPromotionData(res.promotions[0]);
           setActivePromotion(res.promotions[0]);
@@ -517,12 +529,37 @@ export default function DailyReportPage() {
     setSearching(false);
 
     if (res.success && res.product) {
+      const promotionItem = activePromotion?.items?.find(
+        (item) =>
+          String(item.barcode || item.products?.barcode || "").trim() ===
+          res.product?.barcode,
+      );
+      if (activePromotion && !promotionItem) {
+        Swal.fire(
+          "สินค้าไม่อยู่ในรอบนี้",
+          "ตรวจสอบรายการสินค้าที่ Admin กำหนดในแคมเปญก่อนเพิ่มรายการ",
+          "warning",
+        );
+        return;
+      }
+
       const addedProduct: ProductFormState = {
         barcode: res.product.barcode,
+        sku_code: res.product.sku_code || "",
+        item_scope: promotionItem?.item_scope || "OUR",
+        target_qty: Number(promotionItem?.target_qty || 0),
+        credit_factor: Number(promotionItem?.credit_factor ?? 1),
         descriptions: res.product.descriptions,
         imageurl: res.product.imageurl || "",
         segment: res.product.segment || "",
-        price_our: "0",
+        price_our:
+          promotionItem?.item_scope === "COMPETITOR"
+            ? "0"
+            : String(promotionItem?.price || "0"),
+        competitor_price:
+          promotionItem?.item_scope === "COMPETITOR"
+            ? String(promotionItem?.price || "0")
+            : "0",
         stock_before: "",
         sales_qty: "",
         img_product_base64: "",
@@ -546,7 +583,7 @@ export default function DailyReportPage() {
 
   const handleProductFieldChange = (
     barcode: string,
-    field: "price_our" | "stock_before" | "sales_qty",
+    field: "price_our" | "competitor_price" | "stock_before" | "sales_qty",
     value: string,
   ) => {
     setProductsForm((prev) =>
@@ -628,6 +665,8 @@ export default function DailyReportPage() {
             attendanceLogId: attendanceLog.id,
             userId: user?.id || 102,
             storeCode: attendanceLog.store_code,
+            promotionId: activePromotion?.id,
+            promotionCommissionRules: activePromotion?.commission_rules || null,
             trafficCount: Number(traffic) || 0,
             approachCount: Number(approach) || 0,
             closedSalesCount: Number(closedSales) || 0,
@@ -645,6 +684,10 @@ export default function DailyReportPage() {
             products: productsForm.map((p) => ({
               barcode: p.barcode,
               descriptions: p.descriptions,
+              item_scope: p.item_scope,
+              credit_factor: p.credit_factor,
+              promotion_target_qty: p.target_qty,
+              competitor_price: Number(p.competitor_price) || 0,
               price_our: Number(p.price_our) || 0,
               stock_before: Number(p.stock_before) || 0,
               sales_qty: Number(p.sales_qty) || 0,
@@ -827,7 +870,7 @@ export default function DailyReportPage() {
                 : "bg-orange-50 border-orange-200"
             }`}
           >
-            <div className="flex items-center gap-1.5 font-black text-slate-800 border-b border-black/5 pb-2 mb-2">
+            <div className="mb-2 flex items-center gap-1.5 border-b border-black/5 pb-2 font-black text-slate-800">
               <Tag
                 size={14}
                 className={
@@ -837,10 +880,9 @@ export default function DailyReportPage() {
                 }
               />
               <span>
-                คู่มือตรวจสอบโปรโมชันหน้าร้าน ({activePromotion.campaign_title})
+                คู่มือโปรโมชันหน้าร้าน ({activePromotion.campaign_title})
               </span>
             </div>
-
             <ul className="space-y-1.5 font-bold text-slate-700">
               {activePromotion.items?.map((item, idx) => (
                 <li key={idx} className="flex items-start gap-1">
@@ -854,16 +896,22 @@ export default function DailyReportPage() {
                     •
                   </span>
                   <span>
-                    {item.label}: ราคา {item.price} บ.{" "}
-                    <span
-                      className={
-                        activePromotion.target_type === "COMPANY_TAG"
-                          ? "text-amber-700"
-                          : "text-orange-700"
-                      }
-                    >
-                      ({item.condition})
-                    </span>
+                    {item.products?.descriptions ||
+                      item.product_name ||
+                      item.label ||
+                      "สินค้า"}
+                    {item.item_scope === "COMPETITOR"
+                      ? " · คู่แข่ง"
+                      : " · สินค้าเรา"}
+                    {item.price ? ` · ราคา ${item.price} บ.` : ""}
+                    {item.condition ? ` · ${item.condition}` : ""}
+                    {item.item_scope !== "COMPETITOR" && (
+                      <span className="ml-1 text-cyan-800">
+                        · Target {Number(item.target_qty || 0).toLocaleString()}
+                        · ตัวคูณ{" "}
+                        {Number(item.credit_factor ?? 1).toLocaleString()}
+                      </span>
+                    )}
                   </span>
                 </li>
               ))}
@@ -1014,6 +1062,9 @@ export default function DailyReportPage() {
                         {product.descriptions}
                       </p>
                       <p className="text-[10px] text-slate-500 font-bold">
+                        SKU บริษัท: {product.sku_code || "-"}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-bold">
                         บาร์โค้ด: {product.barcode}
                       </p>
                     </div>
@@ -1032,57 +1083,84 @@ export default function DailyReportPage() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
-                      ราคาขาย (บ.)
-                    </label>
-                    <input
-                      type="number"
-                      value={product.price_our}
-                      onChange={(e) =>
-                        handleProductFieldChange(
-                          product.barcode,
-                          "price_our",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full bg-white border border-slate-300 rounded-md p-1.5 text-xs font-bold text-center"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
-                      สต๊อกยกมา
-                    </label>
-                    <input
-                      type="number"
-                      value={product.stock_before}
-                      onChange={(e) =>
-                        handleProductFieldChange(
-                          product.barcode,
-                          "stock_before",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full bg-white border border-slate-300 rounded-md p-1.5 text-xs font-bold text-center"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
-                      จำนวนขาย
-                    </label>
-                    <input
-                      type="number"
-                      value={product.sales_qty}
-                      onChange={(e) =>
-                        handleProductFieldChange(
-                          product.barcode,
-                          "sales_qty",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full bg-white border border-slate-300 rounded-md p-1.5 text-xs font-bold text-center"
-                    />
-                  </div>
+                  {product.item_scope === "COMPETITOR" ? (
+                    <>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                          ราคาคู่แข่ง (บาท)
+                        </label>
+                        <input
+                          type="number"
+                          value={product.competitor_price}
+                          onChange={(event) =>
+                            handleProductFieldChange(
+                              product.barcode,
+                              "competitor_price",
+                              event.target.value,
+                            )
+                          }
+                          className="w-full rounded-md border border-slate-300 bg-white p-1.5 text-center text-xs font-bold"
+                        />
+                      </div>
+                      <div className="col-span-2 self-end text-[9px] text-slate-500">
+                        รายการนี้ใช้บันทึกราคาคู่แข่ง ไม่รวมยอดขาย/Target ของเรา
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                          ราคาขาย (บ.)
+                        </label>
+                        <input
+                          type="number"
+                          value={product.price_our}
+                          onChange={(event) =>
+                            handleProductFieldChange(
+                              product.barcode,
+                              "price_our",
+                              event.target.value,
+                            )
+                          }
+                          className="w-full rounded-md border border-slate-300 bg-white p-1.5 text-center text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                          สต๊อกยกมา
+                        </label>
+                        <input
+                          type="number"
+                          value={product.stock_before}
+                          onChange={(event) =>
+                            handleProductFieldChange(
+                              product.barcode,
+                              "stock_before",
+                              event.target.value,
+                            )
+                          }
+                          className="w-full rounded-md border border-slate-300 bg-white p-1.5 text-center text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                          จำนวนขาย (ชิ้น/แพ็ค)
+                        </label>
+                        <input
+                          type="number"
+                          value={product.sales_qty}
+                          onChange={(event) =>
+                            handleProductFieldChange(
+                              product.barcode,
+                              "sales_qty",
+                              event.target.value,
+                            )
+                          }
+                          className="w-full rounded-md border border-slate-300 bg-white p-1.5 text-center text-xs font-bold"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* ส่วนการอัปโหลดรูปภาพ 3 รูปของสินค้า */}

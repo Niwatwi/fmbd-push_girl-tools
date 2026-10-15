@@ -121,6 +121,9 @@ function getReportProductSalesBreakdown(report: any) {
   let nestedOrange = 0;
 
   for (const item of productRows) {
+    if (String(item?.item_scope || "OUR").toUpperCase() === "COMPETITOR") {
+      continue;
+    }
     const barcode = String(item?.barcode ?? "").trim();
     const qty = Number(item?.sales_qty ?? 0);
     if (!barcode || Number.isNaN(qty)) continue;
@@ -149,12 +152,19 @@ function getReportTotalSalesQty(report: any): number {
       : [];
 
   if (Array.isArray(productRows) && productRows.length > 0) {
-    const totalProductQty = productRows.reduce((sum: number, item: any) => {
+    const ourProductRows = productRows.filter(
+      (item: any) =>
+        String(item?.item_scope || "OUR").toUpperCase() !== "COMPETITOR",
+    );
+    const totalProductQty = ourProductRows.reduce((sum: number, item: any) => {
       const qty = Number(item?.sales_qty ?? 0);
       return sum + (Number.isNaN(qty) ? 0 : qty);
     }, 0);
 
-    if (totalProductQty > 0) return totalProductQty;
+    if (ourProductRows.length > 0) return totalProductQty;
+    if (productRows.some((item: any) => item?.item_scope === "COMPETITOR")) {
+      return 0;
+    }
   }
 
   return (
@@ -660,6 +670,93 @@ export async function calculateBigCCommission(
   };
 }
 
+function calculatePromotionCommission(
+  creditedSales: number,
+  targetQty: number,
+  rules: any,
+): CommissionResult {
+  const achievementPercent =
+    targetQty > 0 ? (creditedSales / targetQty) * 100 : 0;
+  const tiers = Array.isArray(rules?.tiers) ? rules.tiers : [];
+  const eligibleTiers = tiers
+    .filter((tier: any) => {
+      const hasQuantityThreshold =
+        tier.min_credited_qty !== null &&
+        tier.min_credited_qty !== undefined &&
+        tier.min_credited_qty !== "";
+      const achieved = hasQuantityThreshold
+        ? creditedSales >= Number(tier.min_credited_qty)
+        : Number(tier.achievement_percent) <= achievementPercent;
+      return achieved && Number.isFinite(Number(tier.payout));
+    })
+    .sort(
+      (a: any, b: any) =>
+        Number(a.achievement_percent) - Number(b.achievement_percent),
+    );
+  const topTier = eligibleTiers[eligibleTiers.length - 1];
+  const step = rules?.step || {};
+  const hasQuantitySteps =
+    step.start_qty !== null &&
+    step.start_qty !== undefined &&
+    step.step_qty !== null &&
+    step.step_qty !== undefined;
+  const stepStart = Number(
+    hasQuantitySteps ? step.start_qty : step.start_percent || 0,
+  );
+  const stepSize = Number(
+    hasQuantitySteps ? step.step_qty : step.step_percent || 0,
+  );
+  const stepPayout = Number(step.payout || 0);
+  const extraSteps =
+    stepSize > 0 &&
+    (hasQuantitySteps ? creditedSales : achievementPercent) > stepStart
+      ? Math.floor(
+          ((hasQuantitySteps ? creditedSales : achievementPercent) -
+            stepStart) /
+            stepSize,
+        )
+      : 0;
+  const incentiveAmount =
+    Number(topTier?.payout || 0) + extraSteps * stepPayout;
+  const nextTierQuantities = tiers
+    .map((tier: any) => {
+      const hasQuantityThreshold =
+        tier.min_credited_qty !== null &&
+        tier.min_credited_qty !== undefined &&
+        tier.min_credited_qty !== "";
+      return hasQuantityThreshold
+        ? Number(tier.min_credited_qty)
+        : (targetQty * Number(tier.achievement_percent || 0)) / 100;
+    })
+    .filter((quantity: number) => quantity > creditedSales);
+  if (stepSize > 0) {
+    const nextBonusQuantity =
+      (creditedSales < stepStart
+        ? stepStart
+        : stepStart + (extraSteps + 1) * stepSize) || 0;
+    if (nextBonusQuantity > creditedSales) {
+      nextTierQuantities.push(nextBonusQuantity);
+    }
+  }
+  const tierStatus = topTier
+    ? `${achievementPercent.toFixed(1)}% · ${incentiveAmount.toLocaleString()}฿`
+    : `ยังไม่ถึงเกณฑ์ (${achievementPercent.toFixed(1)}%)`;
+
+  return {
+    totalSetsSold: creditedSales,
+    totalPacksSold: creditedSales,
+    baseSalary: 0,
+    incentiveAmount,
+    totalEarning: incentiveAmount,
+    achievementPercent: Number(achievementPercent.toFixed(2)),
+    tierStatus,
+    nextTierDifference:
+      nextTierQuantities.length > 0
+        ? Math.max(0, Math.min(...nextTierQuantities) - creditedSales)
+        : 0,
+  };
+}
+
 // Helper คำนวณค่าแรงจาก Log เข้า-ออกงาน
 function getWageFromAttendanceLog(log: any): number {
   if (!log.check_in_at || !log.check_out_at) return 0;
@@ -802,6 +899,18 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
     const { data: dailyReports } = await reportsQuery;
 
+    const { data: promotionRows } = await supabase
+      .from("promotions")
+      .select(
+        "id, commission_rules, items:promotion_items(*, products(barcode))",
+      );
+    const promotionsById = new Map(
+      (promotionRows || []).map((promotion: any) => [
+        String(promotion.id),
+        promotion,
+      ]),
+    );
+
     const { data: storeAccounts } = await supabase
       .from("pg_stores")
       .select("store_code, account");
@@ -833,6 +942,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
           totalDailyWage: 0,
           allSkuSalesQty: 0,
           dailySalesByDate: new Map<string, number>(),
+          promotionCommissionByDate: new Map<string, number>(),
         });
       }
 
@@ -857,15 +967,89 @@ export async function getAdminSalarySummaryReportAction(params?: {
         dateKey,
         currentDailySales + totalSalesQty,
       );
+
+      const promotion = rep.promotion_id
+        ? promotionsById.get(String(rep.promotion_id))
+        : null;
+      const rules =
+        rep.promotion_commission_rules || promotion?.commission_rules;
+      const promotionItems = Array.isArray(promotion?.items)
+        ? promotion.items.filter(
+            (item: any) =>
+              String(item.item_scope || "OUR").toUpperCase() !== "COMPETITOR",
+          )
+        : [];
+      const promotionTargetQty = promotionItems.reduce(
+        (sum: number, item: any) => sum + Number(item.target_qty || 0),
+        0,
+      );
+      const reportProducts = Array.isArray(rep.pg_daily_report_products)
+        ? rep.pg_daily_report_products
+        : [];
+      const snapshotTargetQty = reportProducts.reduce(
+        (sum: number, product: any) =>
+          sum + Number(product.promotion_target_qty || 0),
+        0,
+      );
+      const targetQty = snapshotTargetQty || promotionTargetQty;
+
+      if (rules && targetQty > 0 && reportProducts.length > 0) {
+        const targetByBarcode = new Map<string, number>();
+        promotionItems.forEach((item: any) => {
+          const barcode = String(
+            item.products?.barcode || item.barcode || "",
+          ).trim();
+          if (barcode) {
+            targetByBarcode.set(barcode, Number(item.credit_factor ?? 1));
+          }
+        });
+        const creditedSales = reportProducts.reduce(
+          (sum: number, product: any) => {
+            if (
+              String(product.item_scope || "OUR").toUpperCase() === "COMPETITOR"
+            ) {
+              return sum;
+            }
+            const barcode = String(product.barcode || "").trim();
+            const factor = Number.isFinite(Number(product.credit_factor))
+              ? Number(product.credit_factor)
+              : targetByBarcode.get(barcode);
+            return factor === undefined
+              ? sum
+              : sum + Number(product.sales_qty || 0) * factor;
+          },
+          0,
+        );
+        const commissionResult = calculatePromotionCommission(
+          creditedSales,
+          targetQty,
+          rules,
+        );
+        const currentPromotionCommission =
+          userGroup.promotionCommissionByDate.get(dateKey) || 0;
+        userGroup.promotionCommissionByDate.set(
+          dateKey,
+          currentPromotionCommission + commissionResult.incentiveAmount,
+        );
+      }
     });
 
     // คำนวณคอมมิชชั่นและรวมค่าแรงสุทธิ
     const summaryList = await Promise.all(
       Array.from(userSummaryMap.values()).map(async (item) => {
         const dailyCommissionResults = await Promise.all(
-          (Array.from(item.dailySalesByDate.values()) as number[]).map(
-            (dailyPacks) => calculateBigCCommission(dailyPacks),
-          ),
+          (
+            Array.from(item.dailySalesByDate.entries()) as [string, number][]
+          ).map(async ([dateKey, dailyPacks]: [string, number]) => {
+            const configuredPayout =
+              item.promotionCommissionByDate.get(dateKey);
+            return configuredPayout !== undefined
+              ? {
+                  incentiveAmount: configuredPayout,
+                  tierStatus: "คำนวณตามกติกาแคมเปญ",
+                }
+              : calculateBigCCommission(dailyPacks);
+          }),
         );
         const totalCommission = dailyCommissionResults.reduce(
           (sum, result) => sum + result.incentiveAmount,
@@ -900,6 +1084,237 @@ export async function getAdminSalarySummaryReportAction(params?: {
   } catch (error: any) {
     console.error("Get admin salary summary report error:", error);
     return { success: false, data: [], message: error.message };
+  }
+}
+
+export async function getAdminUserSkuSalesReportAction(params?: {
+  startDate?: string;
+  endDate?: string;
+}) {
+  try {
+    const supabase = await getAdminClientInstance();
+    const reportTables = ["pg_daily_activity_reports", "pg_daily_reports"];
+    let reports: any[] = [];
+    let lastError: any = null;
+
+    for (const tableName of reportTables) {
+      let query = supabase
+        .from(tableName)
+        .select("*, pg_daily_report_products (*)");
+      if (params?.startDate) query = query.gte("report_date", params.startDate);
+      if (params?.endDate) query = query.lte("report_date", params.endDate);
+
+      const result = await query;
+      if (!result.error) {
+        reports = result.data || [];
+        lastError = null;
+        break;
+      }
+      lastError = result.error;
+    }
+
+    if (lastError) throw lastError;
+
+    const [userProfilesResult, profilesResult, storesResult, productsResult] =
+      await Promise.all([
+        supabase
+          .from("user_profiles")
+          .select("id, display_name, username, employee_id"),
+        supabase
+          .from("profiles")
+          .select("id, display_name, username, employee_id"),
+        supabase.from("pg_stores").select("store_code, store_name"),
+        supabase.from("products").select("*").order("id", { ascending: true }),
+      ]);
+
+    const userLookup = new Map<string, any>();
+    for (const profile of [
+      ...(profilesResult.data || []),
+      ...(userProfilesResult.data || []),
+    ]) {
+      if (profile?.id != null) userLookup.set(String(profile.id), profile);
+    }
+
+    const storeLookup = new Map<string, string>();
+    for (const store of storesResult.data || []) {
+      if (store?.store_code != null) {
+        storeLookup.set(
+          String(store.store_code).trim(),
+          store.store_name || "",
+        );
+      }
+    }
+
+    let productCatalog = productsResult.data || [];
+    if (productsResult.error || productCatalog.length === 0) {
+      const fallbackProducts = await supabase
+        .from("pg_products")
+        .select("*")
+        .order("id", { ascending: true });
+      productCatalog = fallbackProducts.data || [];
+    }
+
+    const productLookup = new Map<
+      string,
+      { key: string; barcode: string; skuCode: string; name: string }
+    >();
+    for (const product of productCatalog) {
+      const barcode = String(product?.barcode ?? "").trim();
+      if (!barcode) continue;
+      const skuCode = String(product.sku_code ?? "").trim();
+      productLookup.set(barcode, {
+        key: skuCode || barcode,
+        barcode,
+        skuCode,
+        name:
+          product.descriptions || product.short_name || product.name || barcode,
+      });
+    }
+
+    const users = new Map<string, any>();
+    const usedProductBarcodes = new Set<string>();
+    const addSale = (
+      user: any,
+      barcodeValue: unknown,
+      quantityValue: unknown,
+      priceValue: unknown,
+      productName?: string,
+      skuCodeValue?: unknown,
+    ) => {
+      const barcode = String(barcodeValue ?? "").trim();
+      const quantity = Number(quantityValue ?? 0);
+      const price = Number(priceValue ?? 0);
+      if (!barcode || !Number.isFinite(quantity)) return;
+
+      if (!productLookup.has(barcode)) {
+        productLookup.set(barcode, {
+          key: String(skuCodeValue ?? "").trim() || barcode,
+          barcode,
+          skuCode: String(skuCodeValue ?? "").trim(),
+          name: productName || barcode,
+        });
+      } else {
+        const existing = productLookup.get(barcode)!;
+        productLookup.set(barcode, {
+          ...existing,
+          skuCode: existing.skuCode || String(skuCodeValue ?? "").trim(),
+          key: existing.skuCode || String(skuCodeValue ?? "").trim() || barcode,
+          name:
+            existing.name === barcode && productName
+              ? productName
+              : existing.name,
+        });
+      }
+
+      usedProductBarcodes.add(barcode);
+      const productKey = productLookup.get(barcode)!.key;
+      const current = user.salesBySku[productKey] || {
+        quantity: 0,
+        amount: 0,
+      };
+      current.quantity += quantity;
+      current.amount += Number.isFinite(price) ? quantity * price : 0;
+      user.salesBySku[productKey] = current;
+      user.totalSalesQty += quantity;
+      user.totalSalesAmount += Number.isFinite(price) ? quantity * price : 0;
+    };
+
+    const legacySkuFields = [
+      {
+        barcode: "8858678423339",
+        quantity: "sales_qty_green90",
+        price: "price_our_green90",
+        name: "มายด์ลักซูรี่ สีเขียว 90",
+      },
+      {
+        barcode: "8858678423681",
+        quantity: "sales_qty_blue90",
+        price: "price_our_blue90",
+        name: "มายด์ลักซูรี่ สีฟ้า 90",
+      },
+      {
+        barcode: "8858678422875",
+        quantity: "sales_qty_orange100",
+        price: "price_our_orange100",
+        name: "มายด์ลักซูรี่ สีส้ม 100",
+      },
+    ];
+
+    for (const report of reports) {
+      const userId = String(report.user_id ?? report.userId ?? "").trim();
+      const key = userId || `unknown-${report.id}`;
+      const profile = userLookup.get(userId);
+      if (!users.has(key)) {
+        users.set(key, {
+          userId,
+          empId: profile?.employee_id || profile?.username || userId,
+          displayName:
+            report.user_name ||
+            profile?.display_name ||
+            profile?.username ||
+            (userId ? `PG-${userId}` : "ไม่ระบุพนักงาน"),
+          stores: new Set<string>(),
+          salesBySku: {},
+          totalSalesQty: 0,
+          totalSalesAmount: 0,
+        });
+      }
+
+      const user = users.get(key)!;
+      const storeCode = String(report.store_code ?? "").trim();
+      const storeName =
+        report.store_name || storeLookup.get(storeCode) || storeCode;
+      if (storeName) user.stores.add(storeName);
+
+      const productRows = Array.isArray(report.pg_daily_report_products)
+        ? report.pg_daily_report_products
+        : Array.isArray(report.products)
+          ? report.products
+          : [];
+
+      if (productRows.length > 0) {
+        for (const product of productRows) {
+          if (
+            String(product.item_scope || "OUR").toUpperCase() === "COMPETITOR"
+          ) {
+            continue;
+          }
+          addSale(
+            user,
+            product.barcode,
+            product.sales_qty ?? product.salesQty,
+            product.price_our ?? product.priceOur,
+            product.descriptions || product.name,
+            product.sku_code,
+          );
+        }
+      } else {
+        for (const product of legacySkuFields) {
+          addSale(
+            user,
+            product.barcode,
+            report[product.quantity],
+            report[product.price],
+            product.name,
+          );
+        }
+      }
+    }
+
+    const products = Array.from(usedProductBarcodes)
+      .map((barcode) => productLookup.get(barcode)!)
+      .sort((a, b) => a.key.localeCompare(b.key, "th"));
+    const data = Array.from(users.values())
+      .map((user) => ({
+        ...user,
+        storeName: Array.from(user.stores).join(", "),
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
+
+    return { success: true, data, products };
+  } catch (error: any) {
+    console.error("Get admin user SKU sales report error:", error);
+    return { success: false, data: [], products: [], message: error.message };
   }
 }
 
@@ -1181,6 +1596,10 @@ export async function getCustomerFullActivityReport() {
             report_id,
             barcode,
             descriptions,
+            item_scope,
+            credit_factor,
+            promotion_target_qty,
+            competitor_price,
             price_our,
             stock_before,
             sales_qty,

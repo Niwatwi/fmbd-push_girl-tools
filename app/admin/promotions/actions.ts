@@ -1,7 +1,9 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
-import { requireAdminSession } from "@/utils/auth";
+import { requireAdminSession, requireUserOrAdminSession } from "@/utils/auth";
+import { cookies } from "next/headers";
+import { verifyUserSessionToken } from "@/utils/session-token";
 
 // ----------------------------------------------------------------
 // Interfaces & Types
@@ -9,10 +11,30 @@ import { requireAdminSession } from "@/utils/auth";
 export interface Product {
   id: number | string;
   code?: string;
+  sku_code?: string;
   descriptions: string;
   barcode: string;
   company?: string;
   category?: string;
+  company_type?: string;
+}
+
+export interface PromotionCommissionTier {
+  achievement_percent: number;
+  payout: number;
+  min_credited_qty?: number;
+}
+
+export interface PromotionCommissionRules {
+  mode: "TARGET_PERCENT";
+  tiers: PromotionCommissionTier[];
+  step: {
+    start_qty?: number;
+    step_qty?: number;
+    start_percent?: number;
+    step_percent?: number;
+    payout: number;
+  };
 }
 
 export interface PromotionItem {
@@ -23,9 +45,14 @@ export interface PromotionItem {
   barcode?: string;
   price: string;
   condition: string;
+  item_scope?: "OUR" | "COMPETITOR";
+  target_qty?: number | string;
+  credit_factor?: number | string;
   products?: {
     descriptions?: string;
     barcode?: string;
+    sku_code?: string;
+    company?: string;
   };
 }
 
@@ -34,8 +61,12 @@ export interface PromotionConfig {
   target_type: "COMPANY_TAG" | "STORE_CODE" | "ALL";
   target_value: string;
   campaign_title: string;
+  start_date?: string | null;
+  end_date?: string | null;
   special_tier_text?: string;
   is_active: boolean;
+  staff_group?: "ALL" | "BA" | "PG";
+  commission_rules?: PromotionCommissionRules;
   items?: PromotionItem[];
 }
 
@@ -44,12 +75,19 @@ export interface SavePromotionPayload {
   target_type: "COMPANY_TAG" | "STORE_CODE" | "ALL";
   target_value: string;
   campaign_title: string;
+  start_date: string | null;
+  end_date: string | null;
   special_tier_text?: string;
   is_active: boolean;
+  staff_group: "ALL" | "BA" | "PG";
+  commission_rules: PromotionCommissionRules;
   items: Array<{
     product_code: string;
     price: string;
     condition: string;
+    item_scope: "OUR" | "COMPETITOR";
+    target_qty: number;
+    credit_factor: number;
   }>;
 }
 
@@ -117,7 +155,10 @@ export async function getPromotionOptionsAction() {
 export async function getPromotionByStoreAction(
   storeCode?: string,
   companyTag?: string,
+  staffGroup?: string,
+  userId?: number,
 ) {
+  if (userId) await requireUserOrAdminSession(userId);
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -134,8 +175,26 @@ export async function getPromotionByStoreAction(
     };
   }
 
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
   // กรองเฉพาะโปรโมชันที่ตรงกับเงื่อนไขของสาขานั้นๆ
   const filteredPromotions = data.filter((promo) => {
+    if (promo.start_date && String(promo.start_date).slice(0, 10) > today) {
+      return false;
+    }
+    if (promo.end_date && String(promo.end_date).slice(0, 10) < today) {
+      return false;
+    }
+    const promoStaffGroup = String(promo.staff_group || "ALL").toUpperCase();
+    const currentStaffGroup = String(staffGroup || "").toUpperCase();
+    if (promoStaffGroup !== "ALL" && promoStaffGroup !== currentStaffGroup) {
+      return false;
+    }
     if (promo.target_type === "ALL") return true;
     if (
       promo.target_type === "STORE_CODE" &&
@@ -156,6 +215,47 @@ export async function getPromotionByStoreAction(
     success: true,
     promotions: filteredPromotions,
     promotion: filteredPromotions[0] || null, // เพิ่ม promotion เพื่อให้สอดคล้องกับ daily-report
+  };
+}
+
+export async function getCurrentUserPromotionBriefAction() {
+  const token = (await cookies()).get("user_session")?.value;
+  const session = await verifyUserSessionToken(token);
+  if (!session) {
+    return { success: false, message: "กรุณาเข้าสู่ระบบ", promotions: [] };
+  }
+
+  const supabase = await createClient();
+  const { data: attendance } = await supabase
+    .from("pg_attendance_logs")
+    .select("store_code")
+    .eq("user_id", session.id)
+    .order("check_in_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const storeCode = String(attendance?.store_code || session.area || "");
+  let storeCompanyTag = "";
+  if (storeCode) {
+    const { data: store } = await supabase
+      .from("pg_stores")
+      .select("company_tag")
+      .eq("store_code", storeCode)
+      .maybeSingle();
+    storeCompanyTag = String(store?.company_tag || "");
+  }
+
+  const result = await getPromotionByStoreAction(
+    storeCode,
+    storeCompanyTag,
+    session.company_tag,
+    session.id,
+  );
+  return {
+    ...result,
+    storeCode,
+    storeCompanyTag,
+    staffGroup: session.company_tag,
   };
 }
 
@@ -229,7 +329,7 @@ export async function getStoresAction() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pg_stores")
-    .select("id, store_name, store_code")
+    .select("id, store_name, store_code, company_tag")
     .order("store_name");
 
   if (error) return { success: false, stores: [] };
@@ -274,10 +374,36 @@ export async function getProductsByCompanyAndCategoryAction(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("id, code, descriptions, barcode")
+    .select("id, code, sku_code, descriptions, barcode, company_type")
     .eq("company", company)
     .eq("category", category);
 
   if (error) return { success: false, products: [] };
   return { success: true, products: data || [] };
+}
+
+export async function getProductByBarcodeForPromotionAction(barcode: string) {
+  await requireAdminSession();
+  const supabase = await createClient();
+  const normalizedBarcode = String(barcode || "").trim();
+  if (!normalizedBarcode) return { success: false, product: null };
+
+  const { data, error } = await supabase
+    .from("products")
+    .select(
+      "id, code, sku_code, descriptions, barcode, company, category, company_type",
+    )
+    .eq("barcode", normalizedBarcode)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) {
+    return {
+      success: false,
+      product: null,
+      message: error?.message || "ไม่พบสินค้าใน catalog",
+    };
+  }
+  return { success: true, product: data as Product };
 }

@@ -49,6 +49,10 @@ import {
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import Swal from "sweetalert2";
+import ReportChartBuilder, {
+  type ReportChartDimension,
+  type ReportChartMetric,
+} from "../components/ReportChartBuilder";
 
 // ==========================================
 // 1. Type Interfaces
@@ -189,6 +193,19 @@ const REPORT_PRODUCTS: ReportProduct[] = [
   },
 ];
 
+function getProductChartPalette(barcode: string) {
+  let hash = 0;
+  for (const character of barcode) {
+    hash = (hash * 31 + character.charCodeAt(0)) | 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return {
+    color: `hsl(${hue} 68% 44%)`,
+    gradStart: `hsl(${hue} 82% 68%)`,
+    gradEnd: `hsl(${hue} 72% 38%)`,
+  };
+}
+
 const PRICE_CHART_SERIES = [
   ...REPORT_PRODUCTS.map((prod) => ({
     dataKey: `our_${prod.barcode}`,
@@ -220,6 +237,46 @@ const PRICE_CHART_SERIES = [
     type: "competitor" as const,
     sourceKey: comp.key,
   })),
+];
+
+const CUSTOMER_CHART_DIMENSIONS: ReportChartDimension[] = [
+  { key: "date", label: "วันที่" },
+  { key: "account", label: "Account" },
+  { key: "store", label: "สาขา" },
+  { key: "user", label: "พนักงาน" },
+  { key: "skuCode", label: "SKU บริษัท", colorKey: "skuColor" },
+];
+
+const CUSTOMER_CHART_METRICS: ReportChartMetric[] = [
+  { key: "salesQty", label: "จำนวนขาย", aggregation: "sum" },
+  { key: "salesAmount", label: "มูลค่าขาย (บาท)", aggregation: "sum" },
+  { key: "unitPrice", label: "ราคาเฉลี่ย (บาท)", aggregation: "average" },
+  { key: "stockBefore", label: "สต๊อกก่อนขาย", aggregation: "average" },
+  { key: "stockAfter", label: "สต๊อกหลังขาย", aggregation: "average" },
+  {
+    key: "traffic",
+    label: "Traffic",
+    aggregation: "sum",
+    uniqueBy: "reportKey",
+    dimensions: ["date", "account", "store", "user"],
+    seriesDimensions: ["account", "store", "user"],
+  },
+  {
+    key: "approach",
+    label: "Approach",
+    aggregation: "sum",
+    uniqueBy: "reportKey",
+    dimensions: ["date", "account", "store", "user"],
+    seriesDimensions: ["account", "store", "user"],
+  },
+  {
+    key: "closedSales",
+    label: "Closed Sales",
+    aggregation: "sum",
+    uniqueBy: "reportKey",
+    dimensions: ["date", "account", "store", "user"],
+    seriesDimensions: ["account", "store", "user"],
+  },
 ];
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -325,7 +382,9 @@ function getProductInfo(row: any, barcode: string, isBigC: boolean = false) {
 
   if (Array.isArray(prods) && prods.length > 0) {
     const found = prods.find(
-      (p: any) => String(p.barcode).trim() === String(barcode).trim(),
+      (p: any) =>
+        String(p.barcode).trim() === String(barcode).trim() &&
+        String(p.item_scope || "OUR").toUpperCase() !== "COMPETITOR",
     );
 
     if (found) {
@@ -408,16 +467,13 @@ function getRowTotalSalesPcs(row: any): number {
     return isBigC ? (green + blue) * 2 : green + blue + orange * 2;
   }
 
-  let totalPcs = 0;
-
-  REPORT_PRODUCTS.forEach((prod) => {
-    const info = getProductInfo(row, prod.barcode, isBigC);
-    if (typeof info.salesQty === "number" && !isNaN(info.salesQty)) {
-      totalPcs += info.salesQty;
+  return productRows.reduce((total: number, product: any) => {
+    if (String(product?.item_scope || "OUR").toUpperCase() === "COMPETITOR") {
+      return total;
     }
-  });
-
-  return totalPcs;
+    const quantity = Number(product?.sales_qty ?? product?.salesQty ?? 0);
+    return total + (Number.isFinite(quantity) ? quantity : 0);
+  }, 0);
 }
 
 function withPackTotals(rows: any[] = []) {
@@ -457,6 +513,18 @@ function getCompetitorVal(row: any, key: string) {
     return Number(row.compKleenex);
   if (key === "scott_safesoft_4" && row.compPaseo) return Number(row.compPaseo);
   return "-";
+}
+
+function getCampaignCompetitorPrice(row: any, barcode: string) {
+  const productRows = row.products || row.pg_daily_report_products || row.items;
+  if (!Array.isArray(productRows)) return "-";
+  const found = productRows.find(
+    (product: any) =>
+      String(product.barcode || "").trim() === String(barcode).trim() &&
+      String(product.item_scope || "").toUpperCase() === "COMPETITOR",
+  );
+  const price = Number(found?.competitor_price);
+  return Number.isFinite(price) && price > 0 ? price : "-";
 }
 
 // 📌 Helper แสดงผลสต๊อก
@@ -566,16 +634,237 @@ export default function CustomerReportPortal() {
       // แปลงข้อมูลให้อยู่ในโครงสร้างที่รองรับการแสดงผล
       return data.map((item, index) => ({
         barcode: item.barcode,
-        label: item.name,
-        shortLabel: item.short_name || item.name,
+        skuCode: item.sku_code || "",
+        label: item.descriptions || item.name || item.barcode,
+        shortLabel:
+          item.short_name || item.descriptions || item.name || item.barcode,
         bgClass: "bg-slate-100 min-w-[180px] max-w-[300px]",
-        color: item.color || "#3b82f6",
-        gradStart: item.grad_start || "#60a5fa",
-        gradEnd: item.grad_end || "#1d4ed8",
+        color: item.color || undefined,
+        gradStart: item.grad_start || undefined,
+        gradEnd: item.grad_end || undefined,
       }));
     }
     return [];
   };
+
+  const activeReportProducts = useMemo(() => {
+    const catalogByBarcode = new Map<string, any>();
+    reportProducts.forEach((product) => {
+      const barcode = String(product.barcode || "").trim();
+      if (barcode) catalogByBarcode.set(barcode, product);
+    });
+
+    const observedProducts = new Map<string, any>();
+    filteredData.forEach((row) => {
+      const productRows =
+        row.products || row.pg_daily_report_products || row.items;
+      if (Array.isArray(productRows) && productRows.length > 0) {
+        productRows.forEach((product: any) => {
+          const barcode = String(product?.barcode || "").trim();
+          if (
+            !barcode ||
+            String(product?.item_scope || "OUR").toUpperCase() === "COMPETITOR"
+          ) {
+            return;
+          }
+          observedProducts.set(barcode, {
+            barcode,
+            label: product.descriptions || barcode,
+            shortLabel: product.descriptions || barcode,
+          });
+        });
+        return;
+      }
+
+      [
+        ["8858678423339", "stock_before_green90", "sales_qty_green90"],
+        ["8858678423681", "stock_before_blue90", "sales_qty_blue90"],
+        ["8858678422875", "stock_before_orange100", "sales_qty_orange100"],
+      ].forEach(([barcode, stockField, salesField]) => {
+        if (row[stockField] == null && row[salesField] == null) return;
+        observedProducts.set(barcode, { barcode });
+      });
+    });
+
+    return Array.from(observedProducts.values())
+      .map((observed, index) => {
+        const catalogProduct = catalogByBarcode.get(observed.barcode);
+        const legacyProduct = REPORT_PRODUCTS.find(
+          (product) => product.barcode === observed.barcode,
+        );
+        const product = {
+          ...legacyProduct,
+          ...observed,
+          ...catalogProduct,
+          barcode: observed.barcode,
+        };
+        const generatedPalette = getProductChartPalette(observed.barcode);
+        return {
+          ...product,
+          key: product.skuCode || product.barcode,
+          label:
+            product.label ||
+            product.descriptions ||
+            product.name ||
+            product.barcode,
+          shortLabel:
+            product.shortLabel ||
+            product.short_name ||
+            product.label ||
+            product.barcode,
+          bgClass: product.bgClass || "bg-slate-100 min-w-[180px]",
+          color:
+            legacyProduct?.color || product.color || generatedPalette.color,
+          gradStart:
+            legacyProduct?.gradStart ||
+            product.gradStart ||
+            generatedPalette.gradStart,
+          gradEnd:
+            legacyProduct?.gradEnd ||
+            product.gradEnd ||
+            generatedPalette.gradEnd,
+        };
+      })
+      .sort((a, b) => a.key.localeCompare(b.key, "th"));
+  }, [filteredData, reportProducts]);
+
+  const activeCampaignCompetitors = useMemo(() => {
+    const catalogByBarcode = new Map(
+      reportProducts.map((product) => [String(product.barcode), product]),
+    );
+    const observed = new Map<string, any>();
+    filteredData.forEach((row) => {
+      const productRows =
+        row.products || row.pg_daily_report_products || row.items;
+      if (!Array.isArray(productRows)) return;
+      productRows.forEach((product: any) => {
+        if (String(product.item_scope || "").toUpperCase() !== "COMPETITOR") {
+          return;
+        }
+        const barcode = String(product.barcode || "").trim();
+        if (!barcode) return;
+        const catalog = catalogByBarcode.get(barcode);
+        observed.set(barcode, {
+          key: `campaign_${barcode}`,
+          barcode,
+          skuCode: catalog?.skuCode || barcode,
+          label:
+            product.descriptions ||
+            catalog?.label ||
+            catalog?.shortLabel ||
+            barcode,
+        });
+      });
+    });
+    return Array.from(observed.values()).sort((a, b) =>
+      a.skuCode.localeCompare(b.skuCode, "th"),
+    );
+  }, [filteredData, reportProducts]);
+
+  const displayedCompetitorItems = useMemo(
+    () => [
+      ...COMPETITOR_ITEMS.map((item) => ({
+        ...item,
+        source: "legacy" as const,
+      })),
+      ...activeCampaignCompetitors.map((item) => ({
+        key: item.key,
+        label: item.label,
+        source: "campaign" as const,
+        barcode: item.barcode,
+        bgClass: "bg-rose-50 min-w-[180px] max-w-[300px]",
+      })),
+    ],
+    [activeCampaignCompetitors],
+  );
+
+  const activePriceChartSeries = useMemo(() => {
+    const configuredOwnBarcodes = new Set(
+      PRICE_CHART_SERIES.filter((series) => series.type === "our").map(
+        (series) => series.sourceKey,
+      ),
+    );
+    return [
+      ...PRICE_CHART_SERIES,
+      ...activeReportProducts
+        .filter((product) => !configuredOwnBarcodes.has(product.barcode))
+        .map((product) => ({
+          dataKey: `our_${product.barcode}`,
+          name: `${product.shortLabel} (เรา)`,
+          color: product.color,
+          type: "our" as const,
+          sourceKey: product.barcode,
+        })),
+      ...activeCampaignCompetitors.map((product) => ({
+        dataKey: product.key,
+        name: `${product.label} (คู่แข่ง)`,
+        color: getProductChartPalette(product.barcode).color,
+        type: "campaign_competitor" as const,
+        sourceKey: product.barcode,
+      })),
+    ];
+  }, [activeReportProducts, activeCampaignCompetitors]);
+
+  const flexibleChartRows = useMemo(() => {
+    const toMetricValue = (value: unknown) => {
+      if (
+        value === null ||
+        value === undefined ||
+        value === "" ||
+        value === "-"
+      ) {
+        return null;
+      }
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    };
+
+    return filteredData.flatMap((row, rowIndex) => {
+      const account = getAccountName(row.storeName, row.storeCode, row.account);
+      const productRows =
+        row.products || row.pg_daily_report_products || row.items;
+      const rowProducts =
+        Array.isArray(productRows) && productRows.length > 0
+          ? productRows
+          : activeReportProducts.map((product) => ({
+              barcode: product.barcode,
+            }));
+
+      return rowProducts.flatMap((rowProduct: any) => {
+        const barcode = String(rowProduct?.barcode || "").trim();
+        const product = activeReportProducts.find(
+          (item) => item.barcode === barcode,
+        );
+        if (!product) return [];
+
+        const info = getProductInfo(row, barcode, account === "Big C");
+        const quantity = toMetricValue(info.salesQty);
+        const unitPrice = toMetricValue(info.priceOur);
+        return [
+          {
+            reportKey: String(row.id ?? `report-${rowIndex}`),
+            date: row.reportDate || "ไม่ระบุวันที่",
+            account,
+            store: row.storeName || row.storeCode || "ไม่ระบุสาขา",
+            user: row.userName || row.userId || "ไม่ระบุพนักงาน",
+            skuCode: product.key,
+            skuColor: product.color,
+            salesQty: quantity,
+            salesAmount:
+              quantity !== null && unitPrice !== null
+                ? quantity * unitPrice
+                : null,
+            unitPrice,
+            stockBefore: toMetricValue(info.stockBefore),
+            stockAfter: toMetricValue(info.stockAfter),
+            traffic: toMetricValue(row.traffic),
+            approach: toMetricValue(row.approach),
+            closedSales: toMetricValue(row.closedSales),
+          },
+        ];
+      });
+    });
+  }, [filteredData, activeReportProducts]);
 
   const [currentTime, setCurrentTime] = useState<string>("");
 
@@ -844,7 +1133,7 @@ export default function CustomerReportPortal() {
             approach: 0,
             closedSales: 0,
           };
-          REPORT_PRODUCTS.forEach((p) => {
+          activeReportProducts.forEach((p) => {
             initObj[`sales_${p.barcode}`] = 0;
           });
           map.set(acc, initObj);
@@ -855,7 +1144,7 @@ export default function CustomerReportPortal() {
         item.approach += Number(row.approach || 0);
         item.closedSales += Number(row.closedSales || 0);
 
-        REPORT_PRODUCTS.forEach((prod) => {
+        activeReportProducts.forEach((prod) => {
           const info = getProductInfo(row, prod.barcode, isBigC);
           if (typeof info.salesQty === "number" && !isNaN(info.salesQty)) {
             item[`sales_${prod.barcode}`] += info.salesQty;
@@ -881,7 +1170,7 @@ export default function CustomerReportPortal() {
             approach: 0,
             closedSales: 0,
           };
-          REPORT_PRODUCTS.forEach((p) => {
+          activeReportProducts.forEach((p) => {
             initObj[`sales_${p.barcode}`] = 0;
           });
           map.set(dateKey, initObj);
@@ -892,7 +1181,7 @@ export default function CustomerReportPortal() {
         item.approach += Number(row.approach || 0);
         item.closedSales += Number(row.closedSales || 0);
 
-        REPORT_PRODUCTS.forEach((prod) => {
+        activeReportProducts.forEach((prod) => {
           const info = getProductInfo(row, prod.barcode, isBigC);
           if (typeof info.salesQty === "number" && !isNaN(info.salesQty)) {
             item[`sales_${prod.barcode}`] += info.salesQty;
@@ -903,7 +1192,7 @@ export default function CustomerReportPortal() {
         a.displayName.localeCompare(b.displayName),
       );
     }
-  }, [filteredData, selectedStore]);
+  }, [filteredData, selectedStore, activeReportProducts]);
 
   // 📊 ประมวลผลราคาของสินค้าและคู่แข่งแยกเป็นรายวันและราย SKU
   const chart3Data = useMemo(() => {
@@ -915,7 +1204,7 @@ export default function CustomerReportPortal() {
 
       if (!dateMap.has(row.reportDate)) {
         const daily: any = { date: row.reportDate };
-        PRICE_CHART_SERIES.forEach((series) => {
+        activePriceChartSeries.forEach((series) => {
           daily[`${series.dataKey}_total`] = 0;
           daily[`${series.dataKey}_count`] = 0;
         });
@@ -928,14 +1217,16 @@ export default function CustomerReportPortal() {
         row.storeCode,
         row.account,
       );
-      PRICE_CHART_SERIES.forEach((series) => {
+      activePriceChartSeries.forEach((series) => {
         const price =
           series.type === "our"
             ? Number(
                 getProductInfo(row, series.sourceKey, accountName === "Big C")
                   .priceOur,
               )
-            : Number(getCompetitorVal(row, series.sourceKey));
+            : series.type === "campaign_competitor"
+              ? Number(getCampaignCompetitorPrice(row, series.sourceKey))
+              : Number(getCompetitorVal(row, series.sourceKey));
         if (Number.isFinite(price) && price > 0) {
           daily[`${series.dataKey}_total`] += price;
           daily[`${series.dataKey}_count`] += 1;
@@ -946,7 +1237,7 @@ export default function CustomerReportPortal() {
     return Array.from(dateMap.values())
       .map((daily) => {
         const result: any = { date: daily.date };
-        PRICE_CHART_SERIES.forEach((series) => {
+        activePriceChartSeries.forEach((series) => {
           const count = daily[`${series.dataKey}_count`];
           result[series.dataKey] =
             count > 0
@@ -956,7 +1247,7 @@ export default function CustomerReportPortal() {
         return result;
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [filteredData]);
+  }, [filteredData, activePriceChartSeries]);
 
   const chart2Data = useMemo(() => {
     const totals = chart1And2Data.reduce(
@@ -999,7 +1290,7 @@ export default function CustomerReportPortal() {
       const dateKey = row.reportDate || "ไม่ระบุวัน";
       if (!dateMap.has(dateKey)) {
         const init: any = { date: dateKey };
-        REPORT_PRODUCTS.forEach((prod) => {
+        activeReportProducts.forEach((prod) => {
           init[`sales_${prod.barcode}`] = 0;
         });
         dateMap.set(dateKey, init);
@@ -1009,7 +1300,7 @@ export default function CustomerReportPortal() {
       const acc = getAccountName(row.storeName, row.storeCode, row.account);
       const isBigC = acc === "Big C";
 
-      REPORT_PRODUCTS.forEach((prod) => {
+      activeReportProducts.forEach((prod) => {
         const info = getProductInfo(row, prod.barcode, isBigC);
         if (typeof info.salesQty === "number" && !isNaN(info.salesQty)) {
           current[`sales_${prod.barcode}`] += info.salesQty;
@@ -1020,14 +1311,14 @@ export default function CustomerReportPortal() {
     return Array.from(dateMap.values()).sort((a, b) =>
       a.date.localeCompare(b.date),
     );
-  }, [filteredData]);
+  }, [filteredData, activeReportProducts]);
 
   const salesAlertSummary = useMemo(() => {
     const productTotals = new Map<
       string,
       { product: ReportProduct; total: number; observations: number }
     >(
-      REPORT_PRODUCTS.map((product) => [
+      activeReportProducts.map((product) => [
         product.barcode,
         { product, total: 0, observations: 0 },
       ]),
@@ -1057,7 +1348,7 @@ export default function CustomerReportPortal() {
         });
       }
 
-      REPORT_PRODUCTS.forEach((product) => {
+      activeReportProducts.forEach((product) => {
         const info = getProductInfo(
           row,
           product.barcode,
@@ -1105,7 +1396,7 @@ export default function CustomerReportPortal() {
       highestStore: rankedStores[0] || null,
       lowestStore: rankedStores[rankedStores.length - 1] || null,
     };
-  }, [filteredData]);
+  }, [filteredData, activeReportProducts]);
 
   const handleViewImage = (url: string, label: string) => {
     Swal.fire({
@@ -1194,7 +1485,7 @@ export default function CustomerReportPortal() {
   };
 
   useEffect(() => {
-    fetchProductsData();
+    fetchProductsData().then(setReportProducts);
   }, []);
 
   const renderPhotoCell = (photos: any[], defaultLabel: string) => {
@@ -1248,7 +1539,7 @@ export default function CustomerReportPortal() {
   const avgClosingRate =
     totalApproach > 0 ? Math.round((totalClosed / totalApproach) * 100) : 0;
 
-  // 💰 ยอดขายรวมคำนวณจากทุก 10 SKU
+  // 💰 ยอดขายรวมคำนวณจากสินค้าใน catalog
   const totalRevenue = useMemo(() => {
     return filteredData.reduce((sum, row) => {
       const accountName = getAccountName(
@@ -1258,7 +1549,7 @@ export default function CustomerReportPortal() {
       );
       const isBigC = accountName === "Big C";
       let rowRev = 0;
-      REPORT_PRODUCTS.forEach((prod) => {
+      activeReportProducts.forEach((prod) => {
         const info = getProductInfo(row, prod.barcode, isBigC);
         if (
           typeof info.salesQty === "number" &&
@@ -1271,7 +1562,7 @@ export default function CustomerReportPortal() {
       });
       return sum + rowRev;
     }, 0);
-  }, [filteredData]);
+  }, [filteredData, activeReportProducts]);
 
   const filteredSalarySummary = useMemo(() => {
     let result = [...salarySummaryData];
@@ -1773,7 +2064,7 @@ export default function CustomerReportPortal() {
         { header: "CLOSED", key: "closedSales", width: 10 },
       ];
 
-      REPORT_PRODUCTS.forEach((prod) => {
+      activeReportProducts.forEach((prod) => {
         excelColumns.push({
           header: `สต๊อกก่อน (${prod.shortLabel})`,
           key: `sb_${prod.barcode}`,
@@ -1781,7 +2072,7 @@ export default function CustomerReportPortal() {
         });
       });
 
-      REPORT_PRODUCTS.forEach((prod) => {
+      activeReportProducts.forEach((prod) => {
         excelColumns.push({
           header: `ขาย (${prod.shortLabel})`,
           key: `sq_${prod.barcode}`,
@@ -1789,7 +2080,7 @@ export default function CustomerReportPortal() {
         });
       });
 
-      REPORT_PRODUCTS.forEach((prod) => {
+      activeReportProducts.forEach((prod) => {
         excelColumns.push({
           header: `สต๊อกหลัง (${prod.shortLabel})`,
           key: `sa_${prod.barcode}`,
@@ -1797,7 +2088,7 @@ export default function CustomerReportPortal() {
         });
       });
 
-      REPORT_PRODUCTS.forEach((prod) => {
+      activeReportProducts.forEach((prod) => {
         excelColumns.push({
           header: `ราคา (${prod.shortLabel})`,
           key: `pr_${prod.barcode}`,
@@ -1805,9 +2096,9 @@ export default function CustomerReportPortal() {
         });
       });
 
-      COMPETITOR_ITEMS.forEach((comp) => {
+      displayedCompetitorItems.forEach((comp) => {
         excelColumns.push({
-          header: comp.label,
+          header: `${comp.label}${comp.source === "campaign" ? ` (${comp.barcode})` : ""}`,
           key: `comp_${comp.key}`,
           width: 15,
         });
@@ -1835,7 +2126,11 @@ export default function CustomerReportPortal() {
 
       worksheet.columns = excelColumns;
 
-      const baseColCount = 8 + 10 + 10 + 10 + 10 + 15 + 3;
+      const baseColCount =
+        8 +
+        activeReportProducts.length * 4 +
+        displayedCompetitorItems.length +
+        3;
       const photoCategoryMap = [
         { key: "staff_holding", colIndex: baseColCount },
         { key: "customer_basket", colIndex: baseColCount + 1 },
@@ -1867,7 +2162,7 @@ export default function CustomerReportPortal() {
           closedSales: Number(item.closedSales ?? item.closed_sales_count ?? 0),
         };
 
-        REPORT_PRODUCTS.forEach((prod) => {
+        activeReportProducts.forEach((prod) => {
           const info = getProductInfo(item, prod.barcode, isBigC);
           rowObj[`sb_${prod.barcode}`] = info.stockBefore;
           rowObj[`sq_${prod.barcode}`] = info.salesQty;
@@ -1875,8 +2170,11 @@ export default function CustomerReportPortal() {
           rowObj[`pr_${prod.barcode}`] = info.priceOur;
         });
 
-        COMPETITOR_ITEMS.forEach((comp) => {
-          rowObj[`comp_${comp.key}`] = getCompetitorVal(item, comp.key);
+        displayedCompetitorItems.forEach((comp) => {
+          rowObj[`comp_${comp.key}`] =
+            comp.source === "campaign"
+              ? getCampaignCompetitorPrice(item, comp.barcode || "")
+              : getCompetitorVal(item, comp.key);
         });
 
         rowObj.feedback = item.feedback || item.feedback_store || "-";
@@ -2310,7 +2608,7 @@ export default function CustomerReportPortal() {
             <div className="portal-card p-4 rounded-2xl flex flex-col justify-between">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                  ยอดขายรวมทั้งหมด (10 SKU)
+                  ยอดขายรวมทั้งหมด ({activeReportProducts.length} SKU)
                 </span>
                 <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
                   <DollarSign size={18} />
@@ -2593,13 +2891,23 @@ export default function CustomerReportPortal() {
           </section>
 
           {/* 📊 CHARTS */}
+          <ReportChartBuilder
+            title="กราฟวิเคราะห์ข้อมูลตามตัวเลือก"
+            rows={flexibleChartRows}
+            dimensions={CUSTOMER_CHART_DIMENSIONS}
+            metrics={CUSTOMER_CHART_METRICS}
+            defaultDimension={selectedStore === "ALL" ? "account" : "date"}
+            defaultMetric="salesQty"
+            defaultSeries="skuCode"
+          />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-            {/* CHART 1: ยอดขายครบทั้ง 10 SKU */}
+            {/* CHART 1: ยอดขายแยกตามสินค้าใน catalog */}
             <div className="portal-card p-4 sm:p-5 rounded-2xl text-left">
               <div className="flex justify-between items-center border-b pb-2 mb-3">
                 <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                   <BarChart3 size={16} className="text-blue-600" />
-                  1. ยอดขายรวมแยกรายสินค้า (ครบทุก 10 SKU)
+                  1. ยอดขายรวมแยกรายสินค้า
                 </h3>
                 <span className="text-[9px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md">
                   {selectedStore === "ALL" ? "แยก Account" : "แยกรายวัน"}
@@ -2612,7 +2920,7 @@ export default function CustomerReportPortal() {
                     margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
                   >
                     <defs>
-                      {REPORT_PRODUCTS.map((prod) => (
+                      {activeReportProducts.map((prod) => (
                         <linearGradient
                           key={`grad_${prod.barcode}`}
                           id={`c1-grad-${prod.barcode}`}
@@ -2636,7 +2944,7 @@ export default function CustomerReportPortal() {
                     <Legend
                       wrapperStyle={{ fontSize: "9px", fontWeight: "bold" }}
                     />
-                    {REPORT_PRODUCTS.map((prod) => (
+                    {activeReportProducts.map((prod) => (
                       <Bar
                         key={prod.barcode}
                         dataKey={`sales_${prod.barcode}`}
@@ -2720,7 +3028,7 @@ export default function CustomerReportPortal() {
                   3. เปรียบเทียบราคาหน้าร้านทุก SKU vs คู่แข่ง (บาท)
                 </h3>
                 <span className="text-[9px] bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded-md">
-                  {chart3Data.length} วัน · {PRICE_CHART_SERIES.length} เส้น
+                  {chart3Data.length} วัน · {activePriceChartSeries.length} เส้น
                 </span>
               </div>
               <div className="h-80 sm:h-96 w-full relative">
@@ -2754,7 +3062,7 @@ export default function CustomerReportPortal() {
                           lineHeight: "18px",
                         }}
                       />
-                      {PRICE_CHART_SERIES.map((series) => (
+                      {activePriceChartSeries.map((series) => (
                         <Line
                           key={series.dataKey}
                           type="monotone"
@@ -2804,7 +3112,7 @@ export default function CustomerReportPortal() {
                       <Legend
                         wrapperStyle={{ fontSize: "9px", fontWeight: "bold" }}
                       />
-                      {REPORT_PRODUCTS.map((prod, index) => (
+                      {activeReportProducts.map((prod, index) => (
                         <Line
                           key={prod.barcode}
                           type="monotone"
@@ -2845,7 +3153,7 @@ export default function CustomerReportPortal() {
                     ตารางรายงานกิจกรรม PG ประจำสาขารายวัน (Full Report)
                   </h3>
                   <p className="text-[10px] text-slate-400 font-bold">
-                    รวมรายละเอียด Target, สต๊อกสินค้าครบ 10 รายการ,
+                    รวมรายละเอียด Target, สต๊อกสินค้าตาม SKU ที่พบในรายงาน,
                     ราคาเปรียบเทียบ 15 รายการ และรูปภาพกิจกรรม (แยก 1 รูปต่อ 1
                     คอลัมน์)
                   </p>
@@ -2900,32 +3208,32 @@ export default function CustomerReportPortal() {
                         สถิติลูกค้า (FUNNEL)
                       </th>
                       <th
-                        colSpan={10}
+                        colSpan={activeReportProducts.length}
                         className="p-5 border-r border-slate-200 text-center bg-yellow-100/60"
                       >
                         STOCK ก่อนเริ่ม (P)
                       </th>
                       <th
-                        colSpan={10}
+                        colSpan={activeReportProducts.length}
                         className="p-2 border-r border-slate-200 text-center bg-emerald-100/60 text-emerald-900"
                       >
                         จำนวนขาย (แพ็ค)
                       </th>
                       <th
-                        colSpan={10}
+                        colSpan={activeReportProducts.length}
                         className="p-5 border-r border-slate-200 text-center bg-yellow-100/60"
                       >
                         STOCK หลังเลิก (P)
                       </th>
 
                       <th
-                        colSpan={10}
+                        colSpan={activeReportProducts.length}
                         className="p-2 border-r border-slate-200 text-center bg-indigo-50/70 text-indigo-900"
                       >
                         ราคาขายหน้าร้าน
                       </th>
                       <th
-                        colSpan={15}
+                        colSpan={displayedCompetitorItems.length}
                         className="p-2 border-r border-slate-200 text-center bg-rose-50/70 text-rose-900"
                       >
                         ราคาคู่แข่ง
@@ -2972,8 +3280,8 @@ export default function CustomerReportPortal() {
                         CLOSED
                       </th>
 
-                      {/* Stock Before (10) */}
-                      {REPORT_PRODUCTS.map((p) => (
+                      {/* Stock Before */}
+                      {activeReportProducts.map((p) => (
                         <th
                           key={`sb_head_${p.barcode}`}
                           className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
@@ -2982,8 +3290,8 @@ export default function CustomerReportPortal() {
                         </th>
                       ))}
 
-                      {/* Sales Qty (10) */}
-                      {REPORT_PRODUCTS.map((p) => (
+                      {/* Sales Qty */}
+                      {activeReportProducts.map((p) => (
                         <th
                           key={`sq_head_${p.barcode}`}
                           className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
@@ -2992,8 +3300,8 @@ export default function CustomerReportPortal() {
                         </th>
                       ))}
 
-                      {/* Stock After (10) */}
-                      {REPORT_PRODUCTS.map((p) => (
+                      {/* Stock After */}
+                      {activeReportProducts.map((p) => (
                         <th
                           key={`sa_head_${p.barcode}`}
                           className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
@@ -3002,8 +3310,8 @@ export default function CustomerReportPortal() {
                         </th>
                       ))}
 
-                      {/* Our Prices (10) */}
-                      {REPORT_PRODUCTS.map((p) => (
+                      {/* Our Prices */}
+                      {activeReportProducts.map((p) => (
                         <th
                           key={`pr_head_${p.barcode}`}
                           className={`p-5.0 border-r border-slate-200 ${p.bgClass}`}
@@ -3013,7 +3321,7 @@ export default function CustomerReportPortal() {
                       ))}
 
                       {/* Competitor Prices (15) */}
-                      {COMPETITOR_ITEMS.map((comp) => (
+                      {displayedCompetitorItems.map((comp) => (
                         <th
                           key={`comp_head_${comp.key}`}
                           className={`p-5.0 border-r border-slate-200 min-w-[180px] max-w-[300px] ${comp.bgClass}`}
@@ -3104,8 +3412,8 @@ export default function CustomerReportPortal() {
                             {row.closedSales}
                           </td>
 
-                          {/* Stock Before (10 Columns) */}
-                          {REPORT_PRODUCTS.map((prod) => {
+                          {/* Stock Before */}
+                          {activeReportProducts.map((prod) => {
                             const info = getProductInfo(
                               row,
                               prod.barcode,
@@ -3121,8 +3429,8 @@ export default function CustomerReportPortal() {
                             );
                           })}
 
-                          {/* Sales Qty (10 Columns) */}
-                          {REPORT_PRODUCTS.map((prod) => {
+                          {/* Sales Qty */}
+                          {activeReportProducts.map((prod) => {
                             const info = getProductInfo(
                               row,
                               prod.barcode,
@@ -3141,8 +3449,8 @@ export default function CustomerReportPortal() {
                             );
                           })}
 
-                          {/* Stock After (10 Columns) */}
-                          {REPORT_PRODUCTS.map((prod) => {
+                          {/* Stock After */}
+                          {activeReportProducts.map((prod) => {
                             const info = getProductInfo(
                               row,
                               prod.barcode,
@@ -3158,8 +3466,8 @@ export default function CustomerReportPortal() {
                             );
                           })}
 
-                          {/* Prices Our (10 Columns) */}
-                          {REPORT_PRODUCTS.map((prod) => {
+                          {/* Prices Our */}
+                          {activeReportProducts.map((prod) => {
                             const info = getProductInfo(
                               row,
                               prod.barcode,
@@ -3178,8 +3486,14 @@ export default function CustomerReportPortal() {
                           })}
 
                           {/* Competitor Prices (15 Columns) */}
-                          {COMPETITOR_ITEMS.map((comp) => {
-                            const val = getCompetitorVal(row, comp.key);
+                          {displayedCompetitorItems.map((comp) => {
+                            const val =
+                              comp.source === "campaign"
+                                ? getCampaignCompetitorPrice(
+                                    row,
+                                    comp.barcode || "",
+                                  )
+                                : getCompetitorVal(row, comp.key);
                             return (
                               <td
                                 key={`comp_${comp.key}`}
@@ -3401,19 +3715,19 @@ export default function CustomerReportPortal() {
                 </div>
               </div>
 
-              {/* 3. ยอดขาย สต๊อก และราคาขายสินค้าเรา (ครบทั้ง 10 SKU) */}
+              {/* 3. ยอดขาย สต๊อก และราคาขายสินค้าจาก catalog */}
               <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-emerald-900 block">
-                    📦 ยอดขาย สต๊อก และราคาขายสินค้าเรา (ครบทั้ง 10 รายการ)
+                    📦 ยอดขาย สต๊อก และราคาขายสินค้าทั้งหมด
                   </span>
                   <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                    10 SKU
+                    {activeReportProducts.length} SKU
                   </span>
                 </div>
 
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                  {REPORT_PRODUCTS.map((prod) => {
+                  {activeReportProducts.map((prod) => {
                     // Helper ดึงค่า
                     const getProdVal = (
                       field:

@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   LayoutDashboard,
   Tag, // 🟢 เพิ่ม icon สำหรับโปรโมชั่น/สินค้า
+  PackageSearch,
 } from "lucide-react";
 
 export default function AdminHubPage() {
@@ -39,6 +40,18 @@ export default function AdminHubPage() {
       badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
       iconBg: "bg-emerald-600 text-white",
       hoverBorder: "hover:border-emerald-400 hover:shadow-md",
+    },
+    {
+      title: "สรุปยอดขายราย User แยก SKU",
+      subtitle: "User Sales by SKU",
+      description:
+        "ตรวจสอบยอดขายรายพนักงานแยกตาม SKU ในช่วงวันที่ พร้อมสรุปจำนวนและมูลค่าขายเพื่ออนุมัติจ่ายและส่งต่อบัญชี",
+      href: "/admin/user-sku-sales",
+      icon: PackageSearch,
+      badge: "อนุมัติยอดขาย",
+      badgeColor: "bg-cyan-50 text-cyan-700 border-cyan-200",
+      iconBg: "bg-cyan-700 text-white",
+      hoverBorder: "hover:border-cyan-400 hover:shadow-md",
     },
     {
       title: "จัดการเป้าหมายการขายประจำสาขา",
