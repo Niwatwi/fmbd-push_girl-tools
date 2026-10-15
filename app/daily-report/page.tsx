@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
+import ThemeToggle from "../components/ThemeToggle";
 import {
   ArrowLeft,
   FileSpreadsheet,
@@ -788,7 +789,7 @@ export default function DailyReportPage() {
   };
 
   return (
-    <div className="min-h-screen bg-green-200 text-slate-950 font-sans antialiased pb-12 select-none">
+    <div className="staff-theme min-h-screen bg-green-200 text-slate-950 font-sans antialiased pb-12 select-none">
       <header className="bg-[#1e3a8a] text-white p-4 sticky top-0 z-50 shadow-md">
         <div className="max-w-md mx-auto flex items-center gap-2">
           <button
@@ -807,6 +808,7 @@ export default function DailyReportPage() {
               Daily Report & Visual Verification
             </p>
           </div>
+          <ThemeToggle className="ml-auto bg-blue-800/40 text-blue-100 hover:bg-blue-700/60" />
         </div>
       </header>
 

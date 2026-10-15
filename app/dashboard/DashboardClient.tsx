@@ -23,6 +23,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import ThemeToggle from "../components/ThemeToggle";
 import { getUserDashboardDataAction, calculateBigCCommission } from "./actions";
 
 interface DashboardClientProps {
@@ -246,7 +247,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-12 select-none">
+    <div className="staff-theme min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-12 select-none">
       {/* HEADER BAR */}
       <header className="bg-[#1e3a8a] text-white p-4 sticky top-0 z-50 shadow-xs">
         <div className="max-w-md mx-auto flex items-center justify-between">
@@ -269,20 +270,23 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => loadUserData(true)}
-            disabled={refreshing}
-            className="p-2 bg-blue-800/80 hover:bg-blue-700 active:scale-95 rounded-xl transition text-white border border-blue-400/30 cursor-pointer flex items-center gap-1 text-[10px] font-bold"
-          >
-            <RefreshCw
-              size={13}
-              className={
-                refreshing ? "animate-spin text-amber-300" : "text-blue-200"
-              }
-            />
-            <span>{refreshing ? "อัปเดต..." : "รีเฟรช"}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle className="bg-blue-800/80 text-blue-100 border border-blue-400/30 hover:bg-blue-700" />
+            <button
+              type="button"
+              onClick={() => loadUserData(true)}
+              disabled={refreshing}
+              className="p-2 bg-blue-800/80 hover:bg-blue-700 active:scale-95 rounded-xl transition text-white border border-blue-400/30 cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+            >
+              <RefreshCw
+                size={13}
+                className={
+                  refreshing ? "animate-spin text-amber-300" : "text-blue-200"
+                }
+              />
+              <span>{refreshing ? "อัปเดต..." : "รีเฟรช"}</span>
+            </button>
+          </div>
         </div>
       </header>
 

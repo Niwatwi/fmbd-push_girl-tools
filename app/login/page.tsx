@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
+import ThemeToggle from "../components/ThemeToggle";
 import { handleLogin } from "./actions";
 
 export default function LoginPage() {
@@ -67,13 +68,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col justify-center bg-slate-50 px-6 py-12 lg:px-8">
+    <div className="staff-theme flex min-h-screen flex-col justify-center bg-slate-50 px-6 py-12 lg:px-8">
+      <ThemeToggle className="fixed right-4 top-4 border border-slate-200 bg-white text-slate-700 shadow-sm" />
       <div className="sm:mx-auto sm:w-full sm:max-w-sm text-center">
         {/* เปลี่ยนมาใช้โลโก้บริษัทจาก public/rvp.png */}
         <img
           src="/rvp.png"
           alt="RVP Logo"
-          className="mx-auto h-20 w-auto object-contain"
+          className="keep-light mx-auto h-20 w-auto rounded-xl bg-white object-contain p-2"
         />
 
         <h2 className="mt-6 text-2xl font-bold leading-9 tracking-tight text-gray-900">

@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
+import ThemeToggle from "./components/ThemeToggle";
 import {
   handleLogout,
   checkTodayAttendance,
@@ -277,7 +278,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
   };
 
   return (
-    <div className="min-h-screen bg-green-200 text-slate-900 font-sans antialiased pb-12 select-none">
+    <div className="staff-theme min-h-screen bg-green-200 text-slate-900 font-sans antialiased pb-12 select-none">
       <input
         type="file"
         accept="image/*"
@@ -293,7 +294,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
             <img
               src="/rvp.png"
               alt="RVP Logo"
-              className="w-12 h-12 bg-white rounded-full p-1.5 shadow-md mb-1"
+              className="keep-light w-12 h-12 bg-white rounded-full p-1.5 shadow-md mb-1"
             />
             <h1 className="text-lg font-black tracking-widest text-white">
               RVI-PUSH GIRL
@@ -304,7 +305,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
           </div>
           <div className="flex justify-between items-center border-t border-blue-700/60 pt-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border-2 border-blue-400 overflow-hidden shrink-0">
+              <div className="keep-light w-10 h-10 bg-white rounded-full flex items-center justify-center border-2 border-blue-400 overflow-hidden shrink-0">
                 <img
                   src={user?.image_url || "/rvp.png"}
                   alt="Avatar"
@@ -320,13 +321,16 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onLogoutClick}
-              className="p-2 bg-blue-800/40 rounded-full hover:bg-red-700/60 transition"
-            >
-              <LogOut size={16} className="text-blue-100" />
-            </button>
+            <div className="flex items-center gap-2">
+              <ThemeToggle className="bg-blue-800/40 text-blue-100 hover:bg-blue-700/60" />
+              <button
+                type="button"
+                onClick={onLogoutClick}
+                className="p-2 bg-blue-800/40 rounded-full hover:bg-red-700/60 transition"
+              >
+                <LogOut size={16} className="text-blue-100" />
+              </button>
+            </div>
           </div>
         </div>
       </header>

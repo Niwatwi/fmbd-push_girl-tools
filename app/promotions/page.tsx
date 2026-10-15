@@ -13,6 +13,7 @@ import {
   Film,
   Tag,
 } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle";
 import { getCurrentUserPromotionBriefAction } from "@/app/admin/promotions/actions";
 
 export default function PromotionsBriefPage() {
@@ -119,7 +120,7 @@ export default function PromotionsBriefPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-12 select-none">
+    <div className="staff-theme min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-12 select-none">
       {/* 🟦 HEADER BRANDING BAR */}
       <header className="bg-[#1e3a8a] text-white p-4 shadow-md sticky top-0 z-50">
         <div className="max-w-md mx-auto flex items-center gap-3">
@@ -138,6 +139,7 @@ export default function PromotionsBriefPage() {
               Reverpro Intertrade Co., Ltd
             </p>
           </div>
+          <ThemeToggle className="ml-auto bg-blue-800/40 text-blue-100 hover:bg-blue-700/60" />
         </div>
       </header>
 

@@ -17,3 +17,163 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Dark theme for staff-facing pages (hub, daily report, promotions, dashboard, login) */
+html.dark .staff-theme {
+  color-scheme: dark;
+  background-color: #0b1220;
+  color: #e2e8f0;
+}
+
+html.dark .staff-theme .bg-white,
+html.dark .staff-theme .bg-white\/80 {
+  background-color: #111c2e;
+}
+html.dark .staff-theme .bg-slate-50,
+html.dark .staff-theme .bg-slate-100,
+html.dark .staff-theme .hover\:bg-slate-100:hover,
+html.dark .staff-theme .hover\:bg-slate-50\/80:hover {
+  background-color: #172540;
+}
+html.dark .staff-theme .bg-blue-50,
+html.dark .staff-theme .hover\:bg-blue-100:hover {
+  background-color: rgb(59 130 246 / 0.14);
+}
+html.dark .staff-theme .bg-amber-50,
+html.dark .staff-theme .bg-amber-50\/50 {
+  background-color: rgb(245 158 11 / 0.13);
+}
+html.dark .staff-theme .bg-orange-50,
+html.dark .staff-theme .hover\:bg-orange-100:hover {
+  background-color: rgb(249 115 22 / 0.13);
+}
+html.dark .staff-theme .bg-emerald-50,
+html.dark .staff-theme .bg-emerald-50\/50,
+html.dark .staff-theme .hover\:bg-emerald-100:hover {
+  background-color: rgb(16 185 129 / 0.13);
+}
+html.dark .staff-theme .bg-red-50,
+html.dark .staff-theme .hover\:bg-red-50:hover,
+html.dark .staff-theme .hover\:bg-red-100:hover {
+  background-color: rgb(239 68 68 / 0.14);
+}
+html.dark .staff-theme .from-white {
+  background-image: none;
+}
+html.dark .staff-theme .keep-light {
+  background-color: #fff;
+}
+
+html.dark .staff-theme .text-slate-950,
+html.dark .staff-theme .text-slate-900,
+html.dark .staff-theme .text-slate-800 {
+  color: #f1f5f9;
+}
+html.dark .staff-theme .text-slate-700 {
+  color: #e2e8f0;
+}
+html.dark .staff-theme .text-slate-600 {
+  color: #cbd5e1;
+}
+html.dark .staff-theme .text-slate-500,
+html.dark .staff-theme .text-slate-400 {
+  color: #94a3b8;
+}
+html.dark .staff-theme .text-blue-900,
+html.dark .staff-theme .text-blue-800 {
+  color: #bfdbfe;
+}
+html.dark .staff-theme .text-blue-700,
+html.dark .staff-theme .text-blue-600 {
+  color: #60a5fa;
+}
+html.dark .staff-theme .text-indigo-600 {
+  color: #818cf8;
+}
+html.dark .staff-theme .text-cyan-800 {
+  color: #67e8f9;
+}
+html.dark .staff-theme .text-emerald-950,
+html.dark .staff-theme .text-emerald-800,
+html.dark .staff-theme .text-emerald-700 {
+  color: #6ee7b7;
+}
+html.dark .staff-theme .text-emerald-600 {
+  color: #34d399;
+}
+html.dark .staff-theme .text-amber-900,
+html.dark .staff-theme .text-amber-800,
+html.dark .staff-theme .text-amber-700 {
+  color: #fcd34d;
+}
+html.dark .staff-theme .text-orange-800 {
+  color: #fdba74;
+}
+html.dark .staff-theme .text-orange-600 {
+  color: #fb923c;
+}
+html.dark .staff-theme .text-red-800,
+html.dark .staff-theme .text-rose-700 {
+  color: #fca5a5;
+}
+html.dark .staff-theme .text-rose-600 {
+  color: #fb7185;
+}
+html.dark .staff-theme .text-gray-900 {
+  color: #f1f5f9;
+}
+html.dark .staff-theme .text-gray-500 {
+  color: #94a3b8;
+}
+
+html.dark .staff-theme .border-slate-50,
+html.dark .staff-theme .border-slate-100,
+html.dark .staff-theme .border-slate-200,
+html.dark .staff-theme .border-slate-200\/60,
+html.dark .staff-theme .border-slate-200\/80,
+html.dark .staff-theme .border-slate-300 {
+  border-color: #2b3d5c;
+}
+html.dark .staff-theme .hover\:border-blue-400:hover {
+  border-color: #3b82f6;
+}
+html.dark .staff-theme .border-black\/5 {
+  border-color: rgb(255 255 255 / 0.08);
+}
+html.dark .staff-theme .border-blue-200 {
+  border-color: rgb(59 130 246 / 0.4);
+}
+html.dark .staff-theme .border-amber-200,
+html.dark .staff-theme .border-amber-200\/60 {
+  border-color: rgb(245 158 11 / 0.4);
+}
+html.dark .staff-theme .border-orange-200 {
+  border-color: rgb(249 115 22 / 0.4);
+}
+html.dark .staff-theme .border-emerald-100,
+html.dark .staff-theme .border-emerald-200 {
+  border-color: rgb(16 185 129 / 0.4);
+}
+html.dark .staff-theme .border-red-200 {
+  border-color: rgb(239 68 68 / 0.4);
+}
+html.dark .staff-theme .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #2b3d5c;
+}
+
+html.dark
+  .staff-theme
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+html.dark .staff-theme select,
+html.dark .staff-theme textarea {
+  background-color: #0f1a2e;
+  border-color: #334866;
+  color: #f1f5f9;
+}
+html.dark .staff-theme input::placeholder,
+html.dark .staff-theme textarea::placeholder {
+  color: #64748b;
+}
+html.dark .staff-theme .ring-gray-300 {
+  --tw-ring-color: #334866;
+}
