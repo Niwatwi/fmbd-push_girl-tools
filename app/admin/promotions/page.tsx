@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Swal from "sweetalert2";
+import Link from "next/link";
+import { ArrowLeft, Target } from "lucide-react";
 import {
   getAllPromotionsAction,
   savePromotionAction,
@@ -25,7 +28,7 @@ interface StoreItem {
   id: string | number;
   store_name: string;
   store_code: string;
-  company_tag?: string;
+  account?: string;
 }
 
 const DEFAULT_COMMISSION_RULES: PromotionCommissionRules = {
@@ -190,10 +193,21 @@ export default function PromotionsAdminPage() {
   };
 
   const handleEdit = (promo: PromotionConfig) => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
     setEditingId(promo.id);
     const type = promo.target_type || "COMPANY_TAG";
     setTargetType(type);
-    setTargetValue(promo.target_value || "");
+    const savedValue = promo.target_value || "";
+    const matchedAccount =
+      type === "COMPANY_TAG"
+        ? stores.find(
+            (s) =>
+              String(s.account || "")
+                .trim()
+                .toLowerCase() === savedValue.trim().toLowerCase(),
+          )?.account
+        : undefined;
+    setTargetValue(matchedAccount?.trim() || savedValue);
 
     if (type === "STORE_CODE") {
       const matched = stores.find((s) => s.store_code === promo.target_value);
@@ -291,7 +305,11 @@ export default function PromotionsAdminPage() {
 
     const result = await getProductByBarcodeForPromotionAction(barcode);
     if (!result.success || !result.product) {
-      alert(result.message || "ไม่พบสินค้าใน catalog");
+      Swal.fire(
+        "แจ้งเตือน",
+        result.message || "ไม่พบสินค้าใน catalog",
+        "warning",
+      );
       return;
     }
 
@@ -337,11 +355,19 @@ export default function PromotionsAdminPage() {
     e.preventDefault();
 
     if (startDate && endDate && startDate > endDate) {
-      alert("วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด");
+      Swal.fire(
+        "แจ้งเตือน",
+        "วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด",
+        "warning",
+      );
       return;
     }
     if (items.some((item) => !item.product_code || !item.barcode)) {
-      alert("กรุณาเลือกหรือค้นหาสินค้าจาก Barcode ให้ครบทุกแถว");
+      Swal.fire(
+        "แจ้งเตือน",
+        "กรุณาเลือกหรือค้นหาสินค้าจาก Barcode ให้ครบทุกแถว",
+        "warning",
+      );
       return;
     }
     if (
@@ -350,7 +376,11 @@ export default function PromotionsAdminPage() {
           item.item_scope !== "COMPETITOR" && Number(item.target_qty || 0) <= 0,
       )
     ) {
-      alert("กรุณากำหนด Target มากกว่า 0 ให้สินค้าของเรา");
+      Swal.fire(
+        "แจ้งเตือน",
+        "กรุณากำหนด Target มากกว่า 0 ให้สินค้าของเรา",
+        "warning",
+      );
       return;
     }
 
@@ -377,30 +407,63 @@ export default function PromotionsAdminPage() {
 
     const res = await savePromotionAction(payload);
     if (res.success) {
-      alert("บันทึกข้อมูลโปรโมชันเรียบร้อยแล้ว");
+      Swal.fire("สำเร็จ", "บันทึกข้อมูลโปรโมชันเรียบร้อยแล้ว", "success");
       handleResetForm();
       fetchPromotions();
     } else {
-      alert("เกิดข้อผิดพลาด: " + res.message);
+      Swal.fire("เกิดข้อผิดพลาด", String(res.message || ""), "error");
     }
   };
 
   const handleDelete = async (id: string | number) => {
-    if (!confirm("คุณต้องการลบโปรโมชันนี้ใช่หรือไม่?")) return;
+    const confirmed = await Swal.fire({
+      title: "ยืนยันการลบ",
+      text: "คุณต้องการลบโปรโมชันนี้ใช่หรือไม่?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      confirmButtonText: "ลบ",
+      cancelButtonText: "ยกเลิก",
+    });
+    if (!confirmed.isConfirmed) return;
     const res = await deletePromotionAction(id);
     if (res.success) {
-      alert("ลบข้อมูลสำเร็จ");
+      Swal.fire("สำเร็จ", "ลบข้อมูลสำเร็จ", "success");
       fetchPromotions();
     } else {
-      alert("เกิดข้อผิดพลาด: " + res.message);
+      Swal.fire("เกิดข้อผิดพลาด", String(res.message || ""), "error");
     }
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-slate-800">
-        จัดการโปรโมชัน (Admin)
-      </h1>
+    <div className="min-h-screen bg-blue-800 text-slate-800 font-sans antialiased">
+      {/* HEADER TOP BAR */}
+      <nav className="bg-blue-800 border-b border-slate-200 sticky top-0 z-40 shadow-xs">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="bg-slate-900 text-white p-2 rounded-xl">
+              <Target size={18} />
+            </div>
+            <div className="text-left">
+              <span className="text-xs font-bold text-red-600 block tracking-wider">
+                BACKEND MANAGEMENT
+              </span>
+              <span className="text-sm font-black text-slate-800 block -mt-0.5">
+                ระบบจัดการโปรโมชั่น (ADMIN)
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link
+              href="/admin"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition cursor-pointer"
+            >
+              <ArrowLeft size={18} /> หน้าหลัก Admin
+            </Link>
+          </div>
+        </div>
+      </nav>
 
       <form
         onSubmit={handleSave}
@@ -425,9 +488,7 @@ export default function PromotionsAdminPage() {
               }}
               className="w-full border rounded-lg p-2 text-xs font-bold bg-slate-50"
             >
-              <option value="COMPANY_TAG">
-                Account (pg_stores.company_tag)
-              </option>
+              <option value="COMPANY_TAG">Account (pg_stores.account)</option>
               <option value="STORE_CODE">ระบุรายสาขา (store_code)</option>
               <option value="ALL">ทุกสาขา (All)</option>
             </select>
@@ -467,13 +528,20 @@ export default function PromotionsAdminPage() {
                 <option value="">-- เลือก Account --</option>
                 {Array.from(
                   new Set(
-                    stores.map((store) => store.company_tag).filter(Boolean),
+                    [
+                      ...stores.map((store) =>
+                        String(store.account || "").trim(),
+                      ),
+                      targetValue,
+                    ].filter(Boolean),
                   ),
-                ).map((tag) => (
-                  <option key={tag} value={tag}>
-                    {tag}
-                  </option>
-                ))}
+                )
+                  .sort()
+                  .map((tag) => (
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
+                  ))}
               </select>
             </div>
           )}

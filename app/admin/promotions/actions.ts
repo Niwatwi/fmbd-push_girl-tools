@@ -205,7 +205,8 @@ export async function getPromotionByStoreAction(
     if (
       promo.target_type === "COMPANY_TAG" &&
       companyTag &&
-      promo.target_value === companyTag
+      String(promo.target_value).trim().toLowerCase() ===
+        String(companyTag).trim().toLowerCase()
     )
       return true;
     return false;
@@ -239,10 +240,10 @@ export async function getCurrentUserPromotionBriefAction() {
   if (storeCode) {
     const { data: store } = await supabase
       .from("pg_stores")
-      .select("company_tag")
+      .select("account")
       .eq("store_code", storeCode)
       .maybeSingle();
-    storeCompanyTag = String(store?.company_tag || "");
+    storeCompanyTag = String(store?.account || "");
   }
 
   const result = await getPromotionByStoreAction(
@@ -329,7 +330,7 @@ export async function getStoresAction() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pg_stores")
-    .select("id, store_name, store_code, company_tag")
+    .select("id, store_name, store_code, account")
     .order("store_name");
 
   if (error) return { success: false, stores: [] };

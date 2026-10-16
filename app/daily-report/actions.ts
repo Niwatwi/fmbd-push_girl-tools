@@ -176,7 +176,7 @@ export async function getTodayActiveAttendance(userId: number) {
       data?.store_code
         ? supabase
             .from("pg_stores")
-            .select("company_tag")
+            .select("account")
             .eq("store_code", data.store_code)
             .maybeSingle()
         : Promise.resolve({ data: null }),
@@ -188,7 +188,7 @@ export async function getTodayActiveAttendance(userId: number) {
         ? {
             ...data,
             staff_group: profileResult.data?.company_tag || "",
-            store_company_tag: storeResult.data?.company_tag || "",
+            store_company_tag: storeResult.data?.account || "",
           }
         : data,
     };
@@ -290,7 +290,7 @@ export async function submitFullDailyActivityReportAction(
           .maybeSingle(),
         supabase
           .from("pg_stores")
-          .select("company_tag")
+          .select("account")
           .eq("store_code", payload.storeCode)
           .maybeSingle(),
       ]);
@@ -304,13 +304,14 @@ export async function submitFullDailyActivityReportAction(
         throw new Error("กลุ่มพนักงานไม่มีสิทธิ์ส่งรายงานในแคมเปญนี้");
       }
 
-      const storeCompanyTag = String(storeResult.data?.company_tag || "");
+      const storeCompanyTag = String(storeResult.data?.account || "");
       const targetMatches =
         campaign.target_type === "ALL" ||
         (campaign.target_type === "STORE_CODE" &&
           String(campaign.target_value) === String(payload.storeCode)) ||
         (campaign.target_type === "COMPANY_TAG" &&
-          String(campaign.target_value) === storeCompanyTag);
+          String(campaign.target_value).trim().toLowerCase() ===
+            storeCompanyTag.trim().toLowerCase());
       if (!targetMatches) {
         throw new Error("แคมเปญนี้ไม่ได้กำหนดให้กับ Account/สาขานี้");
       }
