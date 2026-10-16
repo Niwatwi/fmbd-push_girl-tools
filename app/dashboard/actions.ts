@@ -1701,9 +1701,37 @@ export async function getCustomerFullActivityReport() {
     const storeQueries = [
       supabase.from("pg_stores").select("store_code, store_name, account"),
       supabase.from("store_targets").select("*"),
+      supabase
+        .from("promotions")
+        .select(
+          "id, campaign_title, target_type, target_value, start_date, end_date, is_active, items:promotion_items(item_scope, target_qty, price)",
+        ),
     ];
 
-    const [storesRes, targetsRes] = await Promise.all(storeQueries);
+    const [storesRes, targetsRes, promotionsRes] =
+      await Promise.all(storeQueries);
+    const promotionList = (promotionsRes.data || []) as any[];
+    const summarizePromotion = (promo: any) => {
+      const ourItems = (promo?.items || []).filter(
+        (item: any) => item.item_scope !== "COMPETITOR",
+      );
+      return {
+        packs: ourItems.reduce(
+          (sum: number, item: any) => sum + Number(item.target_qty || 0),
+          0,
+        ),
+        revenue: ourItems.reduce(
+          (sum: number, item: any) =>
+            sum + Number(item.target_qty || 0) * (Number(item.price) || 0),
+          0,
+        ),
+        name: String(promo?.campaign_title || ""),
+      };
+    };
+    const normalizeKey = (value: unknown) =>
+      String(value ?? "")
+        .trim()
+        .toLowerCase();
     const targetLookup = new Map<string, number>();
     const targetRevenueLookup = new Map<string, number>();
     const targetPromotionLookup = new Map<string, string>();
@@ -1889,6 +1917,43 @@ export async function getCustomerFullActivityReport() {
           Number(row.price_comp_paseo ?? row.compPaseo) || 0;
       }
 
+      const reportDay = String(row.report_date ?? row.reportDate ?? "").slice(
+        0,
+        10,
+      );
+      const storeTargetKey = String(resolvedStoreCode).trim();
+      const hasStoreTarget =
+        (targetLookup.get(storeTargetKey) ?? 0) > 0 ||
+        (targetRevenueLookup.get(storeTargetKey) ?? 0) > 0;
+      const matchedPromotion =
+        promotionList.find(
+          (promo) =>
+            row.promotion_id != null &&
+            String(promo.id) === String(row.promotion_id),
+        ) ||
+        promotionList.find((promo) => {
+          if (!promo.is_active) return false;
+          if (
+            promo.start_date &&
+            reportDay < String(promo.start_date).slice(0, 10)
+          )
+            return false;
+          if (promo.end_date && reportDay > String(promo.end_date).slice(0, 10))
+            return false;
+          if (promo.target_type === "ALL") return true;
+          if (promo.target_type === "STORE_CODE") {
+            return String(promo.target_value) === storeTargetKey;
+          }
+          return (
+            promo.target_type === "COMPANY_TAG" &&
+            normalizeKey(promo.target_value) ===
+              normalizeKey(resolvedStoreAccount)
+          );
+        });
+      const promotionTarget = matchedPromotion
+        ? summarizePromotion(matchedPromotion)
+        : null;
+
       return {
         ...row,
         id: row.id,
@@ -1906,16 +1971,20 @@ export async function getCustomerFullActivityReport() {
         compKleenex: competitorPrices.kleenex_silky_4,
         compPaseo: competitorPrices.scott_safesoft_4,
         targetPacks: Number(
-          targetLookup.get(String(resolvedStoreCode).trim()) ??
+          (hasStoreTarget ? targetLookup.get(storeTargetKey) : undefined) ??
+            promotionTarget?.packs ??
             row.target_packs ??
             row.target ??
             0,
         ),
         feedback: row.feedback_store ?? row.feedback ?? "",
-        targetRevenue:
-          targetRevenueLookup.get(String(resolvedStoreCode).trim()) ?? 0,
+        targetRevenue: hasStoreTarget
+          ? (targetRevenueLookup.get(storeTargetKey) ?? 0)
+          : (promotionTarget?.revenue ?? 0),
         targetPromotionName:
-          targetPromotionLookup.get(String(resolvedStoreCode).trim()) ?? "",
+          targetPromotionLookup.get(storeTargetKey) ||
+          promotionTarget?.name ||
+          "",
         competitorPromo: row.competitor_promotion ?? row.competitorPromo ?? "",
         remark: row.remark ?? row.remark_store ?? row.remarkStore ?? "",
         activityPhotos: mergedPhotos,
