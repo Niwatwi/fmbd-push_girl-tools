@@ -436,9 +436,28 @@ export async function saveStoreTargetAction(payload: {
 
     const { data, error } = await supabase
       .from("store_targets")
-      .upsert(upsertData, { onConflict: "store_code" })
+      .upsert(
+        {
+          ...upsertData,
+          promotion_id:
+            payload.promotion_id == null ? null : String(payload.promotion_id),
+          promotion_name: payload.promotion_name ?? null,
+        },
+        { onConflict: "store_code" },
+      )
       .select()
       .single();
+
+    // ฝั่ง DB ที่ยังไม่มีคอลัมน์ promotion_* ให้บันทึกแบบเดิมได้
+    if (error && /promotion_(id|name)/.test(error.message || "")) {
+      const fallback = await supabase
+        .from("store_targets")
+        .upsert(upsertData, { onConflict: "store_code" })
+        .select()
+        .single();
+      if (fallback.error) throw fallback.error;
+      return { success: true, data: fallback.data };
+    }
 
     if (error) throw error;
     return { success: true, data };
@@ -457,7 +476,9 @@ export async function getAvailableStores() {
   try {
     const { data, error } = await supabase
       .from("pg_stores")
-      .select("id, store_code, store_name, area, company_tag, is_active")
+      .select(
+        "id, store_code, store_name, area, company_tag, account, is_active",
+      )
       .order("store_name", { ascending: true });
 
     if (error) throw error;
@@ -1684,12 +1705,27 @@ export async function getCustomerFullActivityReport() {
 
     const [storesRes, targetsRes] = await Promise.all(storeQueries);
     const targetLookup = new Map<string, number>();
+    const targetRevenueLookup = new Map<string, number>();
+    const targetPromotionLookup = new Map<string, string>();
     for (const target of (targetsRes.data || []) as any[]) {
       if (!target?.store_code) continue;
-      targetLookup.set(
-        String(target.store_code).trim(),
-        getStoreTargetPacks(target),
+      const code = String(target.store_code).trim();
+      targetLookup.set(code, getStoreTargetPacks(target));
+      const productRevenue = Array.from({ length: 10 }, (_, i) => {
+        return (
+          Number(target[`target${i + 1}`] || 0) *
+          Number(target[`price${i + 1}`] || 0)
+        );
+      }).reduce((sum, value) => sum + value, 0);
+      targetRevenueLookup.set(
+        code,
+        productRevenue > 0
+          ? productRevenue
+          : Number(target.target_revenue || 0),
       );
+      if (target.promotion_name) {
+        targetPromotionLookup.set(code, String(target.promotion_name));
+      }
     }
 
     for (const item of storesRes.data || []) {
@@ -1876,6 +1912,10 @@ export async function getCustomerFullActivityReport() {
             0,
         ),
         feedback: row.feedback_store ?? row.feedback ?? "",
+        targetRevenue:
+          targetRevenueLookup.get(String(resolvedStoreCode).trim()) ?? 0,
+        targetPromotionName:
+          targetPromotionLookup.get(String(resolvedStoreCode).trim()) ?? "",
         competitorPromo: row.competitor_promotion ?? row.competitorPromo ?? "",
         remark: row.remark ?? row.remark_store ?? row.remarkStore ?? "",
         activityPhotos: mergedPhotos,

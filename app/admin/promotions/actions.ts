@@ -65,7 +65,7 @@ export interface PromotionConfig {
   end_date?: string | null;
   special_tier_text?: string;
   is_active: boolean;
-  staff_group?: "ALL" | "BA" | "PG";
+  staff_group?: string;
   commission_rules?: PromotionCommissionRules;
   items?: PromotionItem[];
 }
@@ -79,7 +79,7 @@ export interface SavePromotionPayload {
   end_date: string | null;
   special_tier_text?: string;
   is_active: boolean;
-  staff_group: "ALL" | "BA" | "PG";
+  staff_group: string;
   commission_rules: PromotionCommissionRules;
   items: Array<{
     product_code: string;
@@ -330,7 +330,7 @@ export async function getStoresAction() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("pg_stores")
-    .select("id, store_name, store_code, account")
+    .select("id, store_name, store_code, account, company_tag")
     .order("store_name");
 
   if (error) return { success: false, stores: [] };

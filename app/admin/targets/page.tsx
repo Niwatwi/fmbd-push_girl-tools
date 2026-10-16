@@ -43,6 +43,29 @@ const checkIsBigC = (code: string = "", name: string = "") => {
   );
 };
 
+const normalizeText = (value: unknown) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+// โปรโมชันที่ใช้กับร้านนี้: เปิดใช้งาน ยังไม่หมดอายุ และตรงเป้าหมาย (ALL / รายสาขา / Account)
+const isPromotionApplicable = (promo: any, store?: any) => {
+  if (!promo?.is_active) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  if (promo.end_date && String(promo.end_date).slice(0, 10) < today) {
+    return false;
+  }
+  if (promo.target_type === "ALL") return true;
+  if (!store) return false;
+  if (promo.target_type === "STORE_CODE") {
+    return String(promo.target_value) === String(store.store_code);
+  }
+  if (promo.target_type === "COMPANY_TAG") {
+    return normalizeText(promo.target_value) === normalizeText(store.account);
+  }
+  return false;
+};
+
 export default function AdminTargetManagement() {
   const router = useRouter();
   const [targetsList, setTargetsList] = useState<any[]>([]);
@@ -138,13 +161,41 @@ export default function AdminTargetManagement() {
     setStoreCode(selectedCode);
     const foundStore = masterStores.find((s) => s.store_code === selectedCode);
     setStoreName(foundStore ? foundStore.store_name : "");
+    const stillApplicable = promotions.some(
+      (p) =>
+        String(p.id) === String(promotionId) &&
+        isPromotionApplicable(p, foundStore),
+    );
+    if (!stillApplicable) {
+      setPromotionId("");
+      setPromotionName("");
+    }
   };
 
   const handlePromotionChange = (promoId: string) => {
     setPromotionId(promoId);
     const found = promotions.find((p) => String(p.id) === String(promoId));
-    setPromotionName(
-      found ? found.campaign_title || found.title || found.name || "" : "",
+    setPromotionName(found?.campaign_title || "");
+
+    const ourItems = (found?.items || []).filter(
+      (item: any) => item.item_scope !== "COMPETITOR",
+    );
+    if (ourItems.length === 0) return;
+    setProductRows(
+      ourItems.slice(0, 10).map((item: any) => {
+        const code = String(item.product_code || "");
+        const prod = productsList.find(
+          (p) => String(p.code) === code || String(p.id) === code,
+        );
+        return {
+          company: prod?.company || "",
+          category: prod?.category || "",
+          brand: prod?.brand || "",
+          productId: prod ? String(prod.id) : "",
+          target: Number(item.target_qty || 0),
+          price: Number(item.price) || prod?.default_price || prod?.price || 0,
+        };
+      }),
     );
   };
 
@@ -478,7 +529,7 @@ export default function AdminTargetManagement() {
                   <option value="">-- กรุณาเลือกร้านค้า --</option>
                   {masterStores.map((store) => (
                     <option key={store.id} value={store.store_code}>
-                      {store.store_name} ({store.company_tag})
+                      {store.store_name} ({store.account || "-"})
                     </option>
                   ))}
                 </select>
@@ -501,11 +552,20 @@ export default function AdminTargetManagement() {
                   className="w-full pl-9 pr-3 py-2 border rounded-xl text-xs font-bold text-slate-800 bg-white focus:outline-hidden focus:border-blue-500"
                 >
                   <option value="">-- ใช้ราคาและเป้ามาตรฐานทั่วไป --</option>
-                  {promotions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title}
-                    </option>
-                  ))}
+                  {promotions
+                    .filter(
+                      (p) =>
+                        String(p.id) === String(promotionId) ||
+                        isPromotionApplicable(
+                          p,
+                          masterStores.find((s) => s.store_code === storeCode),
+                        ),
+                    )
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.campaign_title}
+                      </option>
+                    ))}
                 </select>
               </div>
             </div>

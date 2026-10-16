@@ -29,6 +29,7 @@ interface StoreItem {
   store_name: string;
   store_code: string;
   account?: string;
+  company_tag?: string;
 }
 
 const DEFAULT_COMMISSION_RULES: PromotionCommissionRules = {
@@ -61,7 +62,7 @@ export default function PromotionsAdminPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [specialTierText, setSpecialTierText] = useState("");
-  const [staffGroup, setStaffGroup] = useState<"ALL" | "BA" | "PG">("ALL");
+  const [staffGroup, setStaffGroup] = useState<string>("ALL");
   const [commissionRules, setCommissionRules] =
     useState<PromotionCommissionRules>(DEFAULT_COMMISSION_RULES);
   const [isActive, setIsActive] = useState(true);
@@ -580,14 +581,26 @@ export default function PromotionsAdminPage() {
             </label>
             <select
               value={staffGroup}
-              onChange={(event) =>
-                setStaffGroup(event.target.value as "ALL" | "BA" | "PG")
-              }
+              onChange={(event) => setStaffGroup(event.target.value)}
               className="w-full border rounded-lg p-2 text-xs font-bold bg-white"
             >
-              <option value="ALL">BA และ PG</option>
-              <option value="BA">พนักงานขายประจำ (BA)</option>
-              <option value="PG">จัดรายการชั่วคราว (PG)</option>
+              <option value="ALL">ทั้งหมด</option>
+              {Array.from(
+                new Set(
+                  [
+                    ...stores.map((store) =>
+                      String(store.company_tag || "").trim(),
+                    ),
+                    staffGroup !== "ALL" ? staffGroup : "",
+                  ].filter(Boolean),
+                ),
+              )
+                .sort()
+                .map((group) => (
+                  <option key={group} value={group}>
+                    {group}
+                  </option>
+                ))}
             </select>
           </div>
         </div>

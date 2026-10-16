@@ -2059,6 +2059,8 @@ export default function CustomerReportPortal() {
         { header: "พนักงาน", key: "userName", width: 22 },
         { header: "วันที่", key: "reportDate", width: 14 },
         { header: "TARGET (แพ็ค)", key: "target", width: 14 },
+        { header: "รายได้เป้าหมาย (บาท)", key: "targetRevenue", width: 18 },
+        { header: "โปรโมชัน", key: "targetPromotion", width: 25 },
         { header: "TRAFFIC", key: "traffic", width: 10 },
         { header: "APPROACH", key: "approach", width: 10 },
         { header: "CLOSED", key: "closedSales", width: 10 },
@@ -2127,7 +2129,7 @@ export default function CustomerReportPortal() {
       worksheet.columns = excelColumns;
 
       const baseColCount =
-        8 +
+        10 +
         activeReportProducts.length * 4 +
         displayedCompetitorItems.length +
         3;
@@ -2157,6 +2159,8 @@ export default function CustomerReportPortal() {
           userName: item.userName || item.user_id || "-",
           reportDate: item.reportDate || item.report_date || "-",
           target: Number(item.targetPacks ?? item.target ?? 0),
+          targetRevenue: Number(item.targetRevenue ?? 0),
+          targetPromotion: item.targetPromotionName || "-",
           traffic: Number(item.traffic ?? item.traffic_count ?? 0),
           approach: Number(item.approach ?? item.approach_count ?? 0),
           closedSales: Number(item.closedSales ?? item.closed_sales_count ?? 0),
@@ -3200,6 +3204,18 @@ export default function CustomerReportPortal() {
                       >
                         TARGET (แพ็ค)
                       </th>
+                      <th
+                        rowSpan={2}
+                        className="p-2 border-r border-blue-400 text-center bg-green-200 min-w-[130px]"
+                      >
+                        รายได้เป้าหมาย (บาท)
+                      </th>
+                      <th
+                        rowSpan={2}
+                        className="p-2 border-r border-blue-400 text-center bg-green-200 min-w-[160px]"
+                      >
+                        โปรโมชัน
+                      </th>
 
                       <th
                         colSpan={3}
@@ -3399,6 +3415,16 @@ export default function CustomerReportPortal() {
                           </td>
                           <td className="p-2 border-r border-slate-200 font-mono font-extrabold text-slate-700 bg-emerald-50/30">
                             {row.targetPacks ?? "-"}
+                          </td>
+                          <td className="p-2 border-r border-slate-200 font-mono font-extrabold text-slate-700 bg-emerald-50/30">
+                            {row.targetRevenue
+                              ? Number(row.targetRevenue).toLocaleString(
+                                  "th-TH",
+                                )
+                              : "-"}
+                          </td>
+                          <td className="p-2 border-r border-slate-200 text-left font-medium text-slate-600">
+                            {row.targetPromotionName || "-"}
                           </td>
 
                           {/* Funnel */}
