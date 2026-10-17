@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Swal from "sweetalert2";
 import Link from "next/link";
-import { ArrowLeft, Target } from "lucide-react";
+import { ArrowLeft, Film, Target } from "lucide-react";
 import {
   getAllPromotionsAction,
   savePromotionAction,
@@ -22,6 +22,7 @@ import {
 interface ExtendedPromotionItem extends PromotionItem {
   company?: string;
   category?: string;
+  company_type?: string;
 }
 
 interface StoreItem {
@@ -126,6 +127,8 @@ export default function PromotionsAdminPage() {
               product_code: "",
               product_name: "",
               barcode: "",
+              company_type: "",
+              item_scope: "OUR",
             }
           : item,
       ),
@@ -154,6 +157,8 @@ export default function PromotionsAdminPage() {
               product_code: "",
               product_name: "",
               barcode: "",
+              company_type: "",
+              item_scope: "OUR",
             }
           : item,
       ),
@@ -187,6 +192,13 @@ export default function PromotionsAdminPage() {
               ),
               product_name: description,
               barcode: matchedProduct?.barcode || "",
+              company_type: matchedProduct?.company_type || "",
+              item_scope:
+                String(matchedProduct?.company_type || "")
+                  .trim()
+                  .toLowerCase() === "competitor"
+                  ? "COMPETITOR"
+                  : "OUR",
             }
           : item,
       ),
@@ -231,7 +243,13 @@ export default function PromotionsAdminPage() {
         product_code: String(item.product_code || ""),
         product_name: item.products?.descriptions || item.product_name || "",
         barcode: item.products?.barcode || item.barcode || "",
-        item_scope: item.item_scope || "OUR",
+        company_type: item.products?.company_type || "",
+        item_scope:
+          String(item.products?.company_type || "")
+            .trim()
+            .toLowerCase() === "competitor"
+            ? "COMPETITOR"
+            : item.item_scope || "OUR",
         target_qty: item.target_qty ?? 0,
         credit_factor: item.credit_factor ?? 1,
         price: String(item.price || ""),
@@ -323,6 +341,13 @@ export default function PromotionsAdminPage() {
               product_code: String(product.code || product.id),
               product_name: product.descriptions,
               barcode: product.barcode,
+              company_type: product.company_type || "",
+              item_scope:
+                String(product.company_type || "")
+                  .trim()
+                  .toLowerCase() === "competitor"
+                  ? "COMPETITOR"
+                  : "OUR",
               company: product.company || item.company,
             }
           : item,
@@ -449,13 +474,19 @@ export default function PromotionsAdminPage() {
               <span className="text-xs font-bold text-red-600 block tracking-wider">
                 BACKEND MANAGEMENT
               </span>
-              <span className="text-sm font-black text-slate-800 block -mt-0.5">
+              <span className="text-sm font-black text-white block -mt-0.5">
                 ระบบจัดการโปรโมชั่น (ADMIN)
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              href="/admin/promotion-briefs"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-200 transition cursor-pointer"
+            >
+              <Film size={16} /> จัดการคลิป/บรีฟ
+            </Link>
             <Link
               href="/admin"
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition cursor-pointer"
@@ -815,22 +846,15 @@ export default function PromotionsAdminPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                    ประเภทสินค้า
+                    ประเภทสินค้า (จาก company_type)
                   </label>
-                  <select
-                    value={item.item_scope || "OUR"}
-                    onChange={(event) =>
-                      handleItemChange(
-                        index,
-                        "item_scope",
-                        event.target.value as any,
-                      )
-                    }
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-bold"
-                  >
-                    <option value="OUR">สินค้าเรา</option>
-                    <option value="COMPETITOR">สินค้าคู่แข่ง</option>
-                  </select>
+                  <div className="w-full rounded border border-slate-200 bg-slate-100 p-1.5 text-xs font-bold text-slate-700">
+                    {item.company_type
+                      ? item.company_type.trim().toLowerCase() === "competitor"
+                        ? "สินค้าคู่แข่ง"
+                        : "สินค้าเรา"
+                      : "เลือกสินค้าเพื่อระบุประเภท"}
+                  </div>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 block mb-1">

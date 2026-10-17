@@ -244,7 +244,13 @@ const CUSTOMER_CHART_DIMENSIONS: ReportChartDimension[] = [
   { key: "account", label: "Account" },
   { key: "store", label: "สาขา" },
   { key: "user", label: "พนักงาน" },
-  { key: "skuCode", label: "SKU บริษัท", colorKey: "skuColor" },
+  { key: "category", label: "Category" },
+  {
+    key: "itemType",
+    label: "สินค้าเรา / คู่แข่ง",
+    colorKey: "itemTypeColor",
+  },
+  { key: "skuCode", label: "SKU / สินค้า", colorKey: "skuColor" },
 ];
 
 const CUSTOMER_CHART_METRICS: ReportChartMetric[] = [
@@ -527,6 +533,18 @@ function getCampaignCompetitorPrice(row: any, barcode: string) {
   return Number.isFinite(price) && price > 0 ? price : "-";
 }
 
+function getCampaignCompetitorSalesQty(row: any, barcode: string) {
+  const productRows = row.products || row.pg_daily_report_products || row.items;
+  if (!Array.isArray(productRows)) return "-";
+  const found = productRows.find(
+    (product: any) =>
+      String(product.barcode || "").trim() === String(barcode).trim() &&
+      String(product.item_scope || "").toUpperCase() === "COMPETITOR",
+  );
+  const quantity = Number(found?.sales_qty ?? found?.salesQty);
+  return Number.isFinite(quantity) && quantity >= 0 ? quantity : "-";
+}
+
 // 📌 Helper แสดงผลสต๊อก
 const renderStockCell = (stockValue: number | string | null | undefined) => {
   if (
@@ -635,6 +653,8 @@ export default function CustomerReportPortal() {
       return data.map((item, index) => ({
         barcode: item.barcode,
         skuCode: item.sku_code || "",
+        category: item.category || "ไม่ระบุ",
+        companyType: item.company_type || "Company",
         label: item.descriptions || item.name || item.barcode,
         shortLabel:
           item.short_name || item.descriptions || item.name || item.barcode,
@@ -784,7 +804,7 @@ export default function CustomerReportPortal() {
         (series) => series.sourceKey,
       ),
     );
-    return [
+    const allSeries = [
       ...PRICE_CHART_SERIES,
       ...activeReportProducts
         .filter((product) => !configuredOwnBarcodes.has(product.barcode))
@@ -803,7 +823,39 @@ export default function CustomerReportPortal() {
         sourceKey: product.barcode,
       })),
     ];
-  }, [activeReportProducts, activeCampaignCompetitors]);
+    const availableSeries = allSeries.filter((series) =>
+      filteredData.some((row) => {
+        const accountName = getAccountName(
+          row.storeName,
+          row.storeCode,
+          row.account,
+        );
+        const price =
+          series.type === "our"
+            ? Number(
+                getProductInfo(row, series.sourceKey, accountName === "Big C")
+                  .priceOur,
+              )
+            : series.type === "campaign_competitor"
+              ? Number(getCampaignCompetitorPrice(row, series.sourceKey))
+              : Number(getCompetitorVal(row, series.sourceKey));
+        return Number.isFinite(price) && price > 0;
+      }),
+    );
+    const ownSeries = availableSeries.filter((series) => series.type === "our");
+    const competitorSeries = availableSeries.filter(
+      (series) => series.type !== "our",
+    );
+    const selectedSeries = [
+      ...ownSeries.slice(0, 4),
+      ...competitorSeries.slice(0, 4),
+    ];
+    return [
+      ...selectedSeries,
+      ...ownSeries.slice(4),
+      ...competitorSeries.slice(4),
+    ].slice(0, 8);
+  }, [activeReportProducts, activeCampaignCompetitors, filteredData]);
 
   const flexibleChartRows = useMemo(() => {
     const toMetricValue = (value: unknown) => {
@@ -830,8 +882,48 @@ export default function CustomerReportPortal() {
               barcode: product.barcode,
             }));
 
-      return rowProducts.flatMap((rowProduct: any) => {
+      return rowProducts.flatMap((rowProduct: any): any[] => {
         const barcode = String(rowProduct?.barcode || "").trim();
+        const isCompetitor =
+          String(rowProduct?.item_scope || "").toUpperCase() === "COMPETITOR";
+        if (isCompetitor) {
+          const catalog = reportProducts.find(
+            (item) => String(item.barcode || "").trim() === barcode,
+          );
+          const quantity = toMetricValue(
+            rowProduct.sales_qty ?? rowProduct.salesQty,
+          );
+          const unitPrice = toMetricValue(
+            rowProduct.competitor_price ?? rowProduct.competitorPrice,
+          );
+          const label =
+            rowProduct.descriptions ||
+            catalog?.label ||
+            catalog?.shortLabel ||
+            barcode;
+          if (!barcode) return [];
+
+          return [
+            {
+              reportKey: String(row.id ?? `report-${rowIndex}`),
+              date: row.reportDate || "ไม่ระบุวันที่",
+              account,
+              store: row.storeName || row.storeCode || "ไม่ระบุสาข",
+              user: row.userName || row.userId || "ไม่ระบุพนักงาน",
+              category: catalog?.category || "ไม่ระบุ",
+              itemType: "คู่แข่ง",
+              itemTypeColor: "#e11d48",
+              skuCode: catalog?.skuCode || label,
+              skuColor: getProductChartPalette(barcode).color,
+              salesQty: quantity,
+              salesAmount: null,
+              unitPrice: unitPrice !== null && unitPrice > 0 ? unitPrice : null,
+              stockBefore: null,
+              stockAfter: null,
+            },
+          ];
+        }
+
         const product = activeReportProducts.find(
           (item) => item.barcode === barcode,
         );
@@ -839,7 +931,9 @@ export default function CustomerReportPortal() {
 
         const info = getProductInfo(row, barcode, account === "Big C");
         const quantity = toMetricValue(info.salesQty);
-        const unitPrice = toMetricValue(info.priceOur);
+        const rawUnitPrice = toMetricValue(info.priceOur);
+        const unitPrice =
+          rawUnitPrice !== null && rawUnitPrice > 0 ? rawUnitPrice : null;
         return [
           {
             reportKey: String(row.id ?? `report-${rowIndex}`),
@@ -847,6 +941,9 @@ export default function CustomerReportPortal() {
             account,
             store: row.storeName || row.storeCode || "ไม่ระบุสาขา",
             user: row.userName || row.userId || "ไม่ระบุพนักงาน",
+            category: product.category || "ไม่ระบุ",
+            itemType: "สินค้าเรา",
+            itemTypeColor: "#2563eb",
             skuCode: product.key,
             skuColor: product.color,
             salesQty: quantity,
@@ -864,7 +961,7 @@ export default function CustomerReportPortal() {
         ];
       });
     });
-  }, [filteredData, activeReportProducts]);
+  }, [filteredData, activeReportProducts, reportProducts]);
 
   const [currentTime, setCurrentTime] = useState<string>("");
 
@@ -875,6 +972,20 @@ export default function CustomerReportPortal() {
   const [selectedPromotion, setSelectedPromotion] = useState<string>("ALL");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+
+  const comparisonChartRows = useMemo(() => {
+    if (startDate || endDate || flexibleChartRows.length === 0) {
+      return flexibleChartRows;
+    }
+    const latestDate = filteredData
+      .map((row) => String(row.reportDate || ""))
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    return latestDate
+      ? flexibleChartRows.filter((row) => row.date === latestDate)
+      : flexibleChartRows;
+  }, [endDate, filteredData, flexibleChartRows, startDate]);
 
   // Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -1524,6 +1635,21 @@ export default function CustomerReportPortal() {
     (s, r) => s + Number(r.actualPacksTotal || 0),
     0,
   );
+  const totalCompetitorSales = filteredData.reduce((total, row) => {
+    const productRows =
+      row.products || row.pg_daily_report_products || row.items;
+    if (!Array.isArray(productRows)) return total;
+    return (
+      total +
+      productRows.reduce((rowTotal: number, product: any) => {
+        if (String(product.item_scope || "").toUpperCase() !== "COMPETITOR") {
+          return rowTotal;
+        }
+        const quantity = Number(product.sales_qty ?? product.salesQty ?? 0);
+        return rowTotal + (Number.isFinite(quantity) ? quantity : 0);
+      }, 0)
+    );
+  }, 0);
   const totalTraffic = filteredData.reduce(
     (s, r) => s + Number(r.traffic || 0),
     0,
@@ -2100,8 +2226,13 @@ export default function CustomerReportPortal() {
 
       displayedCompetitorItems.forEach((comp) => {
         excelColumns.push({
-          header: `${comp.label}${comp.source === "campaign" ? ` (${comp.barcode})` : ""}`,
-          key: `comp_${comp.key}`,
+          header: `ราคาคู่แข่ง: ${comp.label}${comp.source === "campaign" ? ` (${comp.barcode})` : ""}`,
+          key: `comp_price_${comp.key}`,
+          width: 15,
+        });
+        excelColumns.push({
+          header: `ยอดขายคู่แข่ง: ${comp.label}`,
+          key: `comp_sales_${comp.key}`,
           width: 15,
         });
       });
@@ -2131,7 +2262,7 @@ export default function CustomerReportPortal() {
       const baseColCount =
         10 +
         activeReportProducts.length * 4 +
-        displayedCompetitorItems.length +
+        displayedCompetitorItems.length * 2 +
         3;
       const photoCategoryMap = [
         { key: "staff_holding", colIndex: baseColCount },
@@ -2175,10 +2306,14 @@ export default function CustomerReportPortal() {
         });
 
         displayedCompetitorItems.forEach((comp) => {
-          rowObj[`comp_${comp.key}`] =
+          rowObj[`comp_price_${comp.key}`] =
             comp.source === "campaign"
               ? getCampaignCompetitorPrice(item, comp.barcode || "")
               : getCompetitorVal(item, comp.key);
+          rowObj[`comp_sales_${comp.key}`] =
+            comp.source === "campaign"
+              ? getCampaignCompetitorSalesQty(item, comp.barcode || "")
+              : "-";
         });
 
         rowObj.feedback = item.feedback || item.feedback_store || "-";
@@ -2713,7 +2848,7 @@ export default function CustomerReportPortal() {
           </div>
 
           {/* 📈 OPERATIONAL KPI CARDS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-left">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 text-left">
             <div className="portal-card p-4 rounded-2xl flex items-center gap-3">
               <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                 <ShoppingBag size={20} />
@@ -2724,6 +2859,20 @@ export default function CustomerReportPortal() {
                 </span>
                 <span className="text-lg font-black text-slate-800 block">
                   {totalPacks.toLocaleString()} ห่อ
+                </span>
+              </div>
+            </div>
+
+            <div className="portal-card p-4 rounded-2xl flex items-center gap-3 border-rose-200/70">
+              <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
+                <Tag size={20} />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                  ยอดขายสินค้าคู่แข่ง
+                </span>
+                <span className="text-lg font-black text-rose-700 block">
+                  {totalCompetitorSales.toLocaleString()} ชิ้น
                 </span>
               </div>
             </div>
@@ -2897,12 +3046,13 @@ export default function CustomerReportPortal() {
           {/* 📊 CHARTS */}
           <ReportChartBuilder
             title="กราฟวิเคราะห์ข้อมูลตามตัวเลือก"
-            rows={flexibleChartRows}
+            rows={comparisonChartRows}
             dimensions={CUSTOMER_CHART_DIMENSIONS}
             metrics={CUSTOMER_CHART_METRICS}
-            defaultDimension={selectedStore === "ALL" ? "account" : "date"}
+            defaultDimension="category"
             defaultMetric="salesQty"
-            defaultSeries="skuCode"
+            defaultSeries="itemType"
+            pairedComparison
           />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
@@ -2917,7 +3067,7 @@ export default function CustomerReportPortal() {
                   {selectedStore === "ALL" ? "แยก Account" : "แยกรายวัน"}
                 </span>
               </div>
-              <div className="h-60 sm:h-64 w-full">
+              <div className="h-60 w-full sm:h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={chart1And2Data}
@@ -2946,7 +3096,12 @@ export default function CustomerReportPortal() {
                     <YAxis tick={{ fontSize: 9, fontWeight: "bold" }} />
                     <Tooltip content={<CustomSalesTooltip />} />
                     <Legend
-                      wrapperStyle={{ fontSize: "9px", fontWeight: "bold" }}
+                      wrapperStyle={{
+                        fontSize: "9px",
+                        fontWeight: "bold",
+                        maxHeight: 38,
+                        overflowY: "auto",
+                      }}
                     />
                     {activeReportProducts.map((prod) => (
                       <Bar
@@ -2973,7 +3128,7 @@ export default function CustomerReportPortal() {
                   {selectedStore === "ALL" ? "แยก Account" : "แยกรายวัน"}
                 </span>
               </div>
-              <div className="h-60 sm:h-64 w-full">
+              <div className="h-60 w-full sm:h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Tooltip content={<CustomFunnelTooltip />} />
@@ -3035,7 +3190,7 @@ export default function CustomerReportPortal() {
                   {chart3Data.length} วัน · {activePriceChartSeries.length} เส้น
                 </span>
               </div>
-              <div className="h-80 sm:h-96 w-full relative">
+              <div className="relative h-64 w-full sm:h-72">
                 {chart3Data.length === 0 ? (
                   <div className="h-full flex items-center justify-center text-xs text-slate-400 font-bold">
                     ไม่มีข้อมูลราคาในวันที่ระบุ
@@ -3067,16 +3222,27 @@ export default function CustomerReportPortal() {
                         }}
                       />
                       {activePriceChartSeries.map((series) => (
-                        <Line
-                          key={series.dataKey}
-                          type="monotone"
-                          dataKey={series.dataKey}
-                          name={series.name}
-                          stroke={series.color}
-                          strokeWidth={2}
-                          dot={{ r: 2 }}
-                          activeDot={{ r: 4 }}
-                        />
+                        <React.Fragment key={series.dataKey}>
+                          <Line
+                            type="monotone"
+                            dataKey={series.dataKey}
+                            stroke={series.color}
+                            strokeWidth={6}
+                            strokeOpacity={0.12}
+                            dot={false}
+                            legendType="none"
+                            tooltipType="none"
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey={series.dataKey}
+                            name={series.name}
+                            stroke={series.color}
+                            strokeWidth={2.5}
+                            dot={{ r: 2 }}
+                            activeDot={{ r: 4 }}
+                          />
+                        </React.Fragment>
                       ))}
                     </LineChart>
                   </ResponsiveContainer>
@@ -3095,7 +3261,7 @@ export default function CustomerReportPortal() {
                   {chart4Data.length} วัน
                 </span>
               </div>
-              <div className="h-60 sm:h-64 w-full">
+              <div className="h-60 w-full sm:h-64">
                 {chart4Data.length === 0 ? (
                   <div className="h-full flex items-center justify-center text-xs text-slate-400 font-bold">
                     ไม่มีข้อมูลแนวโน้มสินค้า
@@ -3114,19 +3280,35 @@ export default function CustomerReportPortal() {
                       <YAxis tick={{ fontSize: 9, fontWeight: "bold" }} />
                       <Tooltip />
                       <Legend
-                        wrapperStyle={{ fontSize: "9px", fontWeight: "bold" }}
+                        wrapperStyle={{
+                          fontSize: "9px",
+                          fontWeight: "bold",
+                          maxHeight: 38,
+                          overflowY: "auto",
+                        }}
                       />
                       {activeReportProducts.map((prod, index) => (
-                        <Line
-                          key={prod.barcode}
-                          type="monotone"
-                          dataKey={`sales_${prod.barcode}`}
-                          name={prod.shortLabel}
-                          stroke={prod.color}
-                          strokeWidth={index === 0 ? 2.5 : 2}
-                          dot={{ r: 2 }}
-                          activeDot={{ r: 4 }}
-                        />
+                        <React.Fragment key={prod.barcode}>
+                          <Line
+                            type="monotone"
+                            dataKey={`sales_${prod.barcode}`}
+                            stroke={prod.color}
+                            strokeWidth={5}
+                            strokeOpacity={0.12}
+                            dot={false}
+                            legendType="none"
+                            tooltipType="none"
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey={`sales_${prod.barcode}`}
+                            name={prod.shortLabel}
+                            stroke={prod.color}
+                            strokeWidth={index === 0 ? 2.5 : 2}
+                            dot={{ r: 2 }}
+                            activeDot={{ r: 4 }}
+                          />
+                        </React.Fragment>
                       ))}
                     </LineChart>
                   </ResponsiveContainer>
@@ -3158,8 +3340,8 @@ export default function CustomerReportPortal() {
                   </h3>
                   <p className="text-[10px] text-slate-400 font-bold">
                     รวมรายละเอียด Target, สต๊อกสินค้าตาม SKU ที่พบในรายงาน,
-                    ราคาเปรียบเทียบ 15 รายการ และรูปภาพกิจกรรม (แยก 1 รูปต่อ 1
-                    คอลัมน์)
+                    ราคาและยอดขายคู่แข่งตาม SKU ในแคมเปญ และรูปภาพกิจกรรม (แยก 1
+                    รูปต่อ 1 คอลัมน์)
                   </p>
                 </div>
               </div>
@@ -3249,10 +3431,10 @@ export default function CustomerReportPortal() {
                         ราคาขายหน้าร้าน
                       </th>
                       <th
-                        colSpan={displayedCompetitorItems.length}
+                        colSpan={displayedCompetitorItems.length * 2}
                         className="p-2 border-r border-slate-200 text-center bg-rose-50/70 text-rose-900"
                       >
-                        ราคาคู่แข่ง
+                        ข้อมูลคู่แข่ง (ราคา / ยอดขาย)
                       </th>
 
                       <th
@@ -3336,14 +3518,18 @@ export default function CustomerReportPortal() {
                         </th>
                       ))}
 
-                      {/* Competitor Prices (15) */}
+                      {/* Competitor prices and sales */}
                       {displayedCompetitorItems.map((comp) => (
-                        <th
-                          key={`comp_head_${comp.key}`}
-                          className={`p-5.0 border-r border-slate-200 min-w-[180px] max-w-[300px] ${comp.bgClass}`}
-                        >
-                          {comp.label}
-                        </th>
+                        <React.Fragment key={`comp_head_${comp.key}`}>
+                          <th
+                            className={`p-2 border-r border-slate-200 min-w-[150px] max-w-[240px] ${comp.bgClass}`}
+                          >
+                            {comp.label} · ราคา
+                          </th>
+                          <th className="min-w-[110px] border-r border-slate-200 bg-rose-50/40 p-2">
+                            {comp.label} · ขาย
+                          </th>
+                        </React.Fragment>
                       ))}
 
                       {/* --- บรรทัดล่างของ Header (กระจายหัวคอลัมน์ย่อยของรูปภาพ) --- */}
@@ -3513,20 +3699,29 @@ export default function CustomerReportPortal() {
 
                           {/* Competitor Prices (15 Columns) */}
                           {displayedCompetitorItems.map((comp) => {
-                            const val =
+                            const price =
                               comp.source === "campaign"
                                 ? getCampaignCompetitorPrice(
                                     row,
                                     comp.barcode || "",
                                   )
                                 : getCompetitorVal(row, comp.key);
+                            const sales =
+                              comp.source === "campaign"
+                                ? getCampaignCompetitorSalesQty(
+                                    row,
+                                    comp.barcode || "",
+                                  )
+                                : "-";
                             return (
-                              <td
-                                key={`comp_${comp.key}`}
-                                className="p-2 border-r border-slate-200 font-mono text-rose-700 font-black bg-rose-50/50"
-                              >
-                                {val !== "-" ? `${val}฿` : "-"}
-                              </td>
+                              <React.Fragment key={`comp_${comp.key}`}>
+                                <td className="border-r border-slate-200 bg-rose-50/50 p-2 font-mono font-black text-rose-700">
+                                  {price !== "-" ? `${price}฿` : "-"}
+                                </td>
+                                <td className="border-r border-slate-200 bg-orange-50/40 p-2 font-mono font-black text-orange-700">
+                                  {sales}
+                                </td>
+                              </React.Fragment>
                             );
                           })}
 

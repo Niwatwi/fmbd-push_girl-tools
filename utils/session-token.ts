@@ -1,6 +1,7 @@
 export interface UserSession {
   id: number;
   display_name: string;
+  username?: string;
   company_tag: string;
   area: string;
   image_url: string;

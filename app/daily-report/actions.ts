@@ -2,7 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { normalizeCompetitorPrices } from "@/utils/competitor-prices";
-import { requireUserOrAdminSession } from "@/utils/auth";
+import { getUserSession, requireUserOrAdminSession } from "@/utils/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -141,8 +141,18 @@ export async function getProductByBarcode(barcode: string) {
 }
 
 // 2. ดึงสถานะการเช็คอินวันนี้
-export async function getTodayActiveAttendance(userId: number) {
-  await requireUserOrAdminSession(userId);
+export async function getTodayActiveAttendance() {
+  const session = await getUserSession();
+  if (!session) {
+    return {
+      success: false,
+      user: null,
+      log: null,
+      message: "กรุณาเข้าสู่ระบบ",
+    };
+  }
+
+  const userId = session.id;
   const supabase = getClientInstance();
   try {
     const now = new Date();
@@ -170,7 +180,7 @@ export async function getTodayActiveAttendance(userId: number) {
     const [profileResult, storeResult] = await Promise.all([
       supabase
         .from("user_profiles")
-        .select("company_tag")
+        .select("display_name, company_tag")
         .eq("id", userId)
         .maybeSingle(),
       data?.store_code
@@ -184,6 +194,10 @@ export async function getTodayActiveAttendance(userId: number) {
 
     return {
       success: true,
+      user: {
+        id: userId,
+        display_name: profileResult.data?.display_name || session.display_name,
+      },
       log: data
         ? {
             ...data,
@@ -193,7 +207,12 @@ export async function getTodayActiveAttendance(userId: number) {
         : data,
     };
   } catch (error: any) {
-    return { success: false, log: null, message: error.message };
+    return {
+      success: false,
+      user: { id: userId, display_name: session.display_name },
+      log: null,
+      message: error.message,
+    };
   }
 }
 

@@ -237,6 +237,7 @@ export async function handleLogin(
     const sessionToken = await createUserSessionToken({
       id: user.id,
       display_name: user.display_name || "",
+      username: user.username || "",
       company_tag: user.company_tag || "",
       area: user.area || "",
       image_url: user.image_url || "",
@@ -281,16 +282,15 @@ export async function handleLogout() {
   }
 }
 
-// ฟังก์ชันดึงรายชื่อร้านค้าตามเขตพื้นที่ของพนักงาน
-// ในไฟล์ app/login/actions.ts
-export async function getStoresByArea(area: string) {
-  const areaCode = area.trim();
-  if (!areaCode) return { success: true, stores: [] };
+// ดึงร้านค้าที่ผูกกับ username ของพนักงานผ่าน mer_code
+export async function getStoresByUsername(username: string) {
+  const cleanUsername = username.trim();
+  if (!cleanUsername) return { success: true, stores: [] };
 
   const { data, error } = await supabase
     .from("pg_stores")
-    .select("*")
-    .or(`area.eq.${areaCode},mer_code.eq.${areaCode}`)
+    .select("store_code, store_name, img_store")
+    .eq("mer_code", cleanUsername)
     .eq("is_active", true)
     .order("store_name", { ascending: true });
 

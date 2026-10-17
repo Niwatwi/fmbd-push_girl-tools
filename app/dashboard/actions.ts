@@ -567,6 +567,18 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
       recentReports?.[0] ||
       null;
 
+    let currentPromotion = null;
+    if (todayReport?.promotion_id) {
+      const { data: promotion } = await supabase
+        .from("promotions")
+        .select(
+          "id, campaign_title, items:promotion_items(*, products(barcode, descriptions, sku_code))",
+        )
+        .eq("id", String(todayReport.promotion_id))
+        .maybeSingle();
+      currentPromotion = promotion;
+    }
+
     const { data: monthlyReports } = await supabase
       .from("pg_daily_activity_reports")
       .select("*, pg_daily_report_products (*)")
@@ -594,6 +606,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
         ? { ...storeTarget, target_packs: getStoreTargetPacks(storeTarget) }
         : null,
       todaySales: todayReport || null,
+      currentPromotion,
       todaySalesTotalPacks: getReportTotalSalesQty(todayReport),
       monthlyProgress: {
         total_packs: monthlyTotalPacks,

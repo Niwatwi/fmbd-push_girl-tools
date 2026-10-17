@@ -15,6 +15,23 @@ import {
 } from "lucide-react";
 import ThemeToggle from "../components/ThemeToggle";
 import { getCurrentUserPromotionBriefAction } from "@/app/admin/promotions/actions";
+import { getPromotionBriefMediaAction } from "@/app/admin/promotion-briefs/actions";
+
+interface BriefVideo {
+  id: string | number;
+  src: string;
+  poster: string;
+  title: string;
+  duration: string;
+  campaignTitle?: string;
+}
+
+interface BriefDocument {
+  id: string | number;
+  src: string;
+  title: string;
+  mime_type?: string | null;
+}
 
 export default function PromotionsBriefPage() {
   const router = useRouter();
@@ -22,15 +39,28 @@ export default function PromotionsBriefPage() {
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(true);
+  const [briefMedia, setBriefMedia] = useState<any[]>([]);
 
   useEffect(() => {
     let active = true;
     getCurrentUserPromotionBriefAction()
-      .then((result) => {
-        if (active) setCampaigns(result.success ? result.promotions || [] : []);
+      .then(async (result) => {
+        const matchedCampaigns = result.success ? result.promotions || [] : [];
+        if (active) setCampaigns(matchedCampaigns);
+        if (matchedCampaigns.length > 0) {
+          const mediaResult = await getPromotionBriefMediaAction(
+            matchedCampaigns.map((campaign: any) => String(campaign.id)),
+          );
+          if (active) {
+            setBriefMedia(mediaResult.success ? mediaResult.media || [] : []);
+          }
+        }
       })
       .catch(() => {
-        if (active) setCampaigns([]);
+        if (active) {
+          setCampaigns([]);
+          setBriefMedia([]);
+        }
       })
       .finally(() => {
         if (active) setCampaignLoading(false);
@@ -40,9 +70,7 @@ export default function PromotionsBriefPage() {
     };
   }, []);
 
-  // 🎥 รายชื่อคลิปวิดีโอตัวอย่างทั้ง 3 คลิป
-  // พี่นำไฟล์วิดีโอไปวางใน public/briefs/ ตามชื่อเหล่านี้ได้เลยครับ
-  const videoClips = [
+  const legacyVideoClips: BriefVideo[] = [
     {
       id: 1,
       src: "/briefs/cheer-sales-example-1.mp4",
@@ -66,8 +94,7 @@ export default function PromotionsBriefPage() {
     },
   ];
 
-  // 📄 รายชื่อรูปภาพ Brief แคมเปญ Mild Luxury ทั้ง 7 หน้า
-  const briefPages = [
+  const legacyBriefPages: BriefDocument[] = [
     {
       id: 1,
       src: "/briefs/Product Mild Luxury-1.jpg",
@@ -104,6 +131,32 @@ export default function PromotionsBriefPage() {
       title: "หน้า 7: แนวทางการลงบันทึกรายงาน",
     },
   ];
+
+  const hasCampaignMedia = briefMedia.length > 0;
+  const videoClips: BriefVideo[] = hasCampaignMedia
+    ? briefMedia
+        .filter((item) => item.media_type === "VIDEO")
+        .map((item) => ({
+          id: item.id,
+          src: item.media_url,
+          poster: item.poster_url || "/briefs/video-poster-1.jpg",
+          title: item.title,
+          duration: item.duration || "",
+          campaignTitle: campaigns.find(
+            (campaign) => String(campaign.id) === String(item.promotion_id),
+          )?.campaign_title,
+        }))
+    : legacyVideoClips;
+  const briefPages: BriefDocument[] = hasCampaignMedia
+    ? briefMedia
+        .filter((item) => item.media_type === "DOCUMENT")
+        .map((item) => ({
+          id: item.id,
+          src: item.media_url,
+          title: item.title,
+          mime_type: item.mime_type,
+        }))
+    : legacyBriefPages;
 
   const handleNextPage = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -161,7 +214,7 @@ export default function PromotionsBriefPage() {
             <p className="text-xs text-slate-500">กำลังโหลดแคมเปญ...</p>
           ) : campaigns.length === 0 ? (
             <p className="text-xs text-slate-500">
-              ไม่พบแคมเปญที่ตรงกับกลุ่มพนักงานและสาขาที่ Check-in
+              ไม่พบแคมเปญที่ตรงกับ Account หรือสาขาที่รับผิดชอบ
             </p>
           ) : (
             <div className="space-y-3">
@@ -289,7 +342,9 @@ export default function PromotionsBriefPage() {
         {/* Title Card */}
         <div className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200">
           <h2 className="text-sm font-black text-slate-800">
-            Campaign Brief: Product Mild Luxury
+            {hasCampaignMedia
+              ? "Campaign Brief: โปรโมชั่นประจำรอบ"
+              : "Campaign Brief: Product Mild Luxury"}
           </h2>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">
             คู่มือการปฏิบัติงานสนาม ข้อมูลโปรโมชัน และคลิปตัวอย่าง
@@ -297,86 +352,103 @@ export default function PromotionsBriefPage() {
         </div>
 
         {/* 🎥 SECTION 1: วิดีโอตัวอย่างเทคนิคการขาย (3 คลิป) */}
-        <div className="space-y-2.5">
-          <div className="flex items-center gap-2 text-slate-700 font-black text-xs uppercase tracking-wider pl-1">
-            <Film size={14} className="text-blue-700" />
-            <span>วิดีโอตัวอย่างเทคนิคการขาย ({videoClips.length} คลิป)</span>
-          </div>
+        {videoClips.length > 0 && (
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-2 text-slate-700 font-black text-xs uppercase tracking-wider pl-1">
+              <Film size={14} className="text-blue-700" />
+              <span>วิดีโอตัวอย่างเทคนิคการขาย ({videoClips.length} คลิป)</span>
+            </div>
 
-          <div className="space-y-3">
-            {videoClips.map((video) => (
-              <div
-                key={video.id}
-                onClick={() => setActiveVideoUrl(video.src)}
-                className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs hover:border-blue-400 active:scale-[0.99] transition cursor-pointer flex items-center p-2 gap-3 group"
-              >
-                {/* Video Thumbnail ด้านซ้ายแบบประหยัดพื้นที่ */}
-                <div className="bg-slate-900 w-24 h-16 rounded-lg relative flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
-                  <img
-                    src={video.poster}
-                    alt={video.title}
-                    className="w-full h-full object-cover opacity-65 group-hover:scale-105 transition duration-300"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        "https://placehold.co/120x80/0f172a/white?text=Play";
-                    }}
-                  />
-                  <div className="absolute p-1.5 bg-blue-600 text-white rounded-full shadow-md z-10">
-                    <Play size={10} fill="currentColor" className="ml-0.5" />
+            <div className="space-y-3">
+              {videoClips.map((video) => (
+                <div
+                  key={video.id}
+                  onClick={() => setActiveVideoUrl(video.src)}
+                  className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs hover:border-blue-400 active:scale-[0.99] transition cursor-pointer flex items-center p-2 gap-3 group"
+                >
+                  {/* Video Thumbnail ด้านซ้ายแบบประหยัดพื้นที่ */}
+                  <div className="bg-slate-900 w-24 h-16 rounded-lg relative flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                    <img
+                      src={video.poster}
+                      alt={video.title}
+                      className="w-full h-full object-cover opacity-65 group-hover:scale-105 transition duration-300"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          "https://placehold.co/120x80/0f172a/white?text=Play";
+                      }}
+                    />
+                    <div className="absolute p-1.5 bg-blue-600 text-white rounded-full shadow-md z-10">
+                      <Play size={10} fill="currentColor" className="ml-0.5" />
+                    </div>
+                  </div>
+
+                  {/* คำอธิบายด้านขวา */}
+                  <div className="flex flex-col text-left justify-center flex-1 min-w-0">
+                    {video.campaignTitle && (
+                      <span className="mb-1 truncate text-[9px] font-bold text-emerald-700">
+                        {video.campaignTitle}
+                      </span>
+                    )}
+                    <p className="text-[11px] font-black text-slate-800 leading-tight group-hover:text-blue-800 transition truncate-2-lines">
+                      {video.title}
+                    </p>
+                    <span className="text-[9px] font-mono text-slate-400 font-bold mt-1">
+                      ความยาว: {video.duration}
+                    </span>
                   </div>
                 </div>
-
-                {/* คำอธิบายด้านขวา */}
-                <div className="flex flex-col text-left justify-center flex-1 min-w-0">
-                  <p className="text-[11px] font-black text-slate-800 leading-tight group-hover:text-blue-800 transition truncate-2-lines">
-                    {video.title}
-                  </p>
-                  <span className="text-[9px] font-mono text-slate-400 font-bold mt-1">
-                    ความยาว: {video.duration}
-                  </span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 📄 SECTION 2: เอกสารข้อมูลสินค้า Brief PDF/JPG */}
-        <div className="space-y-2.5 pt-1">
-          <div className="flex items-center gap-2 text-slate-700 font-black text-xs uppercase tracking-wider pl-1">
-            <BookOpen size={14} className="text-blue-700" />
-            <span>เอกสารข้อมูลและโปรโมชัน (7 หน้า)</span>
-          </div>
+        {briefPages.length > 0 && (
+          <div className="space-y-2.5 pt-1">
+            <div className="flex items-center gap-2 text-slate-700 font-black text-xs uppercase tracking-wider pl-1">
+              <BookOpen size={14} className="text-blue-700" />
+              <span>เอกสารข้อมูลและโปรโมชัน ({briefPages.length} หน้า)</span>
+            </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            {briefPages.map((page, index) => (
-              <div
-                key={page.id}
-                onClick={() => setActiveImageIndex(index)}
-                className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs hover:border-blue-400 active:scale-95 transition cursor-pointer flex flex-col group"
-              >
-                <div className="bg-slate-100 aspect-[3/4] relative flex items-center justify-center overflow-hidden">
-                  <img
-                    src={page.src}
-                    alt={page.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        "https://placehold.co/300x400/1e3a8a/white?text=Mild+Luxury";
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
-                    <Eye size={18} />
+            <div className="grid grid-cols-2 gap-3">
+              {briefPages.map((page, index) => (
+                <div
+                  key={page.id}
+                  onClick={() => setActiveImageIndex(index)}
+                  className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs hover:border-blue-400 active:scale-95 transition cursor-pointer flex flex-col group"
+                >
+                  <div className="bg-slate-100 aspect-[3/4] relative flex items-center justify-center overflow-hidden">
+                    {page.mime_type === "application/pdf" ||
+                    /\.pdf(?:$|\?)/i.test(page.src) ? (
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-200 text-slate-600">
+                        <BookOpen size={30} />
+                        <span className="text-xs font-black">PDF</span>
+                      </div>
+                    ) : (
+                      <img
+                        src={page.src}
+                        alt={page.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src =
+                            "https://placehold.co/300x400/1e3a8a/white?text=Promotion+Brief";
+                        }}
+                      />
+                    )}
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
+                      <Eye size={18} />
+                    </div>
+                  </div>
+                  <div className="p-2 bg-white border-t border-slate-100 text-left">
+                    <p className="text-[11px] font-black text-slate-700 truncate">
+                      {page.title}
+                    </p>
                   </div>
                 </div>
-                <div className="p-2 bg-white border-t border-slate-100 text-left">
-                  <p className="text-[11px] font-black text-slate-700 truncate">
-                    {page.title}
-                  </p>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </main>
 
       {/* 🔍 LIGHTBOX MODAL FOR IMAGES */}
@@ -405,11 +477,20 @@ export default function PromotionsBriefPage() {
             </button>
           )}
           <div className="max-w-md w-full max-h-[80vh] flex items-center justify-center overflow-auto p-2">
-            <img
-              src={briefPages[activeImageIndex].src}
-              alt="Brief"
-              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-            />
+            {briefPages[activeImageIndex].mime_type === "application/pdf" ||
+            /\.pdf(?:$|\?)/i.test(briefPages[activeImageIndex].src) ? (
+              <iframe
+                src={briefPages[activeImageIndex].src}
+                title={briefPages[activeImageIndex].title}
+                className="h-[80vh] w-full rounded-lg bg-white"
+              />
+            ) : (
+              <img
+                src={briefPages[activeImageIndex].src}
+                alt={briefPages[activeImageIndex].title}
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              />
+            )}
           </div>
           {activeImageIndex < briefPages.length - 1 && (
             <button

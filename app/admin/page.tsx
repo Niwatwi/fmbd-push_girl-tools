@@ -13,6 +13,8 @@ import {
   LayoutDashboard,
   Tag, // 🟢 เพิ่ม icon สำหรับโปรโมชั่น/สินค้า
   PackageSearch,
+  Film,
+  PackagePlus,
 } from "lucide-react";
 
 export default function AdminHubPage() {
@@ -77,6 +79,30 @@ export default function AdminHubPage() {
       badgeColor: "bg-rose-50 text-rose-700 border-rose-200",
       iconBg: "bg-rose-600 text-white",
       hoverBorder: "hover:border-rose-400 hover:shadow-md",
+    },
+    {
+      title: "เพิ่มสินค้าใน Master Products",
+      subtitle: "Company & Competitor Product Catalog",
+      description:
+        "เพิ่มสินค้าเราและสินค้าคู่แข่งที่ยังไม่มีใน Master พร้อมกำหนด company_type เพื่อใช้ในแคมเปญและรายงานราคา",
+      href: "/admin/products",
+      icon: PackagePlus,
+      badge: "Master สินค้า",
+      badgeColor: "bg-teal-50 text-teal-700 border-teal-200",
+      iconBg: "bg-teal-700 text-white",
+      hoverBorder: "hover:border-teal-400 hover:shadow-md",
+    },
+    {
+      title: "จัดการคลิปและเอกสารบรีฟโปรโมชั่น",
+      subtitle: "Promotion Videos & Brief Documents",
+      description:
+        "เพิ่มหรือเปลี่ยนคลิปเชียร์ขายและเอกสารบรีฟ โดยผูกเนื้อหาแยกตามแคมเปญแต่ละรอบ",
+      href: "/admin/promotion-briefs",
+      icon: Film,
+      badge: "สื่อแคมเปญ",
+      badgeColor: "bg-cyan-50 text-cyan-700 border-cyan-200",
+      iconBg: "bg-cyan-700 text-white",
+      hoverBorder: "hover:border-cyan-400 hover:shadow-md",
     },
     {
       title: "Customer Portal & Activity Overview",

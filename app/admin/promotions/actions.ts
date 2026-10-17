@@ -53,6 +53,10 @@ export interface PromotionItem {
     barcode?: string;
     sku_code?: string;
     company?: string;
+    company_type?: string;
+    imageurl?: string;
+    img_front?: string;
+    img_back?: string;
   };
 }
 
@@ -154,9 +158,10 @@ export async function getPromotionOptionsAction() {
 
 export async function getPromotionByStoreAction(
   storeCode?: string,
-  companyTag?: string,
+  companyTag?: string | string[],
   staffGroup?: string,
   userId?: number,
+  includeUpcoming = false,
 ) {
   if (userId) await requireUserOrAdminSession(userId);
   const supabase = await createClient();
@@ -182,9 +187,23 @@ export async function getPromotionByStoreAction(
     day: "2-digit",
   }).format(new Date());
 
-  // กรองเฉพาะโปรโมชันที่ตรงกับเงื่อนไขของสาขานั้นๆ
+  const companyTags = new Set(
+    (Array.isArray(companyTag) ? companyTag : [companyTag])
+      .map((tag) =>
+        String(tag || "")
+          .trim()
+          .toLowerCase(),
+      )
+      .filter(Boolean),
+  );
+
+  // กรองเฉพาะโปรโมชันที่ตรงกับสาขาหรือ Account ที่ผู้ใช้รับผิดชอบ
   const filteredPromotions = data.filter((promo) => {
-    if (promo.start_date && String(promo.start_date).slice(0, 10) > today) {
+    if (
+      !includeUpcoming &&
+      promo.start_date &&
+      String(promo.start_date).slice(0, 10) > today
+    ) {
       return false;
     }
     if (promo.end_date && String(promo.end_date).slice(0, 10) < today) {
@@ -204,9 +223,7 @@ export async function getPromotionByStoreAction(
       return true;
     if (
       promo.target_type === "COMPANY_TAG" &&
-      companyTag &&
-      String(promo.target_value).trim().toLowerCase() ===
-        String(companyTag).trim().toLowerCase()
+      companyTags.has(String(promo.target_value).trim().toLowerCase())
     )
       return true;
     return false;
@@ -227,36 +244,77 @@ export async function getCurrentUserPromotionBriefAction() {
   }
 
   const supabase = await createClient();
-  const { data: attendance } = await supabase
-    .from("pg_attendance_logs")
-    .select("store_code")
-    .eq("user_id", session.id)
-    .order("check_in_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const dateInBangkok = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const [month, day, year] = dateInBangkok.split("/");
+  const startOfToday = `${year}-${month}-${day}T00:00:00+07:00`;
+  const endOfToday = `${year}-${month}-${day}T23:59:59+07:00`;
 
-  const storeCode = String(attendance?.store_code || session.area || "");
-  let storeCompanyTag = "";
-  if (storeCode) {
-    const { data: store } = await supabase
-      .from("pg_stores")
-      .select("account")
-      .eq("store_code", storeCode)
-      .maybeSingle();
-    storeCompanyTag = String(store?.account || "");
+  const [attendanceResult, profileResult] = await Promise.all([
+    supabase
+      .from("pg_attendance_logs")
+      .select("store_code")
+      .eq("user_id", session.id)
+      .gte("check_in_at", startOfToday)
+      .lte("check_in_at", endOfToday)
+      .order("check_in_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("user_profiles")
+      .select("username, company_tag")
+      .eq("id", session.id)
+      .maybeSingle(),
+  ]);
+
+  const storeCode = String(attendanceResult.data?.store_code || "");
+  const username = String(
+    profileResult.data?.username || session.username || "",
+  );
+  const [assignedStoresResult, checkedInStoreResult] = await Promise.all([
+    username
+      ? supabase.from("pg_stores").select("account").eq("mer_code", username)
+      : Promise.resolve({ data: [] }),
+    storeCode
+      ? supabase
+          .from("pg_stores")
+          .select("account")
+          .eq("store_code", storeCode)
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const companyTags = new Set<string>();
+  for (const store of assignedStoresResult.data || []) {
+    const account = String(store.account || "").trim();
+    if (account) companyTags.add(account);
   }
+  const checkedInAccount = String(
+    checkedInStoreResult.data?.account || "",
+  ).trim();
+  if (checkedInAccount) companyTags.add(checkedInAccount);
 
+  const staffGroup = String(
+    profileResult.data?.company_tag || session.company_tag || "",
+  );
   const result = await getPromotionByStoreAction(
     storeCode,
-    storeCompanyTag,
-    session.company_tag,
+    [...companyTags],
+    staffGroup,
     session.id,
+    true,
   );
   return {
     ...result,
     storeCode,
-    storeCompanyTag,
-    staffGroup: session.company_tag,
+    storeCompanyTag: checkedInAccount,
+    companyTags: [...companyTags],
+    staffGroup,
   };
 }
 

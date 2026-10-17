@@ -5,12 +5,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
 import ThemeToggle from "./components/ThemeToggle";
+import { getCurrentUserPromotionBriefAction } from "@/app/admin/promotions/actions";
 import {
   handleLogout,
   checkTodayAttendance,
   saveCheckInAction,
   saveCheckOutAction,
-  getStoresByArea,
+  getStoresByUsername,
 } from "./login/actions";
 import {
   MapPin,
@@ -23,11 +24,13 @@ import {
   ChevronRight,
   RefreshCw,
   Clock,
+  Package,
 } from "lucide-react";
 
 interface UserSession {
   id: number;
   display_name: string;
+  username?: string;
   company_tag: string;
   area: string;
   image_url: string;
@@ -36,6 +39,14 @@ interface UserSession {
 interface StoreItem {
   store_code: string;
   store_name: string;
+  img_store: string | null;
+}
+
+interface CompetitorProductCard {
+  barcode: string;
+  name: string;
+  company: string;
+  imageUrl: string;
 }
 
 export default function PghMainHubClient({ user }: { user: UserSession }) {
@@ -54,6 +65,9 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
   const [selectedStoreIndex, setSelectedStoreIndex] = useState<number>(0);
   const [activeStoreDisplay, setActiveStoreDisplay] =
     useState<StoreItem | null>(null);
+  const [competitorProducts, setCompetitorProducts] = useState<
+    CompetitorProductCard[]
+  >([]);
   const [activeAction, setActiveAction] = useState<
     "checkin" | "checkout" | null
   >(null);
@@ -83,16 +97,61 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
     setIsRefreshing(true);
     if (!user?.id) return;
     try {
-      const storeRes = await getStoresByArea(user.area);
-      if (storeRes.success && storeRes.stores.length > 0)
-        setStoresList(storeRes.stores);
+      const [storeRes, attendRes, promotionRes] = await Promise.all([
+        getStoresByUsername(user.username || ""),
+        checkTodayAttendance(user.id),
+        getCurrentUserPromotionBriefAction().catch((error) => {
+          console.error("Load home campaign products failed", error);
+          return null;
+        }),
+      ]);
+      const stores = storeRes.success ? storeRes.stores : [];
+      setStoresList(stores);
 
-      const attendRes = await checkTodayAttendance(user.id);
+      const competitorMap = new Map<string, CompetitorProductCard>();
+      for (const campaign of promotionRes?.promotions || []) {
+        for (const item of campaign.items || []) {
+          if (
+            item.item_scope !== "COMPETITOR" &&
+            String(item.products?.company_type || "")
+              .trim()
+              .toLowerCase() !== "competitor"
+          ) {
+            continue;
+          }
+
+          const barcode = String(
+            item.products?.barcode || item.barcode || item.product_code || "",
+          ).trim();
+          if (!barcode) continue;
+          competitorMap.set(barcode, {
+            barcode,
+            name:
+              item.products?.descriptions ||
+              item.product_name ||
+              item.label ||
+              barcode,
+            company: String(item.products?.company || ""),
+            imageUrl: String(
+              item.products?.imageurl ||
+                item.products?.img_front ||
+                item.products?.img_back ||
+                "",
+            ),
+          });
+        }
+      }
+      setCompetitorProducts(Array.from(competitorMap.values()));
+
       if (attendRes.success && attendRes.log) {
         setLogId(attendRes.log.id);
         setActiveStoreDisplay({
           store_code: attendRes.log.store_code,
           store_name: attendRes.log.store_name,
+          img_store:
+            stores.find(
+              (store) => store.store_code === attendRes.log.store_code,
+            )?.img_store || null,
         });
 
         const formatTime = (iso: string) =>
@@ -317,7 +376,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
                   {user?.display_name}
                 </h2>
                 <p className="text-[9px] text-blue-200 uppercase">
-                  {user?.area} | {user?.company_tag}
+                  {user?.area} / {user?.username || "-"} / {user?.company_tag}
                 </p>
               </div>
             </div>
@@ -368,7 +427,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
                   <option value="" disabled>
                     {isRefreshing
                       ? "กำลังโหลดรายชื่อสาขา..."
-                      : "ไม่พบสาขาที่เปิดใช้งานในพื้นที่นี้"}
+                      : "ไม่พบสาขาที่ผูกกับบัญชีนี้"}
                   </option>
                 ) : (
                   storesList.map((s, idx) => (
@@ -383,8 +442,73 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
                 {activeStoreDisplay?.store_name || "ไม่ได้เลือกร้านค้า"}
               </h4>
             )}
+            {(attendanceStatus === "not_checked_in"
+              ? storesList[selectedStoreIndex]?.img_store
+              : activeStoreDisplay?.img_store) && (
+              <img
+                src={
+                  attendanceStatus === "not_checked_in"
+                    ? storesList[selectedStoreIndex].img_store || ""
+                    : activeStoreDisplay?.img_store || ""
+                }
+                alt={
+                  attendanceStatus === "not_checked_in"
+                    ? storesList[selectedStoreIndex]?.store_name || "รูปสาขา"
+                    : activeStoreDisplay?.store_name || "รูปสาขา"
+                }
+                className="mt-2 w-full max-h-40 rounded-lg object-cover"
+              />
+            )}
           </div>
         </div>
+
+        {competitorProducts.length > 0 && (
+          <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between border-b border-amber-100 pb-2">
+              <div>
+                <h2 className="text-xs font-black text-slate-800">
+                  สินค้าคู่แข่งในแคมเปญ
+                </h2>
+                <p className="mt-0.5 text-[10px] text-slate-500">
+                  ตรวจสอบรูปและบาร์โค้ดก่อนค้นหาสินค้าหน้าร้าน
+                </p>
+              </div>
+              <Package size={17} className="text-amber-600" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {competitorProducts.map((product) => (
+                <article
+                  key={product.barcode}
+                  className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+                >
+                  <div className="flex h-28 items-center justify-center bg-white p-2">
+                    {product.imageUrl ? (
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-slate-400">
+                        <Package size={22} />
+                        <span className="text-[9px]">ยังไม่มีรูปสินค้า</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-2 text-left">
+                    <p className="line-clamp-2 text-[10px] font-black text-slate-800">
+                      {product.name}
+                    </p>
+                    <p className="mt-1 truncate font-mono text-[9px] text-slate-500">
+                      {product.company ? `${product.company} · ` : ""}
+                      {product.barcode}
+                    </p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <button

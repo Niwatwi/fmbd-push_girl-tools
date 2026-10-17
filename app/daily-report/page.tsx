@@ -51,6 +51,11 @@ interface ProductFormState {
   img_stock_scanner_base64: string;
 }
 
+type ProductPhotoField =
+  | "img_product_base64"
+  | "img_shelf_base64"
+  | "img_stock_scanner_base64";
+
 interface ActivityPhotoState {
   type: string;
   label: string;
@@ -115,25 +120,6 @@ const QUICK_PRODUCTS = [
   },
 ];
 
-// 🏷️ รายการราคาเปรียบเทียบแบรนด์คู่แข่ง (Competitor Items)
-const COMPETITOR_ITEMS = [
-  { key: "cellox_satin_4", label: "เซลล็อกซ์ ซาติน แพ็ค 4 (บ.)" },
-  { key: "kleenex_silky_4", label: "คลีเน็กซ์ ซิลค์กี้สมูท แพ็ค 4 (บ.)" },
-  { key: "scott_safesoft_4", label: "สก็อตต์เซฟซอฟท์บ๊อกซ์แพ็ค4 (บ.)" },
-  { key: "zilk_cotton_6", label: "ซิลค์ คอตตอน ชำระแพ็ค 6 (บ.)" },
-  { key: "cellox_2ply_6", label: "เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 6 (บ.)" },
-  { key: "scott_extra_6", label: "สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 6 (บ.)" },
-  { key: "zilk_cotton_24", label: "ซิลค์ คอตตอน ชำระแพ็ค 24 (บ.)" },
-  { key: "cellox_2ply_24", label: "เซลล็อกซ์ 2 ชั้น ชำระแพ็ค 24 (บ.)" },
-  { key: "scott_extra_24", label: "สก็อตต์ เอ็กซ์ตร้า ชำระแพ็ค 24 (บ.)" },
-  { key: "maxmo_hang_200", label: "แม๊กโม่แบบแขวน 200 แผ่น (บ.)" },
-  { key: "maxmo_3", label: "แม๊กซ์โม่อเนกประสงค์ แพ็ค 3 (บ.)" },
-  { key: "scott_3_1", label: "สก็อตต์ อเนกประสงค์ 3+1 (บ.)" },
-  { key: "maxmo_6_2_green", label: "แม๊กซ์โม่ อเนกประสงค์ 6+2 เขียว (บ.)" },
-  { key: "maxmo_6_2_red", label: "แม๊กซ์โม่ อเนกประสงค์ 6+2 แดง (บ.)" },
-  { key: "scott_6_2_red", label: "สก็อตต์ อเนกประสงค์ 6+2 แดง (บ.)" },
-];
-
 export default function DailyReportPage() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -178,6 +164,12 @@ export default function DailyReportPage() {
   // 2. ฟอร์มราคาคู่แข่ง (Dynamic State)
   const [competitorPrices, setCompetitorPrices] = useState<
     Record<string, string>
+  >({});
+  const [competitorSales, setCompetitorSales] = useState<
+    Record<string, string>
+  >({});
+  const [competitorPhotos, setCompetitorPhotos] = useState<
+    Record<string, Partial<Record<ProductPhotoField, string>>>
   >({});
 
   const [remark, setRemark] = useState("");
@@ -233,89 +225,25 @@ export default function DailyReportPage() {
   const [compPromo, setCompPromo] = useState("");
 
   const storeCode = attendanceLog?.store_code || "";
+  const competitorPromotionItems = (activePromotion?.items || []).filter(
+    (item) =>
+      item.item_scope === "COMPETITOR" ||
+      item.products?.company_type?.trim().toLowerCase() === "competitor",
+  );
 
   // 🔍 โหลดข้อมูลสถานะการลงเวลา + ดึงยอดยกมาของของแถม
   useEffect(() => {
     const fetchAttendanceStatus = async () => {
       setLoading(true);
 
-      let currentUserId = 101;
-      let foundName = "นางสาวพิชญา สระทองลี";
-
-      if (typeof window !== "undefined") {
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlId =
-          urlParams.get("userId") ||
-          urlParams.get("id") ||
-          urlParams.get("user_id");
-        if (urlId && !isNaN(Number(urlId))) {
-          currentUserId = Number(urlId);
-        }
+      const res = await getTodayActiveAttendance();
+      if (!res.user) {
+        router.push("/login");
+        return;
       }
 
-      if (currentUserId === 101 && typeof window !== "undefined") {
-        const storageTargets = [
-          { name: "localStorage", instance: localStorage },
-          { name: "sessionStorage", instance: sessionStorage },
-        ];
-
-        for (const target of storageTargets) {
-          try {
-            for (let i = 0; i < target.instance.length; i++) {
-              const key = target.instance.key(i);
-              if (!key) continue;
-
-              const item = target.instance.getItem(key);
-              if (!item) continue;
-
-              const lowerKey = key.toLowerCase();
-
-              if (
-                (lowerKey.includes("user") ||
-                  lowerKey.includes("profile") ||
-                  lowerKey === "id") &&
-                !isNaN(Number(item))
-              ) {
-                currentUserId = Number(item);
-                break;
-              }
-
-              if (item.startsWith("{") || item.startsWith("[")) {
-                const parsed = JSON.parse(item);
-                if (parsed) {
-                  if (parsed.id && !isNaN(Number(parsed.id))) {
-                    currentUserId = Number(parsed.id);
-                    if (parsed.display_name) foundName = parsed.display_name;
-                    break;
-                  }
-                  if (
-                    parsed.user &&
-                    parsed.user.id &&
-                    !isNaN(Number(parsed.user.id))
-                  ) {
-                    currentUserId = Number(parsed.user.id);
-                    if (parsed.user.user_metadata?.display_name) {
-                      foundName = parsed.user.user_metadata.display_name;
-                    }
-                    break;
-                  }
-                  if (parsed.userId && !isNaN(Number(parsed.userId))) {
-                    currentUserId = Number(parsed.userId);
-                    break;
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.error(`Error scanning ${target.name}:`, e);
-          }
-          if (currentUserId !== 101) break;
-        }
-      }
-
-      setUser({ id: currentUserId, display_name: foundName });
-
-      const res = await getTodayActiveAttendance(currentUserId);
+      setUser(res.user);
+      const currentUserId = res.user.id;
 
       if (res.success && res.log) {
         setAttendanceLog(res.log);
@@ -497,6 +425,19 @@ export default function DailyReportPage() {
     );
   };
 
+  const handleCompetitorPhotoChange = async (
+    barcode: string,
+    field: ProductPhotoField,
+    file: File | null,
+  ) => {
+    if (!file) return;
+    const base64 = await processFileToBase64(file);
+    setCompetitorPhotos((current) => ({
+      ...current,
+      [barcode]: { ...current[barcode], [field]: base64 },
+    }));
+  };
+
   const handleActivityPhotoChange = async (type: string, file: File | null) => {
     if (!file) {
       setActivityPhotos((prev) =>
@@ -547,7 +488,12 @@ export default function DailyReportPage() {
       const addedProduct: ProductFormState = {
         barcode: res.product.barcode,
         sku_code: res.product.sku_code || "",
-        item_scope: promotionItem?.item_scope || "OUR",
+        item_scope:
+          String(res.product.company_type || "")
+            .trim()
+            .toLowerCase() === "competitor"
+            ? "COMPETITOR"
+            : promotionItem?.item_scope || "OUR",
         target_qty: Number(promotionItem?.target_qty || 0),
         credit_factor: Number(promotionItem?.credit_factor ?? 1),
         descriptions: res.product.descriptions,
@@ -596,6 +542,10 @@ export default function DailyReportPage() {
 
   const handleCompetitorPriceChange = (key: string, value: string) => {
     setCompetitorPrices((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleCompetitorSalesChange = (key: string, value: string) => {
+    setCompetitorSales((prev) => ({ ...prev, [key]: value }));
   };
 
   const salesQtyGreen =
@@ -661,6 +611,75 @@ export default function DailyReportPage() {
           const pureSoftOrange = productsForm.find(
             (p) => p.barcode === "8858678422875",
           );
+          const reportProductsByBarcode = new Map(
+            productsForm.map((product) => [
+              product.barcode,
+              {
+                barcode: product.barcode,
+                descriptions: product.descriptions,
+                item_scope: product.item_scope,
+                credit_factor: product.credit_factor,
+                promotion_target_qty: product.target_qty,
+                competitor_price: Number(product.competitor_price) || 0,
+                price_our: Number(product.price_our) || 0,
+                stock_before: Number(product.stock_before) || 0,
+                sales_qty: Number(product.sales_qty) || 0,
+                stock_after: Math.max(
+                  0,
+                  (Number(product.stock_before) || 0) -
+                    (Number(product.sales_qty) || 0),
+                ),
+                img_product_base64: product.img_product_base64,
+                img_shelf_base64: product.img_shelf_base64,
+                img_stock_scanner_base64: product.img_stock_scanner_base64,
+              },
+            ]),
+          );
+
+          for (const item of competitorPromotionItems) {
+            const barcode = String(
+              item.products?.barcode || item.barcode || item.product_code,
+            ).trim();
+            if (!barcode) continue;
+
+            const existing = reportProductsByBarcode.get(barcode);
+            const enteredPrice = competitorPrices[barcode];
+            const competitorPrice =
+              enteredPrice !== undefined && enteredPrice !== ""
+                ? Number(enteredPrice) || 0
+                : Number(existing?.competitor_price || item.price || 0);
+            const competitorSalesQty = Number(competitorSales[barcode] || 0);
+
+            reportProductsByBarcode.set(barcode, {
+              barcode,
+              descriptions:
+                item.products?.descriptions ||
+                item.product_name ||
+                item.label ||
+                existing?.descriptions ||
+                barcode,
+              item_scope: "COMPETITOR",
+              credit_factor: Number(item.credit_factor ?? 1),
+              promotion_target_qty: Number(item.target_qty || 0),
+              competitor_price: competitorPrice,
+              price_our: 0,
+              stock_before: 0,
+              sales_qty: competitorSalesQty,
+              stock_after: 0,
+              img_product_base64:
+                competitorPhotos[barcode]?.img_product_base64 ||
+                existing?.img_product_base64 ||
+                "",
+              img_shelf_base64:
+                competitorPhotos[barcode]?.img_shelf_base64 ||
+                existing?.img_shelf_base64 ||
+                "",
+              img_stock_scanner_base64:
+                competitorPhotos[barcode]?.img_stock_scanner_base64 ||
+                existing?.img_stock_scanner_base64 ||
+                "",
+            });
+          }
 
           const res = await submitFullDailyActivityReportAction({
             attendanceLogId: attendanceLog.id,
@@ -682,24 +701,7 @@ export default function DailyReportPage() {
             competitorPromotion: compPromo,
             remark: remark,
             activityPhotos: activityPhotos.filter((p) => p.base64 !== ""),
-            products: productsForm.map((p) => ({
-              barcode: p.barcode,
-              descriptions: p.descriptions,
-              item_scope: p.item_scope,
-              credit_factor: p.credit_factor,
-              promotion_target_qty: p.target_qty,
-              competitor_price: Number(p.competitor_price) || 0,
-              price_our: Number(p.price_our) || 0,
-              stock_before: Number(p.stock_before) || 0,
-              sales_qty: Number(p.sales_qty) || 0,
-              stock_after: Math.max(
-                0,
-                (Number(p.stock_before) || 0) - (Number(p.sales_qty) || 0),
-              ),
-              img_product_base64: p.img_product_base64,
-              img_shelf_base64: p.img_shelf_base64,
-              img_stock_scanner_base64: p.img_stock_scanner_base64,
-            })),
+            products: Array.from(reportProductsByBarcode.values()),
             priceOurGreen90: nourishGreen
               ? Number(nourishGreen.price_our) || 0
               : 0,
@@ -1295,28 +1297,149 @@ export default function DailyReportPage() {
           <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3 text-left">
             <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2">
               <Tag size={14} className="text-rose-600" /> 3.
-              ราคาเปรียบเทียบแบรนด์คู่แข่ง (รวม 15 รายการ)
+              ราคาเปรียบเทียบแบรนด์คู่แข่ง ({competitorPromotionItems.length}{" "}
+              รายการ)
             </h4>
 
-            {/* ตารางกรอกราคาคู่แข่งแบบ 3 คอลัมน์ ครบถ้วนทุกรายการ */}
-            <div className="grid grid-cols-3 gap-2">
-              {COMPETITOR_ITEMS.map((item) => (
-                <div key={item.key}>
-                  <label className="text-[9px] font-bold text-slate-600 block mb-1 truncate">
-                    {item.label}
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={competitorPrices[item.key] || ""}
-                    onChange={(e) =>
-                      handleCompetitorPriceChange(item.key, e.target.value)
-                    }
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-center outline-none focus:bg-white focus:border-blue-500"
-                  />
-                </div>
-              ))}
-            </div>
+            {competitorPromotionItems.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-[10px] font-medium text-slate-500">
+                แคมเปญนี้ยังไม่มีสินค้าคู่แข่งที่ Admin กำหนด
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {competitorPromotionItems.map((item) => {
+                  const barcode = String(
+                    item.products?.barcode || item.barcode || item.product_code,
+                  ).trim();
+                  const productName =
+                    item.products?.descriptions ||
+                    item.product_name ||
+                    item.label ||
+                    barcode;
+                  const productImage =
+                    item.products?.imageurl ||
+                    item.products?.img_front ||
+                    item.products?.img_back ||
+                    "";
+
+                  return (
+                    <div
+                      key={barcode}
+                      className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5"
+                    >
+                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+                        {productImage ? (
+                          <img
+                            src={productImage}
+                            alt={productName}
+                            className="h-full w-full object-contain"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-[9px] text-slate-400">
+                            ไม่มีรูป
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="truncate text-[10px] font-black text-slate-800"
+                          title={productName}
+                        >
+                          {productName}
+                        </p>
+                        <p className="mb-2 truncate font-mono text-[9px] text-slate-500">
+                          {barcode}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="block text-[9px] font-bold text-slate-600">
+                            ราคา (บาท)
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              inputMode="decimal"
+                              placeholder="ราคา"
+                              value={competitorPrices[barcode] || ""}
+                              onChange={(event) =>
+                                handleCompetitorPriceChange(
+                                  barcode,
+                                  event.target.value,
+                                )
+                              }
+                              className="mt-1 w-full rounded-md border border-slate-300 bg-white p-2 text-center text-xs font-bold outline-none focus:border-blue-500"
+                            />
+                          </label>
+                          <label className="block text-[9px] font-bold text-slate-600">
+                            ยอดขาย (ชิ้น)
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              inputMode="numeric"
+                              placeholder="จำนวน"
+                              value={competitorSales[barcode] || ""}
+                              onChange={(event) =>
+                                handleCompetitorSalesChange(
+                                  barcode,
+                                  event.target.value,
+                                )
+                              }
+                              className="mt-1 w-full rounded-md border border-slate-300 bg-white p-2 text-center text-xs font-bold outline-none focus:border-blue-500"
+                            />
+                          </label>
+                        </div>
+                        <div className="mt-2 grid grid-cols-3 gap-1.5">
+                          {(
+                            [
+                              ["img_product_base64", "1. รูปสินค้า"],
+                              ["img_shelf_base64", "2. รูปเชลฟ์"],
+                              ["img_stock_scanner_base64", "3. รูปสต๊อก"],
+                            ] as [ProductPhotoField, string][]
+                          ).map(([field, label]) => {
+                            const photo = competitorPhotos[barcode]?.[field];
+                            return (
+                              <label
+                                key={field}
+                                className="flex h-16 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-white text-[8px] font-bold text-slate-500"
+                                title={`${label}: ถ่ายรูปหรือเลือกไฟล์`}
+                              >
+                                {photo ? (
+                                  <img
+                                    src={photo}
+                                    alt={label}
+                                    className="h-10 w-full object-cover"
+                                  />
+                                ) : (
+                                  <Camera
+                                    size={14}
+                                    className="mb-1 text-slate-400"
+                                  />
+                                )}
+                                <span className="truncate px-1">{label}</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="sr-only"
+                                  onChange={(event) => {
+                                    void handleCompetitorPhotoChange(
+                                      barcode,
+                                      field,
+                                      event.target.files?.[0] || null,
+                                    );
+                                    event.target.value = "";
+                                  }}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="space-y-2 pt-2 border-t border-slate-100">
               <div>

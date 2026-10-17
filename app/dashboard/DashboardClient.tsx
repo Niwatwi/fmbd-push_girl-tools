@@ -38,6 +38,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   const [pgName, setPgName] = useState("");
   const [empCode, setEmpCode] = useState("");
   const [storeName, setStoreName] = useState("");
+  const [campaignTitle, setCampaignTitle] = useState("");
   const [isBigC, setIsBigC] = useState(false);
 
   // State เป้าหมายรวม และโบนัสสะสม
@@ -94,6 +95,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           setEmpCode(res.profile.employee_id || `PG-${userId}`);
           const currentStore = res.storeName || "";
           setStoreName(currentStore);
+          setCampaignTitle(res.currentPromotion?.campaign_title || "");
 
           const storeLower = currentStore.toLowerCase();
           const checkIsBigC =
@@ -139,10 +141,118 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           const totalSets = gSets + bSets + oSets;
           const totalRev = gSets * gPrice + bSets * bPrice + oSets * oPrice;
 
+          const reportProductRows = Array.isArray(
+            res.todaySales?.pg_daily_report_products,
+          )
+            ? res.todaySales.pg_daily_report_products
+            : [];
+          const salesByBarcode = new Map<string, any>();
+          for (const row of reportProductRows) {
+            if (
+              String(row.item_scope || "OUR").toUpperCase() === "COMPETITOR"
+            ) {
+              continue;
+            }
+            const barcode = String(row.barcode || "").trim();
+            if (!barcode) continue;
+            const existing = salesByBarcode.get(barcode);
+            if (existing) {
+              existing.sales_qty =
+                Number(existing.sales_qty || 0) + Number(row.sales_qty || 0);
+            } else {
+              salesByBarcode.set(barcode, { ...row });
+            }
+          }
+
+          const hasCurrentPromotionItems = Array.isArray(
+            res.currentPromotion?.items,
+          );
+          const campaignProducts = hasCurrentPromotionItems
+            ? (res.currentPromotion?.items || []).filter(
+                (item: any) =>
+                  String(item.item_scope || "OUR").toUpperCase() !==
+                  "COMPETITOR",
+              )
+            : [];
+          const campaignProductDetails = campaignProducts.map(
+            (item: any, index: number) => {
+              const barcode = String(
+                item.products?.barcode || item.barcode || "",
+              ).trim();
+              const salesRow = salesByBarcode.get(barcode);
+              const keyedPacks = Number(salesRow?.sales_qty || 0);
+              const actualSets = checkIsBigC
+                ? Math.floor(keyedPacks / 2)
+                : keyedPacks;
+              const price =
+                Number(salesRow?.price_our || 0) || Number(item.price || 0);
+
+              return {
+                name:
+                  item.products?.descriptions ||
+                  item.product_name ||
+                  item.label ||
+                  barcode ||
+                  "สินค้า",
+                price,
+                keyedPacks,
+                actualSets,
+                revenue: actualSets * price,
+                colorIndex: index,
+              };
+            },
+          );
+          const displayedProductDetails = hasCurrentPromotionItems
+            ? campaignProductDetails
+            : [
+                {
+                  name: "Mild Luxury สีเขียว 90",
+                  price: gPrice,
+                  keyedPacks: gPacks,
+                  actualSets: gSets,
+                  revenue: gSets * gPrice,
+                  colorIndex: 0,
+                },
+                {
+                  name: "Mild Luxury สีฟ้า 90",
+                  price: bPrice,
+                  keyedPacks: bPacks,
+                  actualSets: bSets,
+                  revenue: bSets * bPrice,
+                  colorIndex: 1,
+                },
+                {
+                  name: "Mild Luxury สีส้ม 100",
+                  price: oPrice,
+                  keyedPacks: oPacks,
+                  actualSets: oSets,
+                  revenue: oSets * oPrice,
+                  colorIndex: 2,
+                },
+              ];
+          const dashboardPacks = hasCurrentPromotionItems
+            ? campaignProductDetails.reduce(
+                (sum: number, product: any) => sum + product.keyedPacks,
+                0,
+              )
+            : todayTotalPacks;
+          const dashboardSets = hasCurrentPromotionItems
+            ? campaignProductDetails.reduce(
+                (sum: number, product: any) => sum + product.actualSets,
+                0,
+              )
+            : totalSets;
+          const dashboardRevenue = hasCurrentPromotionItems
+            ? campaignProductDetails.reduce(
+                (sum: number, product: any) => sum + product.revenue,
+                0,
+              )
+            : totalRev;
+
           setTodaySales({
-            totalPacks: todayTotalPacks,
-            totalSets: totalSets,
-            totalRevenue: totalRev,
+            totalPacks: dashboardPacks,
+            totalSets: dashboardSets,
+            totalRevenue: dashboardRevenue,
             greenQty: gPacks,
             blueQty: bPacks,
             orangeQty: oPacks,
@@ -155,36 +265,10 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           setCurrentMonthlyProgress(monthlyTotalPacks);
 
           // 3. คำนวณ Incentive
-          const comm = await calculateBigCCommission(todayTotalPacks);
+          const comm = await calculateBigCCommission(dashboardPacks);
           setIncentiveBonus(comm.incentiveAmount);
 
-          // 4. ตั้งค่ารายการสินค้าลงตารางเสมอ
-          setProductDetails([
-            {
-              name: "Mild Luxury สีเขียว 90",
-              price: gPrice,
-              keyedPacks: gPacks,
-              actualSets: gSets,
-              revenue: gSets * gPrice,
-              dotColor: "bg-emerald-500",
-            },
-            {
-              name: "Mild Luxury สีฟ้า 90",
-              price: bPrice,
-              keyedPacks: bPacks,
-              actualSets: bSets,
-              revenue: bSets * bPrice,
-              dotColor: "bg-blue-500",
-            },
-            {
-              name: "Mild Luxury สีส้ม 100",
-              price: oPrice,
-              keyedPacks: oPacks,
-              actualSets: oSets,
-              revenue: oSets * oPrice,
-              dotColor: "bg-orange-500",
-            },
-          ]);
+          setProductDetails(displayedProductDetails);
 
           // 5. รายงานของแถม
           setGiftSummary([
@@ -227,11 +311,22 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
   );
   const remainingPacks = Math.max(0, monthlyTarget - currentMonthlyProgress);
 
-  const chartData = [
-    { name: "สีเขียว 90", qty: todaySales.greenQty, color: "#10b981" },
-    { name: "สีฟ้า 90", qty: todaySales.blueQty, color: "#3b82f6" },
-    { name: "สีส้ม 100", qty: todaySales.orangeQty, color: "#f97316" },
+  const chartColors = [
+    "#10b981",
+    "#3b82f6",
+    "#f97316",
+    "#f43f5e",
+    "#0ea5e9",
+    "#f59e0b",
   ];
+  const chartData = productDetails.map((product, index) => ({
+    name:
+      product.name.length > 12
+        ? `${product.name.slice(0, 12)}...`
+        : product.name,
+    qty: product.keyedPacks,
+    color: chartColors[index % chartColors.length],
+  }));
 
   if (loading) {
     return (
@@ -360,7 +455,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
               <ShoppingBag size={14} />
             </div>
             <p className="text-[10px] font-bold text-slate-400">
-              ขายวันนี้ (ชุดโปร 1 แถม 1)
+              ขายวันนี้ตามรายการสินค้า
             </p>
             <h4 className="text-base font-black text-slate-800">
               {todaySales.totalSets} ชุด{" "}
@@ -434,6 +529,11 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
             <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
               <Boxes size={14} className="text-blue-600" /> รายละเอียดสินค้า &
               สต๊อกหน้าร้าน
+              {campaignTitle && (
+                <span className="ml-1 truncate text-[9px] font-bold text-emerald-700">
+                  · {campaignTitle}
+                </span>
+              )}
             </h4>
             {isBigC && (
               <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
