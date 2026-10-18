@@ -7,6 +7,7 @@ import Swal from "sweetalert2";
 import ThemeToggle from "../components/ThemeToggle";
 import {
   ArrowLeft,
+  ChevronDown,
   FileSpreadsheet,
   Store,
   Users,
@@ -524,7 +525,7 @@ export default function DailyReportPage() {
         target_qty: Number(promotionItem?.target_qty || 0),
         credit_factor: Number(promotionItem?.credit_factor ?? 1),
         descriptions: res.product.descriptions,
-        imageurl: res.product.imageurl || "",
+        imageurl: res.product.imageurl || res.product.img_front || "",
         segment: res.product.segment || "",
         price_our:
           promotionItem?.item_scope === "COMPETITOR"
@@ -923,14 +924,14 @@ export default function DailyReportPage() {
 
         {/* 🏪 การ์ดแสดงเงื่อนไขโปรโมชันประจำสาขา */}
         {activePromotion && (
-          <div
-            className={`p-4 rounded-xl border text-left text-xs ${
+          <details
+            className={`group p-4 rounded-xl border text-left text-xs ${
               activePromotion.target_type === "COMPANY_TAG"
                 ? "bg-amber-50 border-amber-200"
                 : "bg-orange-50 border-orange-200"
             }`}
           >
-            <div className="mb-2 flex items-center gap-1.5 border-b border-black/5 pb-2 font-black text-slate-800">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 font-black text-slate-800 [&::-webkit-details-marker]:hidden">
               <Tag
                 size={14}
                 className={
@@ -939,55 +940,66 @@ export default function DailyReportPage() {
                     : "text-orange-600"
                 }
               />
-              <span>
+              <span className="min-w-0 flex-1 truncate">
                 คู่มือโปรโมชันหน้าร้าน ({activePromotion.campaign_title})
               </span>
-            </div>
-            <ul className="space-y-1.5 font-bold text-slate-700">
-              {activePromotion.items?.map((item, idx) => (
-                <li key={idx} className="flex items-start gap-1">
-                  <span
-                    className={
-                      activePromotion.target_type === "COMPANY_TAG"
-                        ? "text-amber-600"
-                        : "text-orange-600"
-                    }
-                  >
-                    •
-                  </span>
-                  <span>
-                    {item.products?.descriptions ||
-                      item.product_name ||
-                      item.label ||
-                      "สินค้า"}
-                    {item.item_scope === "COMPETITOR"
-                      ? " · คู่แข่ง"
-                      : " · สินค้าเรา"}
-                    {item.price ? ` · ราคา ${item.price} บ.` : ""}
-                    {item.condition ? ` · ${item.condition}` : ""}
-                    {item.item_scope !== "COMPETITOR" && (
-                      <span className="ml-1 text-cyan-800">
-                        · Target {Number(item.target_qty || 0).toLocaleString()}
-                        · ตัวคูณ{" "}
-                        {Number(item.credit_factor ?? 1).toLocaleString()}
-                      </span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
+              <span className="shrink-0 text-[9px] font-bold text-slate-500">
+                {activePromotion.items?.length || 0} รายการ
+              </span>
+              <ChevronDown
+                size={14}
+                className="shrink-0 text-slate-500 transition-transform group-open:rotate-180"
+              />
+            </summary>
 
-            {activePromotion.special_tier_text && (
-              <div className="mt-3 bg-white/80 border border-orange-200 p-2 rounded-lg">
-                <p className="font-black text-rose-700 text-[10px] mb-0.5">
-                  🔥 รายการพิเศษขั้นบันได:
-                </p>
-                <p className="text-[10px] text-slate-700 font-bold leading-normal">
-                  {activePromotion.special_tier_text}
-                </p>
-              </div>
-            )}
-          </div>
+            <div className="mt-3 border-t border-black/5 pt-3">
+              <ul className="space-y-1.5 font-bold text-slate-700">
+                {activePromotion.items?.map((item, idx) => (
+                  <li key={idx} className="flex items-start gap-1">
+                    <span
+                      className={
+                        activePromotion.target_type === "COMPANY_TAG"
+                          ? "text-amber-600"
+                          : "text-orange-600"
+                      }
+                    >
+                      •
+                    </span>
+                    <span>
+                      {item.products?.descriptions ||
+                        item.product_name ||
+                        item.label ||
+                        "สินค้า"}
+                      {item.item_scope === "COMPETITOR"
+                        ? " · คู่แข่ง"
+                        : " · สินค้าเรา"}
+                      {item.price ? ` · ราคา ${item.price} บ.` : ""}
+                      {item.condition ? ` · ${item.condition}` : ""}
+                      {item.item_scope !== "COMPETITOR" && (
+                        <span className="ml-1 text-cyan-800">
+                          · Target{" "}
+                          {Number(item.target_qty || 0).toLocaleString()}·
+                          ตัวคูณ{" "}
+                          {Number(item.credit_factor ?? 1).toLocaleString()}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              {activePromotion.special_tier_text && (
+                <div className="mt-3 rounded-lg border border-orange-200 bg-white/80 p-2">
+                  <p className="mb-0.5 text-[10px] font-black text-rose-700">
+                    🔥 รายการพิเศษขั้นบันได:
+                  </p>
+                  <p className="text-[10px] font-bold leading-normal text-slate-700">
+                    {activePromotion.special_tier_text}
+                  </p>
+                </div>
+              )}
+            </div>
+          </details>
         )}
 
         <form onSubmit={onFormSubmit} className="space-y-4">
@@ -1110,13 +1122,17 @@ export default function DailyReportPage() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    {product.imageurl && (
-                      <img
-                        src={product.imageurl}
-                        alt={product.descriptions}
-                        className="w-10 h-10 object-cover rounded-lg border"
-                      />
-                    )}
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                      {product.imageurl ? (
+                        <img
+                          src={product.imageurl}
+                          alt={product.descriptions}
+                          className="h-full w-full object-contain"
+                        />
+                      ) : (
+                        <Package size={16} className="text-slate-300" />
+                      )}
+                    </div>
                     <div>
                       <p className="text-xs font-black text-slate-800 line-clamp-1">
                         {product.descriptions}
@@ -1229,12 +1245,12 @@ export default function DailyReportPage() {
                     <label className="text-[8px] font-bold text-slate-500 block mb-1 truncate">
                       1. รูปสินค้า
                     </label>
-                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-2 text-center flex flex-col items-center justify-center cursor-pointer h-16">
+                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-1.5 text-center flex flex-col items-center justify-center cursor-pointer h-14">
                       {product.img_product_base64 ? (
                         <img
                           src={product.img_product_base64}
                           alt="preview"
-                          className="h-full w-full object-cover rounded-md"
+                          className="h-8 w-full object-cover rounded-md"
                         />
                       ) : (
                         <Camera size={14} className="text-slate-400" />
@@ -1257,12 +1273,12 @@ export default function DailyReportPage() {
                     <label className="text-[8px] font-bold text-slate-500 block mb-1 truncate">
                       2. รูปเชลฟ์
                     </label>
-                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-2 text-center flex flex-col items-center justify-center cursor-pointer h-16">
+                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-1.5 text-center flex flex-col items-center justify-center cursor-pointer h-14">
                       {product.img_shelf_base64 ? (
                         <img
                           src={product.img_shelf_base64}
                           alt="preview"
-                          className="h-full w-full object-cover rounded-md"
+                          className="h-8 w-full object-cover rounded-md"
                         />
                       ) : (
                         <Camera size={14} className="text-slate-400" />
@@ -1285,12 +1301,12 @@ export default function DailyReportPage() {
                     <label className="text-[8px] font-bold text-slate-500 block mb-1 truncate">
                       3. สแกนสต๊อก
                     </label>
-                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-2 text-center flex flex-col items-center justify-center cursor-pointer h-16">
+                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-1.5 text-center flex flex-col items-center justify-center cursor-pointer h-14">
                       {product.img_stock_scanner_base64 ? (
                         <img
                           src={product.img_stock_scanner_base64}
                           alt="preview"
-                          className="h-full w-full object-cover rounded-md"
+                          className="h-8 w-full object-cover rounded-md"
                         />
                       ) : (
                         <Camera size={14} className="text-slate-400" />
@@ -1362,7 +1378,7 @@ export default function DailyReportPage() {
                 แคมเปญนี้ยังไม่มีสินค้าคู่แข่งที่ Admin กำหนด
               </p>
             ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 {competitorPromotionItems.map((item) => {
                   const barcode = String(
                     item.products?.barcode || item.barcode || item.product_code,
@@ -1381,9 +1397,9 @@ export default function DailyReportPage() {
                   return (
                     <div
                       key={barcode}
-                      className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5"
+                      className="flex min-w-0 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"
                     >
-                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+                      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
                         {productImage ? (
                           <img
                             src={productImage}
@@ -1398,12 +1414,12 @@ export default function DailyReportPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p
-                          className="truncate text-[10px] font-black text-slate-800"
+                          className="line-clamp-2 break-words text-[11px] font-black leading-tight text-slate-800"
                           title={productName}
                         >
                           {productName}
                         </p>
-                        <p className="mb-2 truncate font-mono text-[9px] text-slate-500">
+                        <p className="mb-1 truncate font-mono text-[8px] text-slate-500">
                           {barcode}
                         </p>
                         <div className="grid grid-cols-2 gap-2">
@@ -1447,23 +1463,23 @@ export default function DailyReportPage() {
                         <div className="mt-2 grid grid-cols-3 gap-1.5">
                           {(
                             [
-                              ["img_product_base64", "1. รูปสินค้า"],
-                              ["img_shelf_base64", "2. รูปเชลฟ์"],
-                              ["img_stock_scanner_base64", "3. รูปสต๊อก"],
+                              ["img_product_base64", "1. สินค้า"],
+                              ["img_shelf_base64", "2. เชลฟ์"],
+                              ["img_stock_scanner_base64", "3. สต๊อก"],
                             ] as [ProductPhotoField, string][]
                           ).map(([field, label]) => {
                             const photo = competitorPhotos[barcode]?.[field];
                             return (
                               <label
                                 key={field}
-                                className="flex h-16 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-white text-[8px] font-bold text-slate-500"
+                                className="flex h-14 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-white text-[8px] font-bold text-slate-500"
                                 title={`${label}: ถ่ายรูปหรือเลือกไฟล์`}
                               >
                                 {photo ? (
                                   <img
                                     src={photo}
                                     alt={label}
-                                    className="h-10 w-full object-cover"
+                                    className="h-8 w-full object-cover"
                                   />
                                 ) : (
                                   <Camera

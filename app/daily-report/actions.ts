@@ -45,6 +45,7 @@ export interface DbProductItem {
   descriptions: string;
   barcode: string;
   imageurl: string | null;
+  img_front: string | null;
   brand: string | null;
   segment: string | null;
   company?: string | null;
@@ -124,7 +125,7 @@ export async function getProductByBarcode(barcode: string) {
     const { data, error } = await supabase
       .from("products")
       .select(
-        "id, code, sku_code, descriptions, barcode, imageurl, brand, segment, company, company_type",
+        "id, code, sku_code, descriptions, barcode, imageurl, img_front, brand, segment, company, company_type",
       )
       .eq("barcode", cleanBarcode)
       .eq("is_active", true)
