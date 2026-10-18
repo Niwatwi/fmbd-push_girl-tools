@@ -282,10 +282,37 @@ export default function DailyReportPage() {
           attendanceLog.store_company_tag,
           attendanceLog.staff_group,
           user?.id,
+          true,
         );
-        if (res.success && res.promotions && res.promotions.length > 0) {
-          setPromotionData(res.promotions[0]);
-          setActivePromotion(res.promotions[0]);
+        if (res.success && res.promotions?.length) {
+          const today = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Bangkok",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(new Date());
+          const activeCampaign = res.promotions.find(
+            (campaign) =>
+              (!campaign.start_date ||
+                String(campaign.start_date).slice(0, 10) <= today) &&
+              (!campaign.end_date ||
+                String(campaign.end_date).slice(0, 10) >= today),
+          );
+          const nextCampaign = res.promotions
+            .filter(
+              (campaign) =>
+                campaign.start_date &&
+                String(campaign.start_date).slice(0, 10) > today,
+            )
+            .sort((left, right) =>
+              String(left.start_date).localeCompare(String(right.start_date)),
+            )[0];
+          const displayCampaign = activeCampaign || nextCampaign || null;
+          setPromotionData(displayCampaign);
+          setActivePromotion(displayCampaign);
+        } else {
+          setPromotionData(null);
+          setActivePromotion(null);
         }
       }
     };
@@ -602,6 +629,19 @@ export default function DailyReportPage() {
         });
 
         try {
+          const today = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Bangkok",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(new Date());
+          const isPromotionActiveToday = Boolean(
+            activePromotion &&
+            (!activePromotion.start_date ||
+              String(activePromotion.start_date).slice(0, 10) <= today) &&
+            (!activePromotion.end_date ||
+              String(activePromotion.end_date).slice(0, 10) >= today),
+          );
           const nourishGreen = productsForm.find(
             (p) => p.barcode === "8858678423339",
           );
@@ -685,8 +725,12 @@ export default function DailyReportPage() {
             attendanceLogId: attendanceLog.id,
             userId: user?.id || 102,
             storeCode: attendanceLog.store_code,
-            promotionId: activePromotion?.id,
-            promotionCommissionRules: activePromotion?.commission_rules || null,
+            promotionId: isPromotionActiveToday
+              ? activePromotion?.id
+              : undefined,
+            promotionCommissionRules: isPromotionActiveToday
+              ? activePromotion?.commission_rules || null
+              : null,
             trafficCount: Number(traffic) || 0,
             approachCount: Number(approach) || 0,
             closedSalesCount: Number(closedSales) || 0,
@@ -749,18 +793,30 @@ export default function DailyReportPage() {
                 )
               : 0,
 
-            giftOrangeBefore: activePromotion
-              ? Number(giftOrangeBefore) || 0
-              : 0,
-            giftOrangeGiven: activePromotion ? autoOrangeGiftGiven : 0,
-            giftOrangeAfter: activePromotion ? giftOrangeAfter : 0,
-            giftNourishBefore: activePromotion
-              ? Number(giftNourishBefore) || 0
-              : 0,
-            giftNourishGiven: activePromotion
-              ? Number(giftNourishGiven) || 0
-              : 0,
-            giftNourishAfter: activePromotion ? giftNourishAfter : 0,
+            giftOrangeBefore:
+              activePromotion?.track_gift_inventory && isPromotionActiveToday
+                ? Number(giftOrangeBefore) || 0
+                : 0,
+            giftOrangeGiven:
+              activePromotion?.track_gift_inventory && isPromotionActiveToday
+                ? autoOrangeGiftGiven
+                : 0,
+            giftOrangeAfter:
+              activePromotion?.track_gift_inventory && isPromotionActiveToday
+                ? giftOrangeAfter
+                : 0,
+            giftNourishBefore:
+              activePromotion?.track_gift_inventory && isPromotionActiveToday
+                ? Number(giftNourishBefore) || 0
+                : 0,
+            giftNourishGiven:
+              activePromotion?.track_gift_inventory && isPromotionActiveToday
+                ? Number(giftNourishGiven) || 0
+                : 0,
+            giftNourishAfter:
+              activePromotion?.track_gift_inventory && isPromotionActiveToday
+                ? giftNourishAfter
+                : 0,
           } as any);
 
           Swal.close();
@@ -1259,7 +1315,7 @@ export default function DailyReportPage() {
           </div>
 
           {/* Section: บันทึกสต๊อกของแถมแคมเปญ */}
-          {activePromotion && (
+          {activePromotion?.track_gift_inventory && (
             <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 shadow-xs space-y-3 text-left">
               <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5 border-b border-amber-200/60 pb-2">
                 <Package size={14} /> บันทึกสต๊อกของแถมแคมเปญ

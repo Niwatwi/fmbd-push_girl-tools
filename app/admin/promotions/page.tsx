@@ -64,6 +64,7 @@ export default function PromotionsAdminPage() {
   const [endDate, setEndDate] = useState("");
   const [specialTierText, setSpecialTierText] = useState("");
   const [staffGroup, setStaffGroup] = useState<string>("ALL");
+  const [trackGiftInventory, setTrackGiftInventory] = useState(false);
   const [commissionRules, setCommissionRules] =
     useState<PromotionCommissionRules>(DEFAULT_COMMISSION_RULES);
   const [isActive, setIsActive] = useState(true);
@@ -234,6 +235,7 @@ export default function PromotionsAdminPage() {
     setEndDate(promo.end_date?.slice(0, 10) || "");
     setSpecialTierText(promo.special_tier_text || "");
     setStaffGroup(promo.staff_group || "ALL");
+    setTrackGiftInventory(Boolean(promo.track_gift_inventory));
     setCommissionRules(promo.commission_rules || DEFAULT_COMMISSION_RULES);
     setIsActive(promo.is_active);
 
@@ -268,6 +270,7 @@ export default function PromotionsAdminPage() {
     setEndDate("");
     setSpecialTierText("");
     setStaffGroup("ALL");
+    setTrackGiftInventory(false);
     setCommissionRules(DEFAULT_COMMISSION_RULES);
     setIsActive(true);
     setItems([]);
@@ -420,6 +423,7 @@ export default function PromotionsAdminPage() {
       special_tier_text: specialTierText,
       is_active: isActive,
       staff_group: staffGroup,
+      track_gift_inventory: trackGiftInventory,
       commission_rules: commissionRules,
       items: items.map((i) => ({
         product_code: String(i.product_code || ""),
@@ -669,6 +673,21 @@ export default function PromotionsAdminPage() {
             className="w-full border rounded-lg p-2 text-xs font-bold"
           />
         </div>
+
+        <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-xs font-bold text-amber-950">
+          <input
+            type="checkbox"
+            checked={trackGiftInventory}
+            onChange={(event) => setTrackGiftInventory(event.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            บันทึกสต๊อกของแถมสำหรับแคมเปญนี้
+            <span className="mt-0.5 block text-[10px] font-medium text-amber-800">
+              เปิดเมื่อมีของแถมที่ต้องบันทึก กระเป๋าส้มและ Nourish Premium
+            </span>
+          </span>
+        </label>
 
         <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 space-y-3">
           <div>

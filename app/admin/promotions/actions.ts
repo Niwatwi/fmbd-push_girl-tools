@@ -70,6 +70,7 @@ export interface PromotionConfig {
   special_tier_text?: string;
   is_active: boolean;
   staff_group?: string;
+  track_gift_inventory?: boolean;
   commission_rules?: PromotionCommissionRules;
   items?: PromotionItem[];
 }
@@ -84,6 +85,7 @@ export interface SavePromotionPayload {
   special_tier_text?: string;
   is_active: boolean;
   staff_group: string;
+  track_gift_inventory: boolean;
   commission_rules: PromotionCommissionRules;
   items: Array<{
     product_code: string;
