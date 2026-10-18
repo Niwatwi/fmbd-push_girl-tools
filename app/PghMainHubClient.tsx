@@ -22,6 +22,7 @@ import {
   BarChart3,
   Store,
   ChevronRight,
+  ChevronDown,
   RefreshCw,
   Clock,
   Package,
@@ -463,19 +464,24 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
         </div>
 
         {competitorProducts.length > 0 && (
-          <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between border-b border-amber-100 pb-2">
-              <div>
-                <h2 className="text-xs font-black text-slate-800">
-                  สินค้าคู่แข่งในแคมเปญ
-                </h2>
-                <p className="mt-0.5 text-[10px] text-slate-500">
-                  ตรวจสอบรูปและบาร์โค้ดก่อนค้นหาสินค้าหน้าร้าน
-                </p>
-              </div>
-              <Package size={17} className="text-amber-600" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
+          <details className="group rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+              <Package size={17} className="shrink-0 text-amber-600" />
+              <span className="min-w-0 flex-1 text-xs font-black text-slate-800">
+                สินค้าคู่แข่งในแคมเปญ
+              </span>
+              <span className="shrink-0 text-[10px] font-bold text-slate-500">
+                {competitorProducts.length} รายการ
+              </span>
+              <ChevronDown
+                size={15}
+                className="shrink-0 text-slate-500 transition-transform group-open:rotate-180"
+              />
+            </summary>
+            <p className="mt-2 text-[10px] text-slate-500">
+              ตรวจสอบรูปและบาร์โค้ดก่อนค้นหาสินค้าหน้าร้าน
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-amber-100 pt-3">
               {competitorProducts.map((product) => (
                 <article
                   key={product.barcode}
@@ -507,7 +513,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
                 </article>
               ))}
             </div>
-          </section>
+          </details>
         )}
 
         <div className="grid grid-cols-2 gap-3">
