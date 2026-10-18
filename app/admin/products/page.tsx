@@ -7,16 +7,23 @@ import {
   ArrowLeft,
   Camera,
   Check,
+  Clock3,
+  Eye,
   PackagePlus,
+  Pencil,
   Plus,
   RefreshCw,
   Upload,
+  X,
 } from "lucide-react";
 import {
   createProductImageUploadAction,
   createMasterProductAction,
+  getMasterProductChangeLogsAction,
+  getMasterProductForEditAction,
   getProductCategoryOptionsAction,
   getRecentMasterProductsAction,
+  updateMasterProductAction,
   type ProductMasterInput,
 } from "./actions";
 
@@ -78,6 +85,15 @@ interface RecentProduct {
   barcode: string;
   sku_code: string | null;
   is_active: boolean | null;
+}
+
+interface ProductChangeLog {
+  id: number;
+  changed_at: string;
+  changed_by: number | null;
+  changed_by_name: string;
+  old_values: Record<string, unknown>;
+  new_values: Record<string, unknown>;
 }
 
 function TextField({
@@ -177,6 +193,10 @@ function ProductImageField({
 export default function AdminProductsPage() {
   const [form, setForm] = useState<ProductMasterInput>(emptyProduct);
   const [products, setProducts] = useState<RecentProduct[]>([]);
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [historyProductId, setHistoryProductId] = useState<number | null>(null);
+  const [productLogs, setProductLogs] = useState<ProductChangeLog[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [categoryCodeManuallyEdited, setCategoryCodeManuallyEdited] =
     useState(false);
@@ -211,6 +231,66 @@ export default function AdminProductsPage() {
     if (result.success) {
       setCategoryOptions(result.categories as CategoryOption[]);
     }
+  };
+
+  const loadProductHistory = async (productId: number) => {
+    setHistoryProductId(productId);
+    setHistoryLoading(true);
+    const result = await getMasterProductChangeLogsAction(productId);
+    if (result.success) {
+      setProductLogs(result.logs as ProductChangeLog[]);
+    } else {
+      setProductLogs([]);
+      setMessage(result.message || "โหลดประวัติไม่สำเร็จ");
+      setMessageIsError(true);
+    }
+    setHistoryLoading(false);
+  };
+
+  const handleEditProduct = async (productId: number) => {
+    setSaving(true);
+    setMessage("");
+    const result = await getMasterProductForEditAction(productId);
+    if (!result.success || !result.product) {
+      setMessage(result.message || "โหลดรายละเอียดสินค้าไม่สำเร็จ");
+      setMessageIsError(true);
+      setSaving(false);
+      return;
+    }
+
+    setForm({
+      ...emptyProduct,
+      ...result.product,
+      code: String(result.product.code || ""),
+      category_code: String(result.product.category_code || ""),
+      category: String(result.product.category || ""),
+      sub_category: String(result.product.sub_category || ""),
+      segment: String(result.product.segment || ""),
+      company: String(result.product.company || ""),
+      company_type:
+        result.product.company_type === "Competitor" ? "Competitor" : "Company",
+      brand_type: String(result.product.brand_type || ""),
+      brand: String(result.product.brand || ""),
+      sub_brand: String(result.product.sub_brand || ""),
+      pack_name: String(result.product.pack_name || ""),
+      descriptions: String(result.product.descriptions || ""),
+      barcode: String(result.product.barcode || ""),
+      is_active: result.product.is_active !== false,
+    });
+    setEditingProductId(productId);
+    setCategoryCodeManuallyEdited(false);
+    setProductLogs(result.logs as ProductChangeLog[]);
+    setHistoryProductId(productId);
+    setMessageIsError(false);
+    setSaving(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEdit = () => {
+    setEditingProductId(null);
+    setForm({ ...emptyProduct });
+    setCategoryCodeManuallyEdited(false);
+    setProductLogs([]);
   };
 
   const setField = <K extends keyof ProductMasterInput>(
@@ -324,17 +404,30 @@ export default function AdminProductsPage() {
     setMessage("");
     setMessageIsError(false);
 
-    const result = await createMasterProductAction(form);
+    const result = editingProductId
+      ? await updateMasterProductAction(editingProductId, form)
+      : await createMasterProductAction(form);
     if (result.success) {
-      setForm({
-        ...emptyProduct,
-        company: form.company,
-        company_type: form.company_type,
-      });
-      setMessage(
-        `เพิ่มสินค้าแล้ว: ${result.product?.code || ""} · ${result.product?.descriptions || ""}`,
-      );
-      setCategoryCodeManuallyEdited(false);
+      if (editingProductId) {
+        setForm((current) => ({
+          ...current,
+          ...(result.product || {}),
+        }));
+        setMessage(
+          `แก้ไขสินค้าแล้ว: ${result.product?.code || form.code || ""} · ${result.product?.descriptions || form.descriptions}`,
+        );
+        await loadProductHistory(editingProductId);
+      } else {
+        setForm({
+          ...emptyProduct,
+          company: form.company,
+          company_type: form.company_type,
+        });
+        setMessage(
+          `เพิ่มสินค้าแล้ว: ${result.product?.code || ""} · ${result.product?.descriptions || ""}`,
+        );
+        setCategoryCodeManuallyEdited(false);
+      }
       await loadProducts();
     } else {
       setMessage(result.message || "เพิ่มสินค้าไม่สำเร็จ");
@@ -352,8 +445,10 @@ export default function AdminProductsPage() {
               Admin / Master data
             </p>
             <h1 className="mt-1 flex items-center gap-2 text-xl font-black">
-              <PackagePlus className="text-blue-700" size={22} /> เพิ่มสินค้าใน
-              Master Products
+              <PackagePlus className="text-blue-700" size={22} />
+              {editingProductId
+                ? "แก้ไขสินค้า Master"
+                : "เพิ่มสินค้าใน Master Products"}
             </h1>
           </div>
           <Link
@@ -380,7 +475,9 @@ export default function AdminProductsPage() {
           >
             <section className="space-y-3">
               <h2 className="border-b border-slate-100 pb-2 text-sm font-black">
-                ข้อมูลสินค้า
+                {editingProductId
+                  ? `แก้ไขสินค้า ID ${editingProductId}`
+                  : "ข้อมูลสินค้า"}
               </h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-xs font-bold text-slate-600">
@@ -552,11 +649,93 @@ export default function AdminProductsPage() {
             >
               {saving ? (
                 <RefreshCw size={16} className="animate-spin" />
+              ) : editingProductId ? (
+                <Check size={16} />
               ) : (
                 <Plus size={16} />
               )}
-              {saving ? "กำลังบันทึก..." : "เพิ่มสินค้าใน Master"}
+              {saving
+                ? "กำลังบันทึก..."
+                : editingProductId
+                  ? "บันทึกการแก้ไขและเก็บ Log"
+                  : "เพิ่มสินค้าใน Master"}
             </button>
+            {editingProductId && (
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={saving}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                <X size={16} /> ยกเลิกการแก้ไข
+              </button>
+            )}
+
+            {historyProductId !== null && (
+              <section className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="flex items-center gap-1.5 text-xs font-black text-slate-700">
+                    <Clock3 size={14} /> ประวัติการแก้ไขสินค้า ID{" "}
+                    {historyProductId}
+                  </h3>
+                  <span className="text-[10px] font-bold text-slate-500">
+                    {productLogs.length} รายการล่าสุด
+                  </span>
+                </div>
+                {productLogs.length === 0 ? (
+                  <p className="text-[10px] text-slate-500">
+                    ยังไม่มีประวัติการแก้ไขก่อนหน้านี้
+                  </p>
+                ) : (
+                  <div className="max-h-64 space-y-2 overflow-y-auto">
+                    {productLogs.map((log) => {
+                      const changedKeys = Object.keys(
+                        log.new_values || {},
+                      ).filter(
+                        (key) =>
+                          JSON.stringify(log.old_values?.[key]) !==
+                          JSON.stringify(log.new_values?.[key]),
+                      );
+                      return (
+                        <article
+                          key={log.id}
+                          className="rounded-md border border-slate-200 bg-white p-2.5"
+                        >
+                          <p className="text-[10px] font-black text-slate-800">
+                            {new Date(log.changed_at).toLocaleString("th-TH", {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}
+                          </p>
+                          <p className="mt-0.5 text-[10px] text-slate-500">
+                            ผู้แก้:{" "}
+                            {log.changed_by_name ||
+                              `Admin #${log.changed_by || "-"}`}
+                          </p>
+                          <p className="mt-1 break-words text-[9px] text-blue-700">
+                            เปลี่ยน {changedKeys.length} ฟิลด์:{" "}
+                            {changedKeys.join(", ") || "ไม่มีค่าที่เปลี่ยน"}
+                          </p>
+                          <details className="mt-1 text-[9px] text-slate-500">
+                            <summary className="flex cursor-pointer items-center gap-1 font-bold">
+                              <Eye size={11} /> ดูค่าก่อนและหลัง
+                            </summary>
+                            <div className="mt-1 grid grid-cols-2 gap-2">
+                              <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-all rounded bg-rose-50 p-1.5">
+                                {JSON.stringify(log.old_values, null, 2)}
+                              </pre>
+                              <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-all rounded bg-emerald-50 p-1.5">
+                                {JSON.stringify(log.new_values, null, 2)}
+                              </pre>
+                            </div>
+                          </details>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
           </form>
 
           <section className="space-y-3">
@@ -616,6 +795,22 @@ export default function AdminProductsPage() {
                       <Check size={12} />{" "}
                       {product.is_active ? "เปิดใช้งาน" : "ไม่ใช้งาน"}
                     </p>
+                    <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleEditProduct(product.id)}
+                        className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold text-blue-700 hover:bg-blue-100"
+                      >
+                        <Pencil size={12} /> แก้ไข
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void loadProductHistory(product.id)}
+                        className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2.5 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-slate-200"
+                      >
+                        <Clock3 size={12} /> ประวัติ
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
