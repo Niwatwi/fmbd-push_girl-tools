@@ -7,12 +7,15 @@ import {
   ArrowLeft,
   Camera,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Eye,
   PackagePlus,
   Pencil,
   Plus,
   RefreshCw,
+  Search,
   Upload,
   X,
 } from "lucide-react";
@@ -191,8 +194,12 @@ function ProductImageField({
 }
 
 export default function AdminProductsPage() {
+  const productPageSize = 20;
   const [form, setForm] = useState<ProductMasterInput>(emptyProduct);
   const [products, setProducts] = useState<RecentProduct[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [productPage, setProductPage] = useState(1);
+  const [productTotal, setProductTotal] = useState(0);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [historyProductId, setHistoryProductId] = useState<number | null>(null);
   const [productLogs, setProductLogs] = useState<ProductChangeLog[]>([]);
@@ -208,11 +215,17 @@ export default function AdminProductsPage() {
   const [message, setMessage] = useState("");
   const [messageIsError, setMessageIsError] = useState(false);
 
-  const loadProducts = async () => {
+  const loadProducts = async (page = productPage, search = productSearch) => {
     setLoading(true);
-    const result = await getRecentMasterProductsAction();
+    const result = await getRecentMasterProductsAction(
+      search,
+      page,
+      productPageSize,
+    );
     if (result.success) {
       setProducts(result.products as RecentProduct[]);
+      setProductTotal(result.total || 0);
+      setProductPage(result.page || page);
       setMessage("");
     } else {
       setMessage(result.message || "โหลดรายการสินค้าไม่สำเร็จ");
@@ -222,9 +235,14 @@ export default function AdminProductsPage() {
   };
 
   useEffect(() => {
-    void loadProducts();
+    void loadProducts(1, "");
     void loadCategories();
   }, []);
+
+  const totalProductPages = Math.max(
+    1,
+    Math.ceil(productTotal / productPageSize),
+  );
 
   const loadCategories = async () => {
     const result = await getProductCategoryOptionsAction();
@@ -428,7 +446,7 @@ export default function AdminProductsPage() {
         );
         setCategoryCodeManuallyEdited(false);
       }
-      await loadProducts();
+      await loadProducts(editingProductId ? productPage : 1, productSearch);
     } else {
       setMessage(result.message || "เพิ่มสินค้าไม่สำเร็จ");
       setMessageIsError(true);
@@ -741,9 +759,10 @@ export default function AdminProductsPage() {
           <section className="space-y-3">
             <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h2 className="text-sm font-black">เพิ่มล่าสุด</h2>
+                <h2 className="text-sm font-black">Master Products</h2>
                 <p className="text-[11px] text-slate-500">
-                  สินค้าใหม่จะเลือกได้ในแคมเปญหลังรีเฟรชข้อมูล
+                  {productTotal.toLocaleString()} รายการ ·
+                  ค้นหาเพื่อแก้ไขสินค้าเดิม
                 </p>
               </div>
               <button
@@ -755,13 +774,44 @@ export default function AdminProductsPage() {
                 <RefreshCw size={15} />
               </button>
             </div>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                setProductPage(1);
+                void loadProducts(1, productSearch);
+              }}
+              className="flex gap-2"
+            >
+              <label className="relative min-w-0 flex-1">
+                <Search
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  type="search"
+                  value={productSearch}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  placeholder="ค้นหา Barcode, Code, SKU หรือชื่อสินค้า"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-xs font-medium outline-none focus:border-blue-500"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800 disabled:opacity-60"
+              >
+                ค้นหา
+              </button>
+            </form>
             {loading ? (
               <p className="py-8 text-center text-sm text-slate-500">
                 กำลังโหลดสินค้า...
               </p>
             ) : products.length === 0 ? (
               <p className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">
-                ยังไม่มีรายการสินค้า
+                {productSearch
+                  ? "ไม่พบสินค้าที่ตรงกับคำค้น"
+                  : "ยังไม่มีรายการสินค้า"}
               </p>
             ) : (
               <div className="space-y-2">
@@ -813,6 +863,31 @@ export default function AdminProductsPage() {
                     </div>
                   </article>
                 ))}
+              </div>
+            )}
+            {productTotal > 0 && (
+              <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+                <span className="text-[10px] font-bold text-slate-500">
+                  หน้า {productPage} / {totalProductPages}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadProducts(productPage - 1)}
+                    disabled={loading || productPage <= 1}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    <ChevronLeft size={13} /> ก่อนหน้า
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void loadProducts(productPage + 1)}
+                    disabled={loading || productPage >= totalProductPages}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    ถัดไป <ChevronRight size={13} />
+                  </button>
+                </div>
               </div>
             )}
           </section>

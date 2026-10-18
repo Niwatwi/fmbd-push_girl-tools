@@ -79,24 +79,56 @@ function buildProductPayload(input: ProductMasterInput) {
   return payload;
 }
 
-export async function getRecentMasterProductsAction() {
+export async function getRecentMasterProductsAction(
+  search = "",
+  page = 1,
+  pageSize = 20,
+) {
   try {
     await requireAdminSession();
     const supabase = getAdminProductsClient();
-    const { data, error } = await supabase
+    const safePageSize = Math.min(50, Math.max(1, Math.floor(pageSize)));
+    const safePage = Math.max(1, Math.floor(page));
+    const offset = (safePage - 1) * safePageSize;
+    const normalizedSearch = String(search || "")
+      .trim()
+      .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+      .replace(/\s+/g, " ");
+    let query = supabase
       .from("products")
       .select(
         "id, code, company, company_type, category, pack_name, descriptions, barcode, sku_code, is_active",
-      )
+        { count: "exact" },
+      );
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      query = query.or(
+        ["code", "barcode", "sku_code", "descriptions", "brand", "company"]
+          .map((column) => `${column}.ilike.${pattern}`)
+          .join(","),
+      );
+    }
+    const {
+      data: products,
+      error: searchError,
+      count: totalCount,
+    } = await query
       .order("id", { ascending: false })
-      .limit(30);
+      .range(offset, offset + safePageSize - 1);
 
-    if (error) throw error;
-    return { success: true, products: data || [] };
+    if (searchError) throw searchError;
+    return {
+      success: true,
+      products: products || [],
+      total: totalCount || 0,
+      page: safePage,
+      pageSize: safePageSize,
+    };
   } catch (error: any) {
     return {
       success: false,
       products: [],
+      total: 0,
       message: error.message || "โหลด Master Products ไม่สำเร็จ",
     };
   }
