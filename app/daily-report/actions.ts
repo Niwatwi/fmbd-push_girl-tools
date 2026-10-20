@@ -466,6 +466,14 @@ export async function submitFullDailyActivityReportAction(
     const giftNourishBefore = Number(payload.giftNourishBefore || 0);
     const giftNourishGiven = Number(payload.giftNourishGiven || 0);
     const giftNourishAfter = Math.max(0, giftNourishBefore - giftNourishGiven);
+    const promotionGiftGiven = Object.fromEntries(
+      Object.entries(payload.promotionGiftGiven || {})
+        .map(([giftKey, quantity]) => [
+          giftKey,
+          Math.max(0, Math.floor(Number(quantity) || 0)),
+        ])
+        .filter(([, quantity]) => Number(quantity) > 0),
+    );
     const competitorPrices = normalizeCompetitorPrices(
       payload.competitorPrices,
     );
@@ -544,7 +552,9 @@ export async function submitFullDailyActivityReportAction(
       gift_nourish_before: giftNourishBefore,
       gift_nourish_given: giftNourishGiven,
       gift_nourish_after: giftNourishAfter,
-      promotion_gift_given: payload.promotionGiftGiven || {},
+      ...(Object.keys(promotionGiftGiven).length > 0
+        ? { promotion_gift_given: promotionGiftGiven }
+        : {}),
     };
 
     const { data: reportData, error: reportError } = await supabase
@@ -555,7 +565,17 @@ export async function submitFullDailyActivityReportAction(
       .select()
       .single();
 
-    if (reportError) throw reportError;
+    if (reportError) {
+      if (
+        Object.keys(promotionGiftGiven).length > 0 &&
+        /promotion_gift_given/i.test(reportError.message || "")
+      ) {
+        throw new Error(
+          "ยังบันทึกยอดแจกของแถมไม่ได้ กรุณารัน migration 202610200001_promotion_gift_inventory.sql ใน Supabase",
+        );
+      }
+      throw reportError;
+    }
 
     const { error: deleteProductsError } = await supabase
       .from("pg_daily_report_products")
@@ -636,7 +656,13 @@ export async function submitFullDailyActivityReportAction(
     return { success: true, data: reportData };
   } catch (error: any) {
     console.error("submitFullDailyActivityReportAction error:", error);
-    return { success: false, message: error.message };
+    return {
+      success: false,
+      message:
+        error?.message ||
+        error?.details ||
+        "เกิดข้อผิดพลาดระหว่างบันทึกรายงาน กรุณาตรวจสอบข้อมูลแล้วลองใหม่",
+    };
   }
 }
 
