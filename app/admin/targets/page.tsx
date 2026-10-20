@@ -81,6 +81,9 @@ export default function AdminTargetManagement() {
   const [storeName, setStoreName] = useState("");
   const [promotionId, setPromotionId] = useState("");
   const [promotionName, setPromotionName] = useState("");
+  const [targetPeriod, setTargetPeriod] = useState<"DAILY" | "MONTHLY">(
+    "DAILY",
+  );
 
   // 🔄 State แถวสินค้า รองรับระบบเลือกแบบ Cascading (Company -> Category -> Brand -> Product)
   const [productRows, setProductRows] = useState<
@@ -169,6 +172,7 @@ export default function AdminTargetManagement() {
     if (!stillApplicable) {
       setPromotionId("");
       setPromotionName("");
+      setTargetPeriod("DAILY");
     }
   };
 
@@ -176,6 +180,7 @@ export default function AdminTargetManagement() {
     setPromotionId(promoId);
     const found = promotions.find((p) => String(p.id) === String(promoId));
     setPromotionName(found?.campaign_title || "");
+    setTargetPeriod(found?.calculation_period || "DAILY");
 
     const ourItems = (found?.items || []).filter(
       (item: any) => item.item_scope !== "COMPETITOR",
@@ -272,6 +277,12 @@ export default function AdminTargetManagement() {
     setStoreName(item.store_name || "");
     setPromotionId(item.promotion_id || "");
     setPromotionName(item.promotion_name || "");
+    const linkedPromotion = promotions.find(
+      (promotion) => String(promotion.id) === String(item.promotion_id),
+    );
+    setTargetPeriod(
+      item.calculation_period || linkedPromotion?.calculation_period || "DAILY",
+    );
 
     const legacyTargets = [
       item.target_green90,
@@ -368,6 +379,7 @@ export default function AdminTargetManagement() {
     setStoreName("");
     setPromotionId("");
     setPromotionName("");
+    setTargetPeriod("DAILY");
     setProductRows([
       {
         company: "",
@@ -407,6 +419,7 @@ export default function AdminTargetManagement() {
       promotion_id: promotionId || null,
       promotion_name: promotionName || null,
       promotion_title: promotionName || null,
+      calculation_period: targetPeriod,
       target_type: promotionId ? "PROMOTION_THEME" : "STANDARD",
       target_value: promotionId || "STANDARD",
       target_round: promotionName || null,
@@ -570,6 +583,35 @@ export default function AdminTargetManagement() {
               </div>
             </div>
 
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                3. รอบคำนวณ Target
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTargetPeriod("DAILY")}
+                  aria-pressed={targetPeriod === "DAILY"}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold ${targetPeriod === "DAILY" ? "border-blue-800 bg-blue-800 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+                >
+                  รายวัน
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetPeriod("MONTHLY")}
+                  aria-pressed={targetPeriod === "MONTHLY"}
+                  className={`rounded-lg border px-3 py-2 text-xs font-bold ${targetPeriod === "MONTHLY" ? "border-blue-800 bg-blue-800 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+                >
+                  รายเดือน (วันที่ 1–30)
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                {targetPeriod === "MONTHLY"
+                  ? "จำนวน Target ของสินค้าทั้งหมดเป็นเป้ารวมของเดือน"
+                  : "จำนวน Target ของสินค้าเริ่มนับใหม่ในแต่ละวัน"}
+              </p>
+            </div>
+
             {storeCode && (
               <div className="p-2.5 rounded-xl text-[11px] font-medium border transition-all">
                 {isBigC ? (
@@ -607,7 +649,7 @@ export default function AdminTargetManagement() {
               <div className="flex justify-between items-center">
                 <span className="text-[11px] font-black text-slate-700 flex items-center gap-1">
                   <Package size={13} className="text-blue-600" />
-                  3. เลือกสินค้าจากตาราง Products (Company $\rightarrow$
+                  4. เลือกสินค้าจากตาราง Products (Company $\rightarrow$
                   Category $\rightarrow$ Brand)
                 </span>
                 <button
@@ -974,6 +1016,13 @@ export default function AdminTargetManagement() {
                       item.store_code,
                       item.store_name,
                     );
+                    const rowPeriod =
+                      item.calculation_period ||
+                      promotions.find(
+                        (promotion) =>
+                          String(promotion.id) === String(item.promotion_id),
+                      )?.calculation_period ||
+                      "DAILY";
 
                     const targetValues = Array.from(
                       { length: 10 },
@@ -1036,6 +1085,12 @@ export default function AdminTargetManagement() {
                               🏷️ {item.promotion_name}
                             </span>
                           )}
+                          <span className="mt-1 block text-[10px] font-bold text-slate-500">
+                            Target{" "}
+                            {rowPeriod === "MONTHLY"
+                              ? "รายเดือน (1–30)"
+                              : "รายวัน"}
+                          </span>
                         </td>
                         <td className="p-3 text-center">
                           <span

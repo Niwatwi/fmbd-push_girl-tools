@@ -59,6 +59,30 @@ export default function AdminSalarySummaryPage() {
     () => getDefaultPayoutPeriod().endDate,
   );
   const [searchKeyword, setSearchKeyword] = useState<string>("");
+  const [payrollPeriodMode, setPayrollPeriodMode] = useState<
+    "DAILY" | "MONTHLY"
+  >("DAILY");
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" })
+      .format(new Date())
+      .slice(0, 7),
+  );
+
+  const handlePayrollPeriodModeChange = (mode: "DAILY" | "MONTHLY") => {
+    setPayrollPeriodMode(mode);
+    if (mode === "MONTHLY") {
+      setStartDate(`${selectedMonth}-01`);
+      setEndDate(`${selectedMonth}-30`);
+    }
+  };
+
+  const handleSelectedMonthChange = (month: string) => {
+    setSelectedMonth(month);
+    if (month) {
+      setStartDate(`${month}-01`);
+      setEndDate(`${month}-30`);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -212,8 +236,9 @@ export default function AdminSalarySummaryPage() {
                 Summary)
               </h1>
               <p className="text-xs text-slate-400 font-medium">
-                คอมฯ คิดรายวัน: 30 แพ็ค = 80%, 40 แพ็ค = 100%;
-                จ่ายรวมเป็นงวดศุกร์–อาทิตย์
+                {payrollPeriodMode === "MONTHLY"
+                  ? "รวมค่าแรงและยอดขายวันที่ 1–30; คอมมิชชั่นแคมเปญรายเดือนคำนวณจากยอด Target รวม"
+                  : "คอมมิชชั่นรายวันคำนวณตาม Target; ค่าแรงรวมตามช่วงวันที่เลือก"}
               </p>
             </div>
           </div>
@@ -272,7 +297,7 @@ export default function AdminSalarySummaryPage() {
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                ยอดรวมค่าแรงรายวัน
+                ยอดรวมค่าแรง
               </span>
               <span className="text-lg font-black text-slate-800 block">
                 {totalWagesSum.toLocaleString()} ฿
@@ -319,22 +344,57 @@ export default function AdminSalarySummaryPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-xs">
-            <div className="flex items-center gap-1.5">
-              <Calendar size={14} className="text-slate-400" />
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 text-xs font-bold"
-              />
-              <span className="text-slate-400">ถึง</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 text-xs font-bold"
-              />
+            <div className="flex items-center gap-1 rounded-lg border border-slate-200 p-1">
+              <button
+                type="button"
+                onClick={() => handlePayrollPeriodModeChange("DAILY")}
+                aria-pressed={payrollPeriodMode === "DAILY"}
+                className={`rounded-md px-3 py-1.5 font-bold ${payrollPeriodMode === "DAILY" ? "bg-blue-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+              >
+                รายวัน
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePayrollPeriodModeChange("MONTHLY")}
+                aria-pressed={payrollPeriodMode === "MONTHLY"}
+                className={`rounded-md px-3 py-1.5 font-bold ${payrollPeriodMode === "MONTHLY" ? "bg-blue-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+              >
+                รายเดือน (1–30)
+              </button>
             </div>
+
+            {payrollPeriodMode === "MONTHLY" ? (
+              <label className="flex items-center gap-1.5 font-bold text-slate-600">
+                <Calendar size={14} className="text-slate-400" />
+                เดือนที่จ่าย
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(event) =>
+                    handleSelectedMonthChange(event.target.value)
+                  }
+                  className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 text-xs font-bold"
+                />
+                <span className="text-[10px] text-slate-500">วันที่ 1–30</span>
+              </label>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <Calendar size={14} className="text-slate-400" />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 text-xs font-bold"
+                />
+                <span className="text-slate-400">ถึง</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 text-xs font-bold"
+                />
+              </div>
+            )}
 
             <div className="relative">
               <Search
@@ -384,7 +444,7 @@ export default function AdminSalarySummaryPage() {
                     ค่าแรง/วัน
                   </th>
                   <th className="p-2.5 border border-slate-200 text-right bg-slate-200/50">
-                    รวมค่าแรงรายวัน
+                    รวมค่าแรง
                   </th>
                   <th className="p-2.5 border border-slate-200 text-center">
                     ยอดขายสะสม

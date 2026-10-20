@@ -72,6 +72,7 @@ export interface PromotionConfig {
   staff_group?: string;
   track_gift_inventory?: boolean;
   gift_items?: PromotionGiftItem[];
+  calculation_period?: "DAILY" | "MONTHLY";
   commission_rules?: PromotionCommissionRules;
   items?: PromotionItem[];
 }
@@ -94,6 +95,7 @@ export interface SavePromotionPayload {
   staff_group: string;
   track_gift_inventory: boolean;
   gift_items: PromotionGiftItem[];
+  calculation_period: "DAILY" | "MONTHLY";
   commission_rules: PromotionCommissionRules;
   items: Array<{
     product_code: string;

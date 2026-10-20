@@ -341,6 +341,7 @@ export async function saveStoreTargetAction(payload: {
   promotion_id?: string | number | null;
   promotion_name?: string | null;
   promotion_title?: string | null;
+  calculation_period?: "DAILY" | "MONTHLY" | null;
   target_type?: string | null;
   target_value?: string | null;
   target_round?: string | null;
@@ -442,6 +443,7 @@ export async function saveStoreTargetAction(payload: {
           promotion_id:
             payload.promotion_id == null ? null : String(payload.promotion_id),
           promotion_name: payload.promotion_name ?? null,
+          calculation_period: payload.calculation_period ?? null,
         },
         { onConflict: "store_code" },
       )
@@ -936,7 +938,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
     const { data: promotionRows } = await supabase
       .from("promotions")
       .select(
-        "id, commission_rules, items:promotion_items(*, products(barcode))",
+        "id, calculation_period, commission_rules, items:promotion_items(*, products(barcode))",
       );
     const promotionsById = new Map(
       (promotionRows || []).map((promotion: any) => [
@@ -944,6 +946,18 @@ export async function getAdminSalarySummaryReportAction(params?: {
         promotion,
       ]),
     );
+
+    const { data: storeTargetRows } = await supabase
+      .from("store_targets")
+      .select("store_code, promotion_id, calculation_period, target_packs");
+    const storeTargetsByPromotion = new Map<string, any>();
+    for (const target of storeTargetRows || []) {
+      if (target.promotion_id == null) continue;
+      storeTargetsByPromotion.set(
+        `${target.store_code}:${target.promotion_id}`,
+        target,
+      );
+    }
 
     const { data: storeAccounts } = await supabase
       .from("pg_stores")
@@ -977,6 +991,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
           allSkuSalesQty: 0,
           dailySalesByDate: new Map<string, number>(),
           promotionCommissionByDate: new Map<string, number>(),
+          monthlyCampaignDates: new Set<string>(),
+          monthlyPromotionPerformance: new Map<string, any>(),
         });
       }
 
@@ -1005,6 +1021,9 @@ export async function getAdminSalarySummaryReportAction(params?: {
       const promotion = rep.promotion_id
         ? promotionsById.get(String(rep.promotion_id))
         : null;
+      const storeTarget = rep.promotion_id
+        ? storeTargetsByPromotion.get(`${rep.store_code}:${rep.promotion_id}`)
+        : null;
       const rules =
         rep.promotion_commission_rules || promotion?.commission_rules;
       const promotionItems = Array.isArray(promotion?.items)
@@ -1025,7 +1044,16 @@ export async function getAdminSalarySummaryReportAction(params?: {
           sum + Number(product.promotion_target_qty || 0),
         0,
       );
-      const targetQty = snapshotTargetQty || promotionTargetQty;
+      const calculationPeriod =
+        storeTarget?.calculation_period ||
+        promotion?.calculation_period ||
+        "DAILY";
+      const targetQty =
+        calculationPeriod === "MONTHLY"
+          ? Number(storeTarget?.target_packs || 0) ||
+            promotionTargetQty ||
+            snapshotTargetQty
+          : snapshotTargetQty || promotionTargetQty;
 
       if (rules && targetQty > 0 && reportProducts.length > 0) {
         const targetByBarcode = new Map<string, number>();
@@ -1054,17 +1082,37 @@ export async function getAdminSalarySummaryReportAction(params?: {
           },
           0,
         );
-        const commissionResult = calculatePromotionCommission(
-          creditedSales,
-          targetQty,
-          rules,
-        );
-        const currentPromotionCommission =
-          userGroup.promotionCommissionByDate.get(dateKey) || 0;
-        userGroup.promotionCommissionByDate.set(
-          dateKey,
-          currentPromotionCommission + commissionResult.incentiveAmount,
-        );
+        if (calculationPeriod === "MONTHLY" && promotion?.id) {
+          const monthKey = dateKey.slice(0, 7);
+          userGroup.monthlyCampaignDates.add(dateKey);
+          const performanceKey = `${promotion.id}:${monthKey}`;
+          const currentPerformance = userGroup.monthlyPromotionPerformance.get(
+            performanceKey,
+          ) || {
+            promotionId: String(promotion.id),
+            monthKey,
+            creditedSales: 0,
+            targetQty,
+            rules,
+          };
+          currentPerformance.creditedSales += creditedSales;
+          userGroup.monthlyPromotionPerformance.set(
+            performanceKey,
+            currentPerformance,
+          );
+        } else {
+          const commissionResult = calculatePromotionCommission(
+            creditedSales,
+            targetQty,
+            rules,
+          );
+          const currentPromotionCommission =
+            userGroup.promotionCommissionByDate.get(dateKey) || 0;
+          userGroup.promotionCommissionByDate.set(
+            dateKey,
+            currentPromotionCommission + commissionResult.incentiveAmount,
+          );
+        }
       }
     });
 
@@ -1077,18 +1125,30 @@ export async function getAdminSalarySummaryReportAction(params?: {
           ).map(async ([dateKey, dailyPacks]: [string, number]) => {
             const configuredPayout =
               item.promotionCommissionByDate.get(dateKey);
+            const hasMonthlyCampaign = item.monthlyCampaignDates.has(dateKey);
             return configuredPayout !== undefined
               ? {
                   incentiveAmount: configuredPayout,
                   tierStatus: "คำนวณตามกติกาแคมเปญ",
                 }
-              : calculateBigCCommission(dailyPacks);
+              : hasMonthlyCampaign
+                ? { incentiveAmount: 0, tierStatus: "" }
+                : calculateBigCCommission(dailyPacks);
           }),
         );
-        const totalCommission = dailyCommissionResults.reduce(
-          (sum, result) => sum + result.incentiveAmount,
-          0,
+        const monthlyCommissionResults = Array.from(
+          item.monthlyPromotionPerformance.values(),
+        ).map((performance: any) =>
+          calculatePromotionCommission(
+            performance.creditedSales,
+            performance.targetQty,
+            performance.rules,
+          ),
         );
+        const totalCommission = [
+          ...dailyCommissionResults,
+          ...monthlyCommissionResults,
+        ].reduce((sum, result) => sum + result.incentiveAmount, 0);
 
         return {
           userId: item.userId,
@@ -1106,7 +1166,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
           totalSets: item.allSkuSalesQty,
           totalPacks: item.allSkuSalesQty,
           totalCommission,
-          tierStatus: dailyCommissionResults
+          tierStatus: [...dailyCommissionResults, ...monthlyCommissionResults]
+            .filter((result) => result.tierStatus)
             .map((result) => result.tierStatus)
             .join(" / "),
           totalNetSalary: item.totalDailyWage + totalCommission,

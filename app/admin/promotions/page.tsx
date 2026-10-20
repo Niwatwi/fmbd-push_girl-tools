@@ -67,6 +67,9 @@ export default function PromotionsAdminPage() {
   const [staffGroup, setStaffGroup] = useState<string>("ALL");
   const [trackGiftInventory, setTrackGiftInventory] = useState(false);
   const [giftItems, setGiftItems] = useState<PromotionGiftItem[]>([]);
+  const [calculationPeriod, setCalculationPeriod] = useState<
+    "DAILY" | "MONTHLY"
+  >("DAILY");
   const [commissionRules, setCommissionRules] =
     useState<PromotionCommissionRules>(DEFAULT_COMMISSION_RULES);
   const [isActive, setIsActive] = useState(true);
@@ -239,6 +242,7 @@ export default function PromotionsAdminPage() {
     setStaffGroup(promo.staff_group || "ALL");
     setTrackGiftInventory(Boolean(promo.track_gift_inventory));
     setGiftItems(promo.gift_items || []);
+    setCalculationPeriod(promo.calculation_period || "DAILY");
     setCommissionRules(promo.commission_rules || DEFAULT_COMMISSION_RULES);
     setIsActive(promo.is_active);
 
@@ -275,6 +279,7 @@ export default function PromotionsAdminPage() {
     setStaffGroup("ALL");
     setTrackGiftInventory(false);
     setGiftItems([]);
+    setCalculationPeriod("DAILY");
     setCommissionRules(DEFAULT_COMMISSION_RULES);
     setIsActive(true);
     setItems([]);
@@ -429,6 +434,7 @@ export default function PromotionsAdminPage() {
       staff_group: staffGroup,
       track_gift_inventory: trackGiftInventory,
       gift_items: giftItems.filter((gift) => gift.name.trim()),
+      calculation_period: calculationPeriod,
       commission_rules: commissionRules,
       items: items.map((i) => ({
         product_code: String(i.product_code || ""),
@@ -778,8 +784,40 @@ export default function PromotionsAdminPage() {
         <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 space-y-3">
           <div>
             <h3 className="text-xs font-black text-emerald-900">
-              เรทคอมมิชชั่นตามหน่วยนับและ % Achievement
+              รอบคำนวณ Target และคอมมิชชั่น
             </h3>
+            <p className="mt-1 text-[10px] text-slate-600">
+              รายเดือนรวมยอดและ Target ตั้งแต่วันที่ 1 ถึง 30
+              ก่อนคำนวณคอมมิชชั่น
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setCalculationPeriod("DAILY")}
+              aria-pressed={calculationPeriod === "DAILY"}
+              className={`rounded-md border px-3 py-2 text-xs font-bold ${calculationPeriod === "DAILY" ? "border-emerald-700 bg-emerald-700 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+            >
+              รายวัน
+            </button>
+            <button
+              type="button"
+              onClick={() => setCalculationPeriod("MONTHLY")}
+              aria-pressed={calculationPeriod === "MONTHLY"}
+              className={`rounded-md border px-3 py-2 text-xs font-bold ${calculationPeriod === "MONTHLY" ? "border-emerald-700 bg-emerald-700 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+            >
+              รายเดือน (วันที่ 1–30)
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-600">
+            {calculationPeriod === "MONTHLY"
+              ? "Target ของสินค้าและยอดขายจะนับเป็นยอดรวมของรอบเดือน และจ่ายคอมมิชชั่นตามผลงานรวม"
+              : "Target และยอดขายจะเริ่มนับใหม่ทุกวัน และคำนวณคอมมิชชั่นรายวัน"}
+          </p>
+          <div>
+            <h4 className="text-xs font-black text-emerald-900">
+              เรทคอมมิชชั่นตามหน่วยนับและ % Achievement
+            </h4>
             <p className="mt-1 text-[10px] text-slate-600">
               เมื่อกำหนดจำนวนขั้นต่ำ ระบบใช้จำนวนหน่วยนับเป็นเกณฑ์จ่าย;
               หากไม่กำหนดจะใช้ % Achievement เทียบ Target รวมของสินค้า OUR
