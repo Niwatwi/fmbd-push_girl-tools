@@ -347,6 +347,9 @@ const PHOTO_COLUMNS_CONFIG = [
   { key: "product", label: "รูปสินค้า", max: 4 },
   { key: "shelf", label: "รูปเชลฟ์ชั้นวาง", max: 4 },
   { key: "stockScanner", label: "รูปสแกนสต๊อก", max: 2 },
+  { key: "competitorProduct", label: "รูปสินค้าคู่แข่ง", max: 4 },
+  { key: "competitorShelf", label: "รูปเชลฟ์คู่แข่ง", max: 4 },
+  { key: "competitorScanner", label: "รูปสแกนสต๊อกคู่แข่ง", max: 2 },
 ];
 
 // คำนวณจำนวนคอลัมน์รูปภาพรวมทั้งหมด (1 + 2 + 2 + 4 + 4 + 2 = 15 คอลัมน์)
@@ -1602,8 +1605,32 @@ export default function CustomerReportPortal() {
         : [];
 
     const productPhotoEntries: any[] = [];
+    const competitorEntries = {
+      competitorProduct: [] as any[],
+      competitorShelf: [] as any[],
+      competitorScanner: [] as any[],
+    };
+    const competitorUrls = new Set<string>();
     for (const product of productRows) {
       if (!product || typeof product !== "object") continue;
+      if (String(product.item_scope || "OUR").toUpperCase() === "COMPETITOR") {
+        const compLabel = product.descriptions || product.barcode || "คู่แข่ง";
+        [
+          [product.img_product, "competitorProduct", "สินค้า"],
+          [product.img_shelf, "competitorShelf", "เชลฟ์"],
+          [product.img_stock_scanner, "competitorScanner", "สแกนสต๊อก"],
+        ].forEach(([url, bucket, text]) => {
+          if (url && typeof url === "string" && url.trim()) {
+            competitorUrls.add(url);
+            (competitorEntries as any)[bucket].push({
+              url,
+              type: bucket,
+              label: `คู่แข่ง ${text}: ${compLabel}`,
+            });
+          }
+        });
+        continue;
+      }
       const productLabel = product.descriptions || product.barcode || "สินค้า";
       [
         [product.img_product, "img_product", `รูปสินค้า: ${productLabel}`],
@@ -1620,7 +1647,9 @@ export default function CustomerReportPortal() {
       });
     }
 
-    const allPhotos = [...normalizedPhotos, ...productPhotoEntries];
+    const allPhotos = [...normalizedPhotos, ...productPhotoEntries].filter(
+      (p) => !p?.url || !competitorUrls.has(p.url),
+    );
 
     const staffHolding = allPhotos.filter(
       (p) =>
@@ -1658,6 +1687,7 @@ export default function CustomerReportPortal() {
       product,
       shelf,
       stockScanner,
+      ...competitorEntries,
     };
   };
 
@@ -2307,21 +2337,17 @@ export default function CustomerReportPortal() {
         { header: "FEEDBACK หน้าร้าน", key: "feedback", width: 30 },
         { header: "โปรคู่แข่ง", key: "competitorPromo", width: 30 },
         { header: "หมายเหตุ", key: "remark", width: 25 },
-        {
-          header: "รูปพนักงานถือสินค้า",
-          key: "photo_staff_holding",
-          width: 45,
-        },
-        {
-          header: "รูปถ่ายคู่กับลูกค้า/ตะกร้า",
-          key: "photo_customer_basket",
-          width: 45,
-        },
-        { header: "รูปบรรยากาศหน้าร้าน", key: "photo_atmosphere", width: 45 },
-        { header: "รูปสินค้า", key: "photo_img_product", width: 45 },
-        { header: "รูปเชลฟ์ชั้นวาง", key: "photo_img_shelf", width: 45 },
-        { header: "รูปสแกนสต๊อก", key: "photo_img_stock_scanner", width: 45 },
       );
+
+      PHOTO_COLUMNS_CONFIG.forEach((cat) => {
+        for (let i = 0; i < cat.max; i++) {
+          excelColumns.push({
+            header: `${cat.label}${cat.max > 1 ? ` #${i + 1}` : ""}`,
+            key: `photo_${cat.key}_${i}`,
+            width: 14,
+          });
+        }
+      });
 
       worksheet.columns = excelColumns;
 
@@ -2330,14 +2356,16 @@ export default function CustomerReportPortal() {
         activeReportProducts.length * 4 +
         displayedCompetitorItems.length * 2 +
         3;
-      const photoCategoryMap = [
-        { key: "staff_holding", colIndex: baseColCount },
-        { key: "customer_basket", colIndex: baseColCount + 1 },
-        { key: "atmosphere", colIndex: baseColCount + 2 },
-        { key: "img_product", colIndex: baseColCount + 3 },
-        { key: "img_shelf", colIndex: baseColCount + 4 },
-        { key: "img_stock_scanner", colIndex: baseColCount + 5 },
-      ];
+      const photoCategoryMap: { key: string; colIndex: number }[] = [];
+      let photoColCursor = baseColCount;
+      PHOTO_COLUMNS_CONFIG.forEach((cat) => {
+        for (let i = 0; i < cat.max; i++) {
+          photoCategoryMap.push({
+            key: `${cat.key}:${i}`,
+            colIndex: photoColCursor++,
+          });
+        }
+      });
 
       for (let i = 0; i < dataToExport.length; i++) {
         const item = dataToExport[i];
@@ -2399,9 +2427,15 @@ export default function CustomerReportPortal() {
         const IMG_HEIGHT = 55;
         const EMU_PER_PX = 9525;
 
+        const categorized: any = categorizePhotos(
+          item.activityPhotos || [],
+          item,
+        );
         const photosByCategory = await Promise.all(
           photoCategoryMap.map(async (cat) => {
-            const validUrls = getPhotoUrlsArray(item, cat.key).slice(0, 10);
+            const [catKey, idx] = cat.key.split(":");
+            const photo = categorized[catKey]?.[Number(idx)];
+            const validUrls: string[] = photo?.url ? [photo.url] : [];
             const images = await Promise.all(
               validUrls.map((url) => fetchImageAsBuffer(url)),
             );
