@@ -866,6 +866,7 @@ export default function PromotionsAdminPage() {
                   <input
                     type="number"
                     min="0"
+                    step="0.001"
                     value={tier.payout}
                     onChange={(event) =>
                       updateCommissionTier(index, "payout", event.target.value)
@@ -951,6 +952,7 @@ export default function PromotionsAdminPage() {
               <input
                 type="number"
                 min="0"
+                step="0.001"
                 value={commissionRules.step.payout}
                 onChange={(event) =>
                   setCommissionRules((current) => ({

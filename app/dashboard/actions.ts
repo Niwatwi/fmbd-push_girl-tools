@@ -652,6 +652,37 @@ export interface CommissionResult {
   nextTierDifference: number;
 }
 
+function roundCommissionAmount(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 1000) / 1000;
+}
+
+function prorateCommissionRules(rules: any, dayShare: number) {
+  if (!rules) return rules;
+  const prorate = (value: unknown) =>
+    value === null || value === undefined || value === ""
+      ? value
+      : Number(value) * dayShare;
+
+  return {
+    ...rules,
+    tiers: Array.isArray(rules.tiers)
+      ? rules.tiers.map((tier: any) => ({
+          ...tier,
+          min_credited_qty: prorate(tier.min_credited_qty),
+          payout: prorate(tier.payout),
+        }))
+      : [],
+    step: rules.step
+      ? {
+          ...rules.step,
+          start_qty: prorate(rules.step.start_qty),
+          step_qty: prorate(rules.step.step_qty),
+          payout: prorate(rules.step.payout),
+        }
+      : rules.step,
+  };
+}
+
 export async function calculateBigCCommission(
   totalPacksForDay: number = 0,
   _unusedBlueSets: number = 0,
@@ -752,8 +783,9 @@ function calculatePromotionCommission(
             stepSize,
         )
       : 0;
-  const incentiveAmount =
-    Number(topTier?.payout || 0) + extraSteps * stepPayout;
+  const incentiveAmount = roundCommissionAmount(
+    Number(topTier?.payout || 0) + extraSteps * stepPayout,
+  );
   const nextTierQuantities = tiers
     .map((tier: any) => {
       const hasQuantityThreshold =
@@ -989,6 +1021,9 @@ export async function getAdminSalarySummaryReportAction(params?: {
           baseSalaryRate: log.baseSalaryRate,
           totalDailyWage: 0,
           allSkuSalesQty: 0,
+          workDaysByMonth: new Map<string, number>(),
+          workDaysByStoreMonth: new Map<string, number>(),
+          workDaysByAccountMonth: new Map<string, number>(),
           dailySalesByDate: new Map<string, number>(),
           promotionCommissionByDate: new Map<string, number>(),
           monthlyCampaignDates: new Set<string>(),
@@ -999,6 +1034,38 @@ export async function getAdminSalarySummaryReportAction(params?: {
       const userGroup = userSummaryMap.get(uId)!;
       userGroup.workDaysCount += log.dayValue; // บวกสะสม 0.5 หรือ 1 วันตามชั่วโมงจริง
       userGroup.totalDailyWage += log.dailyWage;
+
+      if (log.checkInAt) {
+        const monthKey = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Bangkok",
+          year: "numeric",
+          month: "2-digit",
+        }).format(new Date(log.checkInAt));
+        const storeCode = String(log.storeCode || "").trim();
+        const accountKey = String(storeAccountLookup.get(storeCode) || "")
+          .trim()
+          .toLowerCase();
+        const dayValue = Number(log.dayValue || 0);
+        userGroup.workDaysByMonth.set(
+          monthKey,
+          (userGroup.workDaysByMonth.get(monthKey) || 0) + dayValue,
+        );
+        if (storeCode) {
+          const storeMonthKey = `${storeCode}:${monthKey}`;
+          userGroup.workDaysByStoreMonth.set(
+            storeMonthKey,
+            (userGroup.workDaysByStoreMonth.get(storeMonthKey) || 0) + dayValue,
+          );
+        }
+        if (accountKey) {
+          const accountMonthKey = `${accountKey}:${monthKey}`;
+          userGroup.workDaysByAccountMonth.set(
+            accountMonthKey,
+            (userGroup.workDaysByAccountMonth.get(accountMonthKey) || 0) +
+              dayValue,
+          );
+        }
+      }
     });
 
     // รวมยอดขายสินค้าแต่ละประเภทโดยรองรับทั้งคอลัมน์ legacy และรายการสินค้าแบบ nested
@@ -1048,11 +1115,13 @@ export async function getAdminSalarySummaryReportAction(params?: {
         storeTarget?.calculation_period ||
         promotion?.calculation_period ||
         "DAILY";
+      const monthlyTargetBaseQty =
+        Number(storeTarget?.target_packs || 0) ||
+        promotionTargetQty ||
+        snapshotTargetQty;
       const targetQty =
         calculationPeriod === "MONTHLY"
-          ? Number(storeTarget?.target_packs || 0) ||
-            promotionTargetQty ||
-            snapshotTargetQty
+          ? monthlyTargetBaseQty
           : snapshotTargetQty || promotionTargetQty;
 
       if (rules && targetQty > 0 && reportProducts.length > 0) {
@@ -1084,16 +1153,52 @@ export async function getAdminSalarySummaryReportAction(params?: {
         );
         if (calculationPeriod === "MONTHLY" && promotion?.id) {
           const monthKey = dateKey.slice(0, 7);
+          const targetScopeType =
+            Number(storeTarget?.target_packs || 0) > 0
+              ? "STORE"
+              : promotion.target_type === "COMPANY_TAG"
+                ? "ACCOUNT"
+                : promotion.target_type === "STORE_CODE"
+                  ? "STORE"
+                  : "ALL";
+          const targetScopeValue =
+            targetScopeType === "STORE"
+              ? String(
+                  Number(storeTarget?.target_packs || 0) > 0
+                    ? rep.store_code
+                    : promotion.target_value,
+                ).trim()
+              : targetScopeType === "ACCOUNT"
+                ? String(promotion.target_value || "")
+                    .trim()
+                    .toLowerCase()
+                : "ALL";
+          const workedDays =
+            targetScopeType === "STORE"
+              ? userGroup.workDaysByStoreMonth.get(
+                  `${targetScopeValue}:${monthKey}`,
+                ) || 0
+              : targetScopeType === "ACCOUNT"
+                ? userGroup.workDaysByAccountMonth.get(
+                    `${targetScopeValue}:${monthKey}`,
+                  ) || 0
+                : userGroup.workDaysByMonth.get(monthKey) || 0;
+          const dayShare = Math.min(workedDays / 30, 1);
+          const proratedTargetQty = monthlyTargetBaseQty * dayShare;
+          if (proratedTargetQty <= 0) return;
           userGroup.monthlyCampaignDates.add(dateKey);
-          const performanceKey = `${promotion.id}:${monthKey}`;
+          const proratedRules = prorateCommissionRules(rules, dayShare);
+          const performanceKey = `${promotion.id}:${monthKey}:${targetScopeType}:${targetScopeValue}`;
           const currentPerformance = userGroup.monthlyPromotionPerformance.get(
             performanceKey,
           ) || {
             promotionId: String(promotion.id),
             monthKey,
+            targetScopeType,
+            targetScopeValue,
             creditedSales: 0,
-            targetQty,
-            rules,
+            targetQty: proratedTargetQty,
+            rules: proratedRules,
           };
           currentPerformance.creditedSales += creditedSales;
           userGroup.monthlyPromotionPerformance.set(
