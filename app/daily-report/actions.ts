@@ -77,6 +77,7 @@ export interface FullActivityReportInput {
   giftNourishBefore?: number;
   giftNourishGiven?: number;
   giftNourishAfter?: number;
+  promotionGiftGiven?: Record<string, number>;
 }
 
 // 📸 อัปโหลดรูปภาพขึ้น Storage Bucket
@@ -269,6 +270,105 @@ export async function getStoreInitialGiftsAction(storeCode: string) {
   }
 }
 
+export async function getPromotionGiftInventoryAction(
+  promotionId: number | string,
+  storeCode: string,
+  userId: number,
+) {
+  await requireUserOrAdminSession(userId);
+  const supabase = getClientInstance();
+  const [receiptsResult, reportsResult] = await Promise.all([
+    supabase
+      .from("promotion_gift_receipts")
+      .select("id, gift_key, received_date, quantity")
+      .eq("promotion_id", String(promotionId))
+      .eq("store_code", storeCode)
+      .order("received_date", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("pg_daily_activity_reports")
+      .select("promotion_gift_given")
+      .eq("promotion_id", String(promotionId))
+      .eq("store_code", storeCode),
+  ]);
+
+  if (receiptsResult.error) throw new Error(receiptsResult.error.message);
+  if (reportsResult.error) throw new Error(reportsResult.error.message);
+
+  const totals: Record<string, { received: number; given: number }> = {};
+  for (const receipt of receiptsResult.data || []) {
+    const entry = (totals[receipt.gift_key] ||= { received: 0, given: 0 });
+    entry.received += Number(receipt.quantity || 0);
+  }
+  for (const report of reportsResult.data || []) {
+    const given = report.promotion_gift_given || {};
+    for (const [giftKey, quantity] of Object.entries(given)) {
+      const entry = (totals[giftKey] ||= { received: 0, given: 0 });
+      entry.given += Number(quantity || 0);
+    }
+  }
+
+  return {
+    success: true,
+    totals: Object.fromEntries(
+      Object.entries(totals).map(([giftKey, value]) => [
+        giftKey,
+        {
+          ...value,
+          remaining: Math.max(0, value.received - value.given),
+        },
+      ]),
+    ),
+    receipts: receiptsResult.data || [],
+  };
+}
+
+export async function receivePromotionGiftStockAction(input: {
+  promotionId: number | string;
+  giftKey: string;
+  storeCode: string;
+  receivedDate: string;
+  quantity: number;
+  userId: number;
+}) {
+  await requireUserOrAdminSession(input.userId);
+  const quantity = Number(input.quantity);
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return {
+      success: false,
+      message: "จำนวนรับเข้าต้องเป็นจำนวนเต็มมากกว่า 0",
+    };
+  }
+
+  const supabase = getClientInstance();
+  const { data: promotion, error: promotionError } = await supabase
+    .from("promotions")
+    .select("track_gift_inventory, gift_items")
+    .eq("id", String(input.promotionId))
+    .maybeSingle();
+  if (promotionError || !promotion?.track_gift_inventory) {
+    return { success: false, message: "ไม่พบแคมเปญที่เปิดติดตามสต๊อกของแถม" };
+  }
+  if (
+    !(promotion.gift_items || []).some(
+      (gift: any) => gift.key === input.giftKey,
+    )
+  ) {
+    return { success: false, message: "ไม่พบรายการของแถมในแคมเปญนี้" };
+  }
+
+  const { error } = await supabase.from("promotion_gift_receipts").insert({
+    promotion_id: input.promotionId,
+    gift_key: input.giftKey,
+    store_code: input.storeCode,
+    received_date: input.receivedDate,
+    quantity,
+    created_by: input.userId,
+  });
+  if (error) return { success: false, message: error.message };
+  return { success: true };
+}
+
 // 📝 4. บันทึกรายงานกิจกรรมประจำวัน (แยกคอลัมน์รูปภาพกิจกรรม)
 export async function submitFullDailyActivityReportAction(
   payload: FullActivityReportInput,
@@ -444,6 +544,7 @@ export async function submitFullDailyActivityReportAction(
       gift_nourish_before: giftNourishBefore,
       gift_nourish_given: giftNourishGiven,
       gift_nourish_after: giftNourishAfter,
+      promotion_gift_given: payload.promotionGiftGiven || {},
     };
 
     const { data: reportData, error: reportError } = await supabase

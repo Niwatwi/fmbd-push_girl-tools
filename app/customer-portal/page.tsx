@@ -641,6 +641,68 @@ export default function CustomerReportPortal() {
   const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [reportProducts, setReportProducts] = useState<any[]>([]);
+  const [giftReceipts, setGiftReceipts] = useState<any[]>([]);
+
+  const campaignGiftInventory = useMemo(() => {
+    const rows = new Map<string, any>();
+    for (const promotion of promotions.filter(
+      (item) => item.track_gift_inventory,
+    )) {
+      const storeCodes = new Set<string>();
+      giftReceipts
+        .filter(
+          (receipt) => String(receipt.promotion_id) === String(promotion.id),
+        )
+        .forEach((receipt) => storeCodes.add(String(receipt.store_code || "")));
+      reportData
+        .filter(
+          (report) => String(report.promotion_id) === String(promotion.id),
+        )
+        .forEach((report) => storeCodes.add(String(report.store_code || "")));
+
+      for (const gift of promotion.gift_items || []) {
+        for (const storeCode of storeCodes) {
+          if (!storeCode) continue;
+          const key = `${promotion.id}:${gift.key}:${storeCode}`;
+          rows.set(key, {
+            key,
+            campaign: promotion.campaign_title || promotion.title || "แคมเปญ",
+            giftName: gift.name,
+            sourceType: gift.source_type,
+            storeCode,
+            received: 0,
+            given: 0,
+            receiptHistory: [],
+          });
+        }
+      }
+    }
+
+    for (const receipt of giftReceipts) {
+      const key = `${receipt.promotion_id}:${receipt.gift_key}:${receipt.store_code}`;
+      const row = rows.get(key);
+      if (row) {
+        row.received += Number(receipt.quantity || 0);
+        row.receiptHistory.push({
+          receivedDate: receipt.received_date,
+          quantity: Number(receipt.quantity || 0),
+        });
+      }
+    }
+    for (const report of reportData) {
+      const quantities = report.promotion_gift_given || {};
+      for (const [giftKey, quantity] of Object.entries(quantities)) {
+        const key = `${report.promotion_id}:${giftKey}:${report.store_code}`;
+        const row = rows.get(key);
+        if (row) row.given += Number(quantity || 0);
+      }
+    }
+
+    return Array.from(rows.values()).map((row) => ({
+      ...row,
+      remaining: Math.max(0, row.received - row.given),
+    }));
+  }, [promotions, reportData, giftReceipts]);
 
   const fetchProductsData = async () => {
     const { data, error } = await supabase
@@ -1094,6 +1156,10 @@ export default function CustomerReportPortal() {
       if (promoRes.success) {
         setPromotions(promoRes.data || []);
       }
+      const { data: receiptData, error: receiptError } = await supabase
+        .from("promotion_gift_receipts")
+        .select("promotion_id, gift_key, store_code, received_date, quantity");
+      if (!receiptError && receiptData) setGiftReceipts(receiptData);
     } catch (error: any) {
       console.error("Customer portal data load error:", error);
       Swal.fire(
@@ -2715,6 +2781,105 @@ export default function CustomerReportPortal() {
               </div>
             </div>
           </div>
+
+          {campaignGiftInventory.length > 0 && (
+            <section className="portal-panel p-3 sm:p-4 rounded-3xl text-left">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                <h2 className="text-xs font-black text-slate-800">
+                  สต๊อกของแถมแคมเปญ
+                </h2>
+                <span className="text-[10px] font-bold text-slate-500">
+                  รับเข้ารวม - แจกสะสม = คงเหลือ
+                </span>
+              </div>
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full min-w-[600px] text-[10px]">
+                  <thead className="text-slate-500">
+                    <tr className="border-b border-slate-100 text-left">
+                      <th className="px-2 py-2 font-bold">แคมเปญ / ของแถม</th>
+                      <th className="px-2 py-2 font-bold">ประเภท</th>
+                      <th className="px-2 py-2 font-bold">สาขา</th>
+                      <th className="px-2 py-2 font-bold">
+                        วันที่รับเข้า / จำนวน
+                      </th>
+                      <th className="px-2 py-2 text-right font-bold">
+                        รับเข้า
+                      </th>
+                      <th className="px-2 py-2 text-right font-bold">
+                        แจกแล้ว
+                      </th>
+                      <th className="px-2 py-2 text-right font-bold">
+                        คงเหลือ
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {campaignGiftInventory
+                      .filter(
+                        (row) =>
+                          selectedPromotion === "ALL" ||
+                          String(row.key).startsWith(`${selectedPromotion}:`),
+                      )
+                      .filter(
+                        (row) =>
+                          selectedStore === "ALL" ||
+                          row.storeCode === selectedStore,
+                      )
+                      .map((row) => (
+                        <tr key={row.key} className="border-b border-slate-50">
+                          <td className="px-2 py-2">
+                            <span className="block font-bold text-slate-800">
+                              {row.giftName}
+                            </span>
+                            <span className="block text-[9px] text-slate-500">
+                              {row.campaign}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-slate-600">
+                            {row.sourceType === "STORE_PICKUP"
+                              ? "หยิบหน้าร้าน"
+                              : "ส่งจากบริษัท"}
+                          </td>
+                          <td className="px-2 py-2 font-mono text-slate-600">
+                            {row.storeCode}
+                          </td>
+                          <td className="px-2 py-2 text-slate-600">
+                            {row.receiptHistory.length
+                              ? row.receiptHistory
+                                  .sort((left: any, right: any) =>
+                                    right.receivedDate.localeCompare(
+                                      left.receivedDate,
+                                    ),
+                                  )
+                                  .map((receipt: any, index: number) => (
+                                    <span
+                                      key={`${receipt.receivedDate}-${index}`}
+                                      className="block whitespace-nowrap"
+                                    >
+                                      {receipt.receivedDate}: {receipt.quantity}{" "}
+                                      ชิ้น
+                                    </span>
+                                  ))
+                              : "ยังไม่มีรับเข้า"}
+                          </td>
+                          <td className="px-2 py-2 text-right font-mono">
+                            {row.received}
+                          </td>
+                          <td className="px-2 py-2 text-right font-mono">
+                            {row.given}
+                          </td>
+                          <td
+                            className={`px-2 py-2 text-right font-mono font-black ${row.remaining < 10 ? "animate-pulse text-red-600" : "text-emerald-700"}`}
+                          >
+                            {row.remaining} ชิ้น
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
           <div className="portal-panel p-3 sm:p-4 rounded-3xl no-print">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">

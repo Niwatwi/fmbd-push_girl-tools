@@ -15,6 +15,7 @@ import {
   getProductByBarcodeForPromotionAction,
   PromotionCommissionRules,
   PromotionConfig,
+  PromotionGiftItem,
   PromotionItem,
   Product,
 } from "./actions";
@@ -65,6 +66,7 @@ export default function PromotionsAdminPage() {
   const [specialTierText, setSpecialTierText] = useState("");
   const [staffGroup, setStaffGroup] = useState<string>("ALL");
   const [trackGiftInventory, setTrackGiftInventory] = useState(false);
+  const [giftItems, setGiftItems] = useState<PromotionGiftItem[]>([]);
   const [commissionRules, setCommissionRules] =
     useState<PromotionCommissionRules>(DEFAULT_COMMISSION_RULES);
   const [isActive, setIsActive] = useState(true);
@@ -236,6 +238,7 @@ export default function PromotionsAdminPage() {
     setSpecialTierText(promo.special_tier_text || "");
     setStaffGroup(promo.staff_group || "ALL");
     setTrackGiftInventory(Boolean(promo.track_gift_inventory));
+    setGiftItems(promo.gift_items || []);
     setCommissionRules(promo.commission_rules || DEFAULT_COMMISSION_RULES);
     setIsActive(promo.is_active);
 
@@ -271,6 +274,7 @@ export default function PromotionsAdminPage() {
     setSpecialTierText("");
     setStaffGroup("ALL");
     setTrackGiftInventory(false);
+    setGiftItems([]);
     setCommissionRules(DEFAULT_COMMISSION_RULES);
     setIsActive(true);
     setItems([]);
@@ -424,6 +428,7 @@ export default function PromotionsAdminPage() {
       is_active: isActive,
       staff_group: staffGroup,
       track_gift_inventory: trackGiftInventory,
+      gift_items: giftItems.filter((gift) => gift.name.trim()),
       commission_rules: commissionRules,
       items: items.map((i) => ({
         product_code: String(i.product_code || ""),
@@ -688,6 +693,87 @@ export default function PromotionsAdminPage() {
             </span>
           </span>
         </label>
+
+        {trackGiftInventory && (
+          <section className="space-y-3 rounded-lg border border-amber-200 bg-white p-3">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-black text-amber-950">
+                รายการของแถม
+              </h3>
+              <button
+                type="button"
+                onClick={() =>
+                  setGiftItems((current) => [
+                    ...current,
+                    {
+                      key: `gift-${Date.now()}-${current.length}`,
+                      name: "",
+                      source_type: "STORE_PICKUP",
+                    },
+                  ])
+                }
+                className="rounded-md bg-amber-700 px-2.5 py-1.5 text-[10px] font-bold text-white"
+              >
+                เพิ่มรายการ
+              </button>
+            </div>
+            {giftItems.map((gift, index) => (
+              <div
+                key={gift.key}
+                className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]"
+              >
+                <input
+                  value={gift.name}
+                  onChange={(event) =>
+                    setGiftItems((current) =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index
+                          ? { ...item, name: event.target.value }
+                          : item,
+                      ),
+                    )
+                  }
+                  placeholder="ชื่อรายการของแถม"
+                  className="w-full rounded border border-slate-300 p-2 text-xs"
+                />
+                <select
+                  value={gift.source_type}
+                  onChange={(event) =>
+                    setGiftItems((current) =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index
+                          ? {
+                              ...item,
+                              source_type: event.target
+                                .value as PromotionGiftItem["source_type"],
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                  className="w-full rounded border border-slate-300 bg-white p-2 text-xs"
+                >
+                  <option value="STORE_PICKUP">ของแถมหยิบหน้าร้าน</option>
+                  <option value="COMPANY_SHIPMENT">
+                    ของแถมส่งเข้าจากบริษัท
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setGiftItems((current) =>
+                      current.filter((_, itemIndex) => itemIndex !== index),
+                    )
+                  }
+                  className="rounded-md border border-rose-200 px-2 text-xs font-bold text-rose-700"
+                  aria-label={`ลบรายการของแถม ${gift.name || index + 1}`}
+                >
+                  ลบ
+                </button>
+              </div>
+            ))}
+          </section>
+        )}
 
         <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 space-y-3">
           <div>

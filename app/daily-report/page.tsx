@@ -28,6 +28,8 @@ import {
   submitFullDailyActivityReportAction,
   getProductByBarcode,
   getStoreInitialGiftsAction,
+  getPromotionGiftInventoryAction,
+  receivePromotionGiftStockAction,
 } from "./actions";
 import {
   getPromotionByStoreAction,
@@ -161,6 +163,20 @@ export default function DailyReportPage() {
   const [giftOrangeBefore, setGiftOrangeBefore] = useState("0");
   const [giftNourishBefore, setGiftNourishBefore] = useState("0");
   const [giftNourishGiven, setGiftNourishGiven] = useState("");
+  const [giftInventory, setGiftInventory] = useState<
+    Record<string, { received: number; given: number; remaining: number }>
+  >({});
+  const [giftReceiptDate, setGiftReceiptDate] = useState(() =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(
+      new Date(),
+    ),
+  );
+  const [giftReceiptQuantities, setGiftReceiptQuantities] = useState<
+    Record<string, string>
+  >({});
+  const [giftGivenQuantities, setGiftGivenQuantities] = useState<
+    Record<string, string>
+  >({});
 
   // 2. ฟอร์มราคาคู่แข่ง (Dynamic State)
   const [competitorPrices, setCompetitorPrices] = useState<
@@ -320,6 +336,54 @@ export default function DailyReportPage() {
 
     fetchPromotion();
   }, [attendanceLog, storeCode]);
+
+  useEffect(() => {
+    const loadGiftInventory = async () => {
+      if (!activePromotion?.track_gift_inventory || !storeCode || !user?.id) {
+        setGiftInventory({});
+        return;
+      }
+      try {
+        const result = await getPromotionGiftInventoryAction(
+          activePromotion.id,
+          storeCode,
+          user.id,
+        );
+        if (result.success) setGiftInventory(result.totals);
+      } catch (error) {
+        console.error("Unable to load promotion gift inventory:", error);
+      }
+    };
+    loadGiftInventory();
+  }, [activePromotion, storeCode, user?.id]);
+
+  const handleReceiveGiftStock = async (giftKey: string) => {
+    if (!activePromotion || !attendanceLog || !user?.id) return;
+    const quantity = Number(giftReceiptQuantities[giftKey] || 0);
+    const result = await receivePromotionGiftStockAction({
+      promotionId: activePromotion.id,
+      giftKey,
+      storeCode: attendanceLog.store_code,
+      receivedDate: giftReceiptDate,
+      quantity,
+      userId: user.id,
+    });
+    if (!result.success) {
+      Swal.fire(
+        "บันทึกรับของแถมไม่สำเร็จ",
+        result.message || "กรุณาลองอีกครั้ง",
+        "error",
+      );
+      return;
+    }
+    setGiftReceiptQuantities((current) => ({ ...current, [giftKey]: "" }));
+    const inventory = await getPromotionGiftInventoryAction(
+      activePromotion.id,
+      attendanceLog.store_code,
+      user.id,
+    );
+    if (inventory.success) setGiftInventory(inventory.totals);
+  };
 
   const startBarcodeScanner = async () => {
     if (!("BarcodeDetector" in window)) {
@@ -732,6 +796,15 @@ export default function DailyReportPage() {
             promotionCommissionRules: isPromotionActiveToday
               ? activePromotion?.commission_rules || null
               : null,
+            promotionGiftGiven:
+              activePromotion?.track_gift_inventory && isPromotionActiveToday
+                ? Object.fromEntries(
+                    (activePromotion.gift_items || []).map((gift) => [
+                      gift.key,
+                      Math.max(0, Number(giftGivenQuantities[gift.key] || 0)),
+                    ]),
+                  )
+                : {},
             trafficCount: Number(traffic) || 0,
             approachCount: Number(approach) || 0,
             closedSalesCount: Number(closedSales) || 0,
@@ -1336,32 +1409,130 @@ export default function DailyReportPage() {
               <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5 border-b border-amber-200/60 pb-2">
                 <Package size={14} /> บันทึกสต๊อกของแถมแคมเปญ
               </h4>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-white p-2.5 rounded-lg border border-amber-200 text-xs">
-                  <p className="font-bold text-slate-700 text-[10px]">
-                    กระเป๋าส้ม (แจกอัตโนมัติ)
-                  </p>
-                  <p className="text-[10px] text-slate-500 font-medium mt-1">
-                    ยกมา: {giftOrangeBefore} | แจกไป: {autoOrangeGiftGiven} |
-                    คงเหลือ: {giftOrangeAfter}
-                  </p>
+              {activePromotion.gift_items?.length ? (
+                <>
+                  <label className="block text-[10px] font-bold text-slate-600">
+                    วันที่รับของแถม
+                    <input
+                      type="date"
+                      value={giftReceiptDate}
+                      onChange={(event) =>
+                        setGiftReceiptDate(event.target.value)
+                      }
+                      className="mt-1 w-full rounded border border-amber-200 bg-white p-2 text-xs"
+                    />
+                  </label>
+                  <div className="space-y-2">
+                    {activePromotion.gift_items.map((gift) => {
+                      const stock = giftInventory[gift.key] || {
+                        received: 0,
+                        given: 0,
+                        remaining: 0,
+                      };
+                      const isLowStock = stock.remaining < 10;
+                      return (
+                        <div
+                          key={gift.key}
+                          className="space-y-2 rounded-lg border border-amber-200 bg-white p-2.5"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="break-words text-[11px] font-black text-slate-800">
+                                {gift.name}
+                              </p>
+                              <p className="mt-0.5 text-[9px] font-medium text-slate-500">
+                                {gift.source_type === "STORE_PICKUP"
+                                  ? "ของแถมหยิบหน้าร้าน"
+                                  : "ของแถมส่งเข้าจากบริษัท"}
+                              </p>
+                            </div>
+                            <p
+                              className={`shrink-0 text-right text-[10px] font-bold ${isLowStock ? "animate-pulse text-red-600" : "text-slate-600"}`}
+                            >
+                              คงเหลือ {stock.remaining} ชิ้น
+                              {isLowStock && (
+                                <span className="block">สต๊อกใกล้หมด</span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-[9px] text-slate-500">
+                            <span>รับเข้ารวม {stock.received} ชิ้น</span>
+                            <span>แจกสะสม {stock.given} ชิ้น</span>
+                          </div>
+                          <label className="block text-[10px] font-bold text-slate-600">
+                            จำนวนที่แจกวันนี้
+                            <input
+                              type="number"
+                              min="0"
+                              value={giftGivenQuantities[gift.key] || ""}
+                              onChange={(event) =>
+                                setGiftGivenQuantities((current) => ({
+                                  ...current,
+                                  [gift.key]: event.target.value,
+                                }))
+                              }
+                              className="mt-1 w-full rounded border border-slate-300 bg-amber-50/50 p-2 text-xs"
+                              placeholder="0"
+                            />
+                          </label>
+                          <div className="grid grid-cols-[1fr_auto] items-end gap-2 border-t border-amber-100 pt-2">
+                            <label className="block text-[10px] font-bold text-slate-600">
+                              จำนวนรับเข้าเพิ่ม
+                              <input
+                                type="number"
+                                min="1"
+                                value={giftReceiptQuantities[gift.key] || ""}
+                                onChange={(event) =>
+                                  setGiftReceiptQuantities((current) => ({
+                                    ...current,
+                                    [gift.key]: event.target.value,
+                                  }))
+                                }
+                                className="mt-1 w-full rounded border border-slate-300 bg-white p-2 text-xs"
+                                placeholder="จำนวนชิ้น"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleReceiveGiftStock(gift.key)}
+                              className="rounded-md bg-amber-700 px-3 py-2 text-[10px] font-bold text-white"
+                            >
+                              บันทึกรับเข้า
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-white p-2.5 rounded-lg border border-amber-200 text-xs">
+                    <p className="font-bold text-slate-700 text-[10px]">
+                      กระเป๋าส้ม (แจกอัตโนมัติ)
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-medium mt-1">
+                      ยกมา: {giftOrangeBefore} | แจกไป: {autoOrangeGiftGiven} |
+                      คงเหลือ: {giftOrangeAfter}
+                    </p>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-amber-200 text-xs">
+                    <p className="font-bold text-slate-700 text-[10px]">
+                      Nourish Premium (ระบุจำนวนแจก)
+                    </p>
+                    <input
+                      type="number"
+                      placeholder="จำนวนแจก..."
+                      value={giftNourishGiven}
+                      onChange={(e) => setGiftNourishGiven(e.target.value)}
+                      className="w-full mt-1 bg-amber-50/50 border border-slate-300 rounded p-1 text-xs font-bold"
+                    />
+                    <p className="text-[9px] text-slate-500 font-medium mt-1">
+                      คงเหลือ: {giftNourishAfter}
+                    </p>
+                  </div>
                 </div>
-                <div className="bg-white p-2.5 rounded-lg border border-amber-200 text-xs">
-                  <p className="font-bold text-slate-700 text-[10px]">
-                    Nourish Premium (ระบุจำนวนแจก)
-                  </p>
-                  <input
-                    type="number"
-                    placeholder="จำนวนแจก..."
-                    value={giftNourishGiven}
-                    onChange={(e) => setGiftNourishGiven(e.target.value)}
-                    className="w-full mt-1 bg-amber-50/50 border border-slate-300 rounded p-1 text-xs font-bold"
-                  />
-                  <p className="text-[9px] text-slate-500 font-medium mt-1">
-                    คงเหลือ: {giftNourishAfter}
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
           )}
 

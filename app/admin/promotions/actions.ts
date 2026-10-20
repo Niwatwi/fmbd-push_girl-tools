@@ -71,8 +71,15 @@ export interface PromotionConfig {
   is_active: boolean;
   staff_group?: string;
   track_gift_inventory?: boolean;
+  gift_items?: PromotionGiftItem[];
   commission_rules?: PromotionCommissionRules;
   items?: PromotionItem[];
+}
+
+export interface PromotionGiftItem {
+  key: string;
+  name: string;
+  source_type: "STORE_PICKUP" | "COMPANY_SHIPMENT";
 }
 
 export interface SavePromotionPayload {
@@ -86,6 +93,7 @@ export interface SavePromotionPayload {
   is_active: boolean;
   staff_group: string;
   track_gift_inventory: boolean;
+  gift_items: PromotionGiftItem[];
   commission_rules: PromotionCommissionRules;
   items: Array<{
     product_code: string;
