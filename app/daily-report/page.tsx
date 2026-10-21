@@ -1318,85 +1318,154 @@ export default function DailyReportPage() {
                     <label className="text-[8px] font-bold text-slate-500 block mb-1 truncate">
                       1. รูปสินค้า
                     </label>
-                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-1.5 text-center flex flex-col items-center justify-center cursor-pointer h-14">
+                    <div className="border border-dashed border-slate-300 bg-white rounded-lg p-1.5 text-center flex flex-col items-center justify-center h-16">
                       {product.img_product_base64 ? (
                         <img
                           src={product.img_product_base64}
                           alt="preview"
-                          className="h-8 w-full object-cover rounded-md"
+                          className="h-7 w-full object-cover rounded-md"
                         />
                       ) : (
-                        <Camera size={14} className="text-slate-400" />
+                        <ImageIcon size={14} className="text-slate-400" />
                       )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) =>
-                          handleProductPhotoChange(
-                            product.barcode,
-                            "img_product_base64",
-                            e.target.files?.[0] || null,
-                          )
-                        }
-                      />
-                    </label>
+                      <div className="mt-1 flex w-full items-center justify-center gap-2">
+                        <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-bold text-slate-600">
+                          <Camera size={11} /> กล้อง
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="sr-only"
+                            onChange={(e) => {
+                              void handleProductPhotoChange(
+                                product.barcode,
+                                "img_product_base64",
+                                e.target.files?.[0] || null,
+                              );
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-bold text-slate-600">
+                          <ImageIcon size={11} /> แกลเลอรี
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={(e) => {
+                              void handleProductPhotoChange(
+                                product.barcode,
+                                "img_product_base64",
+                                e.target.files?.[0] || null,
+                              );
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[8px] font-bold text-slate-500 block mb-1 truncate">
                       2. รูปเชลฟ์
                     </label>
-                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-1.5 text-center flex flex-col items-center justify-center cursor-pointer h-14">
+                    <div className="border border-dashed border-slate-300 bg-white rounded-lg p-1.5 text-center flex flex-col items-center justify-center h-16">
                       {product.img_shelf_base64 ? (
                         <img
                           src={product.img_shelf_base64}
                           alt="preview"
-                          className="h-8 w-full object-cover rounded-md"
+                          className="h-7 w-full object-cover rounded-md"
                         />
                       ) : (
-                        <Camera size={14} className="text-slate-400" />
+                        <ImageIcon size={14} className="text-slate-400" />
                       )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) =>
-                          handleProductPhotoChange(
-                            product.barcode,
-                            "img_shelf_base64",
-                            e.target.files?.[0] || null,
-                          )
-                        }
-                      />
-                    </label>
+                      <div className="mt-1 flex w-full items-center justify-center gap-2">
+                        <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-bold text-slate-600">
+                          <Camera size={11} /> กล้อง
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="sr-only"
+                            onChange={(e) => {
+                              void handleProductPhotoChange(
+                                product.barcode,
+                                "img_shelf_base64",
+                                e.target.files?.[0] || null,
+                              );
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-bold text-slate-600">
+                          <ImageIcon size={11} /> แกลเลอรี
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={(e) => {
+                              void handleProductPhotoChange(
+                                product.barcode,
+                                "img_shelf_base64",
+                                e.target.files?.[0] || null,
+                              );
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[8px] font-bold text-slate-500 block mb-1 truncate">
                       3. สแกนสต๊อก
                     </label>
-                    <label className="border border-dashed border-slate-300 bg-white rounded-lg p-1.5 text-center flex flex-col items-center justify-center cursor-pointer h-14">
+                    <div className="border border-dashed border-slate-300 bg-white rounded-lg p-1.5 text-center flex flex-col items-center justify-center h-16">
                       {product.img_stock_scanner_base64 ? (
                         <img
                           src={product.img_stock_scanner_base64}
                           alt="preview"
-                          className="h-8 w-full object-cover rounded-md"
+                          className="h-7 w-full object-cover rounded-md"
                         />
                       ) : (
-                        <Camera size={14} className="text-slate-400" />
+                        <ImageIcon size={14} className="text-slate-400" />
                       )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) =>
-                          handleProductPhotoChange(
-                            product.barcode,
-                            "img_stock_scanner_base64",
-                            e.target.files?.[0] || null,
-                          )
-                        }
-                      />
-                    </label>
+                      <div className="mt-1 flex w-full items-center justify-center gap-2">
+                        <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-bold text-slate-600">
+                          <Camera size={11} /> กล้อง
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="sr-only"
+                            onChange={(e) => {
+                              void handleProductPhotoChange(
+                                product.barcode,
+                                "img_stock_scanner_base64",
+                                e.target.files?.[0] || null,
+                              );
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-0.5 text-[8px] font-bold text-slate-600">
+                          <ImageIcon size={11} /> แกลเลอรี
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={(e) => {
+                              void handleProductPhotoChange(
+                                product.barcode,
+                                "img_stock_scanner_base64",
+                                e.target.files?.[0] || null,
+                              );
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
