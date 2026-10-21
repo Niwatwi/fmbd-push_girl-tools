@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import React, { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Users,
   BarChart3,
@@ -25,6 +26,7 @@ import {
   Image as ImageIcon,
   Upload,
   Tag,
+  LogOut,
 } from "lucide-react";
 import {
   BarChart,
@@ -50,6 +52,7 @@ import {
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import Swal from "sweetalert2";
+import { handleLogout } from "../login/actions";
 import ReportChartBuilder, {
   type ReportChartDimension,
   type ReportChartMetric,
@@ -639,6 +642,7 @@ const CustomFunnelTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function CustomerReportPortal() {
+  const router = useRouter();
   const [reportData, setReportData] = useState<any[]>([]);
   const [attendanceWages, setAttendanceWages] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
@@ -1196,7 +1200,22 @@ export default function CustomerReportPortal() {
     loadPortalData();
   }, []);
 
+  const handlePortalLogout = async () => {
+    const result = await handleLogout();
+    if (!result.success) {
+      Swal.fire("ออกจากระบบไม่สำเร็จ", result.message, "error");
+      return;
+    }
+    router.replace("/login?next=%2Fcustomer-portal");
+    router.refresh();
+  };
+
   useEffect(() => {
+    if (!isAdmin) {
+      setSalarySummaryData([]);
+      return;
+    }
+
     const selectedPromo = promotions.find(
       (promotion) => String(promotion.id) === String(selectedPromotion),
     );
@@ -1228,7 +1247,7 @@ export default function CustomerReportPortal() {
     return () => {
       active = false;
     };
-  }, [startDate, endDate, selectedPromotion, promotions]);
+  }, [isAdmin, startDate, endDate, selectedPromotion, promotions]);
 
   // 🔍 กรองข้อมูลตาม Account, สาขา, พนักงาน, รอบโปรโมชั่น และวันที่
   useEffect(() => {
@@ -2752,6 +2771,14 @@ export default function CustomerReportPortal() {
                 >
                   <RefreshCw size={14} className="text-slate-600" />
                 </button>
+                <button
+                  onClick={handlePortalLogout}
+                  className="portal-button-soft flex items-center gap-1 px-2.5 py-1.5 text-slate-700 rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer whitespace-nowrap"
+                  title="ออกจากระบบ"
+                >
+                  <LogOut size={14} />
+                  <span className="hidden sm:inline">ออกจากระบบ</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2964,27 +2991,29 @@ export default function CustomerReportPortal() {
 
           <div className="portal-panel p-3 sm:p-4 rounded-3xl no-print">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-              {summaryStats.map((stat) => {
-                const Icon = stat.icon;
-                return (
-                  <div
-                    key={stat.label}
-                    className={`rounded-2xl border border-slate-200 ${stat.tone} p-3 flex items-center gap-3`}
-                  >
-                    <div className="p-2 rounded-xl bg-white/80 shadow-xs">
-                      <Icon size={16} />
+              {summaryStats
+                .filter((stat) => isAdmin || stat.label !== "คาดการณ์กำไรสุทธิ")
+                .map((stat) => {
+                  const Icon = stat.icon;
+                  return (
+                    <div
+                      key={stat.label}
+                      className={`rounded-2xl border border-slate-200 ${stat.tone} p-3 flex items-center gap-3`}
+                    >
+                      <div className="p-2 rounded-xl bg-white/80 shadow-xs">
+                        <Icon size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-70">
+                          {stat.label}
+                        </p>
+                        <p className="mt-1 text-sm font-black leading-tight break-words">
+                          {stat.value}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-70">
-                        {stat.label}
-                      </p>
-                      <p className="mt-1 text-sm font-black leading-tight break-words">
-                        {stat.value}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </div>
 
@@ -3009,88 +3038,92 @@ export default function CustomerReportPortal() {
               </div>
             </div>
 
-            <div className="portal-card p-4 rounded-2xl flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                  รายจ่ายพนักงาน PG (ทำจ่ายทุก 3 วัน: ศุกร์-อาทิตย์)
-                </span>
-                <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
-                  <Users size={18} />
+            {isAdmin && (
+              <>
+                <div className="portal-card p-4 rounded-2xl flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                      รายจ่ายพนักงาน PG (ทำจ่ายทุก 3 วัน: ศุกร์-อาทิตย์)
+                    </span>
+                    <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                      <Users size={18} />
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-xl font-black text-purple-900 block tracking-tight">
+                      ฿{totalStaffExpense.toLocaleString()}
+                    </span>
+                    <div className="mt-2 pt-1.5 border-t border-slate-100 flex justify-between text-[10px] font-bold text-slate-600">
+                      <span>ค่าแรง: ฿{totalBaseWage.toLocaleString()}</span>
+                      <span className="text-purple-700">
+                        คอมมิชชั่น: ฿{totalCommission.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <span className="text-xl font-black text-purple-900 block tracking-tight">
-                  ฿{totalStaffExpense.toLocaleString()}
-                </span>
-                <div className="mt-2 pt-1.5 border-t border-slate-100 flex justify-between text-[10px] font-bold text-slate-600">
-                  <span>ค่าแรง: ฿{totalBaseWage.toLocaleString()}</span>
-                  <span className="text-purple-700">
-                    คอมมิชชั่น: ฿{totalCommission.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
 
-            <div
-              className={`portal-card p-4 rounded-2xl flex flex-col justify-between ${
-                netProfit >= 0
-                  ? "border-emerald-200 bg-emerald-50/50"
-                  : "border-rose-200 bg-rose-50/50"
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold text-slate-500 block uppercase">
-                  กำไร / ขาดทุน สุทธิ
-                </span>
                 <div
-                  className={`p-2 rounded-xl ${
+                  className={`portal-card p-4 rounded-2xl flex flex-col justify-between ${
                     netProfit >= 0
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-rose-100 text-rose-700"
+                      ? "border-emerald-200 bg-emerald-50/50"
+                      : "border-rose-200 bg-rose-50/50"
                   }`}
                 >
-                  <TrendingUp size={18} />
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold text-slate-500 block uppercase">
+                      กำไร / ขาดทุน สุทธิ
+                    </span>
+                    <div
+                      className={`p-2 rounded-xl ${
+                        netProfit >= 0
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-rose-100 text-rose-700"
+                      }`}
+                    >
+                      <TrendingUp size={18} />
+                    </div>
+                  </div>
+                  <div>
+                    <span
+                      className={`text-xl font-black block tracking-tight ${
+                        netProfit >= 0 ? "text-emerald-700" : "text-rose-700"
+                      }`}
+                    >
+                      {netProfit >= 0 ? "+" : ""}฿{netProfit.toLocaleString()}
+                    </span>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1">
+                      คำนวณจาก: ยอดขายรวม - (ค่าแรง + คอมมิชชั่น)
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <span
-                  className={`text-xl font-black block tracking-tight ${
-                    netProfit >= 0 ? "text-emerald-700" : "text-rose-700"
-                  }`}
-                >
-                  {netProfit >= 0 ? "+" : ""}฿{netProfit.toLocaleString()}
-                </span>
-                <p className="text-[10px] font-bold text-slate-500 mt-1">
-                  คำนวณจาก: ยอดขายรวม - (ค่าแรง + คอมมิชชั่น)
-                </p>
-              </div>
-            </div>
 
-            <div className="portal-card p-4 rounded-2xl flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                  อัตราส่วนกำไร (% Margin)
-                </span>
-                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                  <Percent size={18} />
+                <div className="portal-card p-4 rounded-2xl flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                      อัตราส่วนกำไร (% Margin)
+                    </span>
+                    <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                      <Percent size={18} />
+                    </div>
+                  </div>
+                  <div>
+                    <span
+                      className={`text-xl font-black block tracking-tight ${
+                        profitMarginPercent >= 0
+                          ? "text-emerald-600"
+                          : "text-rose-600"
+                      }`}
+                    >
+                      {profitMarginPercent.toFixed(1)}%
+                    </span>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1">
+                      เกณฑ์ คอมมิชชั่น: 30ชิ้น=100฿ | 40ชิ้น=200฿ | เกิน
+                      40ชิ้น+100฿/10ชิ้น
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <span
-                  className={`text-xl font-black block tracking-tight ${
-                    profitMarginPercent >= 0
-                      ? "text-emerald-600"
-                      : "text-rose-600"
-                  }`}
-                >
-                  {profitMarginPercent.toFixed(1)}%
-                </span>
-                <p className="text-[10px] font-bold text-slate-500 mt-1">
-                  เกณฑ์ คอมมิชชั่น: 30ชิ้น=100฿ | 40ชิ้น=200฿ | เกิน
-                  40ชิ้น+100฿/10ชิ้น
-                </p>
-              </div>
-            </div>
+              </>
+            )}
           </div>
 
           {/* 📈 OPERATIONAL KPI CARDS */}

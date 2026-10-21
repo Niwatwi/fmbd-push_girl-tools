@@ -29,6 +29,20 @@ async function getAdminClientInstance() {
   return await createClient();
 }
 
+async function getCustomerPortalClientInstance() {
+  const session = await getUserSession();
+  if (!session) throw new Error("กรุณาเข้าสู่ระบบก่อนดูรายงาน");
+
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (serviceKey) {
+    return createSupabaseClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }
+
+  return await createClient();
+}
+
 export async function getCustomerPortalAdminAccess() {
   const session = await getUserSession();
   return session?.role === "admin";
@@ -1849,7 +1863,7 @@ export async function getProducts() {
 // ดึงรายงานเต็มแบบ Customer Portal แบบปลอดภัย โดยรองรับตารางปัจจุบันและ legacy
 export async function getCustomerFullActivityReport() {
   try {
-    const supabase = await getAdminClientInstance();
+    const supabase = await getCustomerPortalClientInstance();
     const tableCandidates = ["pg_daily_activity_reports", "pg_daily_reports"];
 
     let rows: any[] = [];

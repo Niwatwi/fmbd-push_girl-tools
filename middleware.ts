@@ -50,7 +50,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    if (session.role !== "admin") {
+    if (pathname.startsWith("/admin") && session.role !== "admin") {
       return NextResponse.redirect(new URL("/", request.url));
     }
   }
