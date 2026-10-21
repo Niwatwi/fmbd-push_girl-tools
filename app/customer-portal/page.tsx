@@ -42,6 +42,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import {
+  getCustomerPortalAdminAccess,
   getCustomerFullActivityReport,
   adminSaveReportWithImagesAction,
   getAdminSalarySummaryReportAction,
@@ -1054,6 +1055,7 @@ export default function CustomerReportPortal() {
 
   // Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [savingAdmin, setSavingAdmin] = useState(false);
 
   const [photoFiles, setPhotoFiles] = useState<{
@@ -1101,6 +1103,21 @@ export default function CustomerReportPortal() {
     competitorPromo: "",
     remark: "",
   });
+
+  useEffect(() => {
+    let isCurrent = true;
+    getCustomerPortalAdminAccess()
+      .then((hasAdminAccess) => {
+        if (isCurrent) setIsAdmin(hasAdminAccess);
+      })
+      .catch(() => {
+        if (isCurrent) setIsAdmin(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   useEffect(() => {
     const updateClock = () => {
@@ -1916,7 +1933,31 @@ export default function CustomerReportPortal() {
     }
   };
 
+  const handleCompetitorProductPhotoUpload = async (
+    barcode: string,
+    field: "img_product" | "img_shelf" | "img_stock_scanner",
+    file: File | null,
+  ) => {
+    if (!file) return;
+
+    try {
+      const image = await compressImage(file);
+      setEditForm((current: any) => ({
+        ...current,
+        products: (current.products || []).map((product: any) =>
+          String(product.barcode || "").trim() === barcode
+            ? { ...product, [field]: image }
+            : product,
+        ),
+      }));
+    } catch {
+      Swal.fire("ข้อผิดพลาด", "ไม่สามารถอ่านหรือย่อไฟล์รูปภาพได้", "error");
+    }
+  };
+
   const handleEditRow = (row: any) => {
+    if (!isAdmin) return;
+
     const photos = categorizePhotos(row.activityPhotos);
     setPhotoFiles({
       staffHolding: photos.staffHolding.map((p: any) => p.url),
@@ -1972,6 +2013,8 @@ export default function CustomerReportPortal() {
   };
 
   const handleCreateBackdate = () => {
+    if (!isAdmin) return;
+
     setPhotoFiles({
       staffHolding: [],
       customerBasket: [],
@@ -2015,6 +2058,8 @@ export default function CustomerReportPortal() {
 
   const handleSaveByAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) return;
+
     if (!editForm.userId || !editForm.storeCode) {
       Swal.fire("ข้อมูลไม่ครบถ้วน", "กรุณาเลือกพนักงานและสาขา", "warning");
       return;
@@ -2720,13 +2765,15 @@ export default function CustomerReportPortal() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
-              <button
-                onClick={handleCreateBackdate}
-                className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer whitespace-nowrap mr-2"
-              >
-                <PlusCircle size={14} />
-                <span>คีย์รายงานย้อนหลัง</span>
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={handleCreateBackdate}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer whitespace-nowrap mr-2"
+                >
+                  <PlusCircle size={14} />
+                  <span>คีย์รายงานย้อนหลัง</span>
+                </button>
+              )}
 
               {/* 🏷️ ตัวกรองรอบโปรโมชั่น */}
               <div className="flex items-center gap-1 text-xs">
@@ -3561,12 +3608,14 @@ export default function CustomerReportPortal() {
                       >
                         สาขา
                       </th>
-                      <th
-                        rowSpan={2}
-                        className="p-2 border-r border-slate-200 text-center bg-amber-100 text-amber-900 min-w-[70px] no-print"
-                      >
-                        จัดการ
-                      </th>
+                      {isAdmin && (
+                        <th
+                          rowSpan={2}
+                          className="p-2 border-r border-slate-200 text-center bg-amber-100 text-amber-900 min-w-[70px] no-print"
+                        >
+                          จัดการ
+                        </th>
+                      )}
                       <th
                         rowSpan={2}
                         className="p-2 border-r border-blue-400 text-center bg-blue-200 min-w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]"
@@ -3782,15 +3831,17 @@ export default function CustomerReportPortal() {
                             {safeStoreName}
                           </td>
 
-                          <td className="p-2 border-r border-slate-200 text-center no-print">
-                            <button
-                              onClick={() => handleEditRow(row)}
-                              className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded text-[9px] transition cursor-pointer flex items-center gap-1 mx-auto"
-                              title="แก้ไขรายงานแถวนี้"
-                            >
-                              <Edit3 size={11} /> แก้ไข
-                            </button>
-                          </td>
+                          {isAdmin && (
+                            <td className="p-2 border-r border-slate-200 text-center no-print">
+                              <button
+                                onClick={() => handleEditRow(row)}
+                                className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded text-[9px] transition cursor-pointer flex items-center gap-1 mx-auto"
+                                title="แก้ไขรายงานแถวนี้"
+                              >
+                                <Edit3 size={11} /> แก้ไข
+                              </button>
+                            </td>
+                          )}
 
                           <td className="p-2 border-r border-slate-200 text-left font-medium text-slate-600">
                             {safeUserName}
@@ -3985,7 +4036,7 @@ export default function CustomerReportPortal() {
       </div>
 
       {/* 🛠️ MODAL สำหรับ ADMIN บันทึก/แก้ไข รายงานย้อนหลัง + แนบรูปภาพ */}
-      {isEditModalOpen && (
+      {isAdmin && isEditModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto no-print">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl overflow-hidden my-8">
             <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
@@ -4158,10 +4209,20 @@ export default function CustomerReportPortal() {
                     ) => {
                       if (Array.isArray(editForm.products)) {
                         const found = editForm.products.find(
-                          (p: any) => p.barcode === prod.barcode,
+                          (product: any) =>
+                            String(product.barcode || "").trim() ===
+                            String(prod.barcode || "").trim(),
                         );
+                        const databaseField = {
+                          stockBefore: "stock_before",
+                          salesQty: "sales_qty",
+                          stockAfter: "stock_after",
+                          priceOur: "price_our",
+                        }[field];
                         if (found && found[field] !== undefined)
                           return found[field];
+                        if (found && found[databaseField] !== undefined)
+                          return found[databaseField];
                       }
                       if (prod.barcode === "8858678423339") {
                         if (field === "stockBefore")
@@ -4228,7 +4289,9 @@ export default function CustomerReportPortal() {
                         ? [...updated.products]
                         : [];
                       const idx = prods.findIndex(
-                        (p: any) => p.barcode === prod.barcode,
+                        (product: any) =>
+                          String(product.barcode || "").trim() ===
+                          String(prod.barcode || "").trim(),
                       );
                       if (idx >= 0) {
                         prods[idx] = { ...prods[idx], [field]: val };
@@ -4315,7 +4378,117 @@ export default function CustomerReportPortal() {
                 </div>
               </div>
 
-              {/* 4. ราคาขายสินค้าคู่แข่ง (ครบทั้ง 15 รายการ) */}
+              {/* 4. รูปภาพสินค้าคู่แข่ง */}
+              {Array.isArray(editForm.products) &&
+                editForm.products.some(
+                  (product: any) =>
+                    String(product.item_scope || "").toUpperCase() ===
+                    "COMPETITOR",
+                ) && (
+                  <div className="p-3 bg-orange-50/50 rounded-xl border border-orange-100 space-y-3">
+                    <span className="font-bold text-orange-900 flex items-center gap-1.5">
+                      <ImageIcon size={15} className="text-orange-600" />
+                      📸 รูปภาพสินค้าคู่แข่ง (สินค้า / เชลฟ์ / สแกนสต๊อก)
+                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {editForm.products
+                        .filter(
+                          (product: any) =>
+                            String(product.item_scope || "").toUpperCase() ===
+                            "COMPETITOR",
+                        )
+                        .map((product: any) => {
+                          const barcode = String(product.barcode || "").trim();
+                          const photoFields = [
+                            { field: "img_product", label: "1. สินค้า" },
+                            { field: "img_shelf", label: "2. เชลฟ์" },
+                            {
+                              field: "img_stock_scanner",
+                              label: "3. สแกนสต๊อก",
+                            },
+                          ] as const;
+
+                          return (
+                            <div
+                              key={barcode}
+                              className="rounded-lg border border-orange-100 bg-white p-2.5"
+                            >
+                              <p className="truncate text-[11px] font-bold text-slate-800">
+                                {product.descriptions || barcode}
+                              </p>
+                              <p className="mb-2 font-mono text-[9px] text-slate-400">
+                                {barcode}
+                              </p>
+                              <div className="grid grid-cols-3 gap-2">
+                                {photoFields.map(({ field, label }) => {
+                                  const photo = product[field] || "";
+                                  return (
+                                    <div key={field} className="relative">
+                                      <label className="flex h-20 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-slate-50 text-[9px] font-bold text-slate-600">
+                                        {photo ? (
+                                          <img
+                                            src={photo}
+                                            alt={`${product.descriptions || barcode} ${label}`}
+                                            className="h-12 w-full object-cover"
+                                          />
+                                        ) : (
+                                          <Upload
+                                            size={14}
+                                            className="mb-1 text-slate-400"
+                                          />
+                                        )}
+                                        <span className="truncate px-1">
+                                          {label}
+                                        </span>
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="sr-only"
+                                          onChange={(event) => {
+                                            void handleCompetitorProductPhotoUpload(
+                                              barcode,
+                                              field,
+                                              event.target.files?.[0] || null,
+                                            );
+                                            event.target.value = "";
+                                          }}
+                                        />
+                                      </label>
+                                      {photo && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setEditForm((current: any) => ({
+                                              ...current,
+                                              products: current.products.map(
+                                                (item: any) =>
+                                                  String(
+                                                    item.barcode || "",
+                                                  ).trim() === barcode
+                                                    ? { ...item, [field]: "" }
+                                                    : item,
+                                              ),
+                                            }))
+                                          }
+                                          className="absolute -right-1 -top-1 rounded-full bg-rose-600 p-0.5 text-white shadow-xs"
+                                          title={`ลบ${label}`}
+                                        >
+                                          <X size={10} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
+              {/* 5. ราคาขายสินค้าคู่แข่ง (ครบทั้ง 15 รายการ) */}
               <div className="p-3 bg-rose-50/50 rounded-xl border border-rose-100 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-rose-900 block">

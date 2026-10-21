@@ -3,7 +3,11 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { normalizeCompetitorPrices } from "@/utils/competitor-prices";
-import { requireAdminSession, requireUserOrAdminSession } from "@/utils/auth";
+import {
+  getUserSession,
+  requireAdminSession,
+  requireUserOrAdminSession,
+} from "@/utils/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -23,6 +27,11 @@ async function getAdminClientInstance() {
   }
 
   return await createClient();
+}
+
+export async function getCustomerPortalAdminAccess() {
+  const session = await getUserSession();
+  return session?.role === "admin";
 }
 
 // 🇹🇭 Helper Function: แปลง Timestamp เป็นเวลาไทย (Asia/Bangkok UTC+7)
@@ -1564,6 +1573,36 @@ export async function adminSaveReportWithImagesAction(payload: any) {
     const BUCKET_NAME = "pg-attendance-photos";
 
     const finalPhotos: any[] = [];
+    const uploadProductImage = async (
+      image: unknown,
+      barcode: string,
+      field: string,
+    ) => {
+      if (typeof image !== "string" || !image.startsWith("data:image/")) {
+        return typeof image === "string" ? image : "";
+      }
+
+      const [metadata, encodedImage] = image.split(",", 2);
+      const extension =
+        metadata.match(/^data:image\/([a-zA-Z0-9.+-]+);base64$/)?.[1] || "jpeg";
+      const buffer = Buffer.from(encodedImage || "", "base64");
+      const safeBarcode = barcode.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const fileName = `admin_${payload.storeCode}_${safeBarcode}_${field}_${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
+      const filePath = `reports/${fileName}`;
+      const { error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(filePath, buffer, {
+          contentType: `image/${extension}`,
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      const { data } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(filePath);
+      return data.publicUrl;
+    };
 
     for (const photo of payload.activityPhotos || []) {
       if (photo.url && photo.url.startsWith("data:image")) {
@@ -1665,24 +1704,55 @@ export async function adminSaveReportWithImagesAction(payload: any) {
     }
 
     if (reportId && Array.isArray(payload.products)) {
-      const productRows = payload.products
-        .filter((product: any) => product?.barcode)
-        .map((product: any) => ({
-          ...(product.id ? { id: Number(product.id) } : {}),
-          report_id: reportId,
-          barcode: String(product.barcode),
-          descriptions: product.descriptions || "",
-          price_our: Number(product.priceOur ?? product.price_our ?? 0),
-          stock_before: Number(
-            product.stockBefore ?? product.stock_before ?? 0,
-          ),
-          sales_qty: Number(product.salesQty ?? product.sales_qty ?? 0),
-          stock_after: Number(product.stockAfter ?? product.stock_after ?? 0),
-          img_product: product.imgProduct ?? product.img_product ?? "",
-          img_shelf: product.imgShelf ?? product.img_shelf ?? "",
-          img_stock_scanner:
-            product.imgStockScanner ?? product.img_stock_scanner ?? "",
-        }));
+      const productRows = await Promise.all(
+        payload.products
+          .filter((product: any) => product?.barcode)
+          .map(async (product: any) => {
+            const barcode = String(product.barcode);
+            const [imgProduct, imgShelf, imgStockScanner] = await Promise.all([
+              uploadProductImage(
+                product.imgProduct ??
+                  product.img_product ??
+                  product.img_product_base64,
+                barcode,
+                "product",
+              ),
+              uploadProductImage(
+                product.imgShelf ??
+                  product.img_shelf ??
+                  product.img_shelf_base64,
+                barcode,
+                "shelf",
+              ),
+              uploadProductImage(
+                product.imgStockScanner ??
+                  product.img_stock_scanner ??
+                  product.img_stock_scanner_base64,
+                barcode,
+                "scanner",
+              ),
+            ]);
+
+            return {
+              ...(product.id ? { id: Number(product.id) } : {}),
+              report_id: reportId,
+              barcode,
+              descriptions: product.descriptions || "",
+              item_scope: product.item_scope || "OUR",
+              price_our: Number(product.priceOur ?? product.price_our ?? 0),
+              stock_before: Number(
+                product.stockBefore ?? product.stock_before ?? 0,
+              ),
+              sales_qty: Number(product.salesQty ?? product.sales_qty ?? 0),
+              stock_after: Number(
+                product.stockAfter ?? product.stock_after ?? 0,
+              ),
+              img_product: imgProduct,
+              img_shelf: imgShelf,
+              img_stock_scanner: imgStockScanner,
+            };
+          }),
+      );
 
       for (const product of productRows) {
         const productId = product.id;
