@@ -889,7 +889,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
     const { data: userProfiles, error: userError } = await supabase
       .from("user_profiles")
       .select(
-        "id, display_name, employee_id, username, base_salary, company_tag",
+        "id, display_name, employee_id, username, base_salary, company_tag, employment_type",
       );
 
     if (userError) {
@@ -930,9 +930,18 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
         workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(1));
       }
 
-      const baseSalaryRate = userObj?.base_salary
+      const configuredSalary = userObj?.base_salary
         ? Number(userObj.base_salary)
         : 700;
+      // พนักงานรายเดือน: เฉลี่ยเป็นค่าแรงต่อวันด้วย 26 วัน
+      const employmentType = String(userObj?.employment_type || "")
+        .trim()
+        .toLowerCase();
+      const isMonthly =
+        employmentType === "รายเดือน" || employmentType === "monthly";
+      const baseSalaryRate = isMonthly
+        ? Number((configuredSalary / 26).toFixed(2))
+        : configuredSalary;
 
       const dayValue = workedHours >= 9 ? 1 : workedHours >= 1 ? 0.5 : 0;
       const dailyWage = calculateDailyWage(workedHours, baseSalaryRate);
