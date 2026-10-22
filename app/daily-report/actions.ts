@@ -169,15 +169,21 @@ export async function getTodayActiveAttendance() {
     const startOfToday = `${year}-${month}-${day}T00:00:00+07:00`;
     const endOfToday = `${year}-${month}-${day}T23:59:59+07:00`;
 
-    const { data, error } = await supabase
+    const { data: todayLogs, error } = await supabase
       .from("pg_attendance_logs")
-      .select("id, store_code, store_name")
+      .select("id, store_code, store_name, check_out_at")
       .eq("user_id", userId)
       .gte("check_in_at", startOfToday)
       .lte("check_in_at", endOfToday)
-      .maybeSingle();
+      .order("check_in_at", { ascending: false });
 
     if (error) throw error;
+
+    // ใช้ร้านที่ยังไม่ Check-out ก่อน ไม่มีจึงใช้ร้านล่าสุด
+    const data =
+      (todayLogs || []).find((item) => !item.check_out_at) ||
+      todayLogs?.[0] ||
+      null;
 
     const [profileResult, storeResult] = await Promise.all([
       supabase

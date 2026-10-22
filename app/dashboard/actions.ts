@@ -914,7 +914,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
     const { data: logs, error } = await query;
     if (error) throw error;
 
-    const formattedLogs = (logs || []).map((log) => {
+    const mappedLogs = (logs || []).map((log) => {
       const userObj = (userProfiles || []).find((p) => p.id === log.user_id);
 
       const empDisplayName =
@@ -956,6 +956,58 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
         checkOutPhoto: log.check_out_image_url || log.check_out_photo || "",
       };
     });
+
+    // ค่าแรงคิดต่อคนต่อวัน: เข้าร้านแรก -> ออกร้านสุดท้าย (>=9 ชม. เต็มวัน, 1-8 ชม. ครึ่งวัน)
+    const dayGroups = new Map<string, typeof mappedLogs>();
+    for (const log of mappedLogs) {
+      const key = `${log.userId}:${getIctDateStr(log.checkInAt)}`;
+      const group = dayGroups.get(key);
+      if (group) group.push(log);
+      else dayGroups.set(key, [log]);
+    }
+
+    const wageByLogId = new Map<
+      number,
+      { dayWorkedHours: number; dayValue: number; dailyWage: number }
+    >();
+    for (const group of dayGroups.values()) {
+      const sorted = [...group].sort(
+        (a, b) =>
+          new Date(a.checkInAt).getTime() - new Date(b.checkInAt).getTime(),
+      );
+      const firstIn = new Date(sorted[0].checkInAt).getTime();
+      const lastOut = Math.max(
+        0,
+        ...sorted
+          .filter((item) => item.checkOutAt)
+          .map((item) => new Date(item.checkOutAt).getTime()),
+      );
+      const dayWorkedHours =
+        lastOut > firstIn
+          ? Number(((lastOut - firstIn) / (1000 * 60 * 60)).toFixed(1))
+          : 0;
+      const rate = sorted[0].baseSalaryRate;
+
+      sorted.forEach((item, index) => {
+        wageByLogId.set(item.id, {
+          dayWorkedHours,
+          dayValue:
+            index === 0
+              ? dayWorkedHours >= 9
+                ? 1
+                : dayWorkedHours >= 1
+                  ? 0.5
+                  : 0
+              : 0,
+          dailyWage: index === 0 ? calculateDailyWage(dayWorkedHours, rate) : 0,
+        });
+      });
+    }
+
+    const formattedLogs = mappedLogs.map((log) => ({
+      ...log,
+      ...wageByLogId.get(log.id),
+    }));
 
     return { success: true, data: formattedLogs };
   } catch (error: any) {

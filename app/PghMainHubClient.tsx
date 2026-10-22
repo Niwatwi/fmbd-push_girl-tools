@@ -64,6 +64,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
   const [storesList, setStoresList] = useState<StoreItem[]>([]);
   const [selectedStoreIndex, setSelectedStoreIndex] = useState<number>(0);
+  const [visitedStoreCodes, setVisitedStoreCodes] = useState<string[]>([]);
   const [activeStoreDisplay, setActiveStoreDisplay] =
     useState<StoreItem | null>(null);
   const [competitorProducts, setCompetitorProducts] = useState<
@@ -72,6 +73,12 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
   const [activeAction, setActiveAction] = useState<
     "checkin" | "checkout" | null
   >(null);
+
+  // ร้านที่ยังเลือก Check-in ได้ (ไม่รวมร้านที่ Check-in แล้ววันนี้)
+  const availableStores = storesList.filter(
+    (store) => !visitedStoreCodes.includes(store.store_code),
+  );
+  const canSelectStore = attendanceStatus !== "checked_in";
 
   const resizeImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
@@ -108,6 +115,10 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
       ]);
       const stores = storeRes.success ? storeRes.stores : [];
       setStoresList(stores);
+      setVisitedStoreCodes(
+        (attendRes.logs || []).map((item: any) => String(item.store_code)),
+      );
+      setSelectedStoreIndex(0);
 
       const competitorMap = new Map<string, CompetitorProductCard>();
       for (const campaign of promotionRes?.promotions || []) {
@@ -199,10 +210,20 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
   }, [user]);
 
   const startAttendanceFlow = async (type: "checkin" | "checkout") => {
-    if (type === "checkin" && attendanceStatus !== "not_checked_in") {
+    if (type === "checkin" && attendanceStatus === "checked_in") {
       Swal.fire({
-        title: "บันทึกเวลาแล้ว",
-        text: `วันนี้คุณได้ทำรายการ Check-in เข้างานเรียบร้อยแล้วค่ะ (เวลา: ${checkInTime} น.)`,
+        title: "ยังไม่ได้ Check-out",
+        text: `กรุณาส่ง Daily Report และ Check-out จากร้าน ${activeStoreDisplay?.store_name || ""} ก่อน จึงจะ Check-in ร้านถัดไปได้ค่ะ`,
+        icon: "warning",
+        confirmButtonColor: "#1e3a8a",
+      });
+      return;
+    }
+
+    if (type === "checkin" && availableStores.length === 0) {
+      Swal.fire({
+        title: "ไม่มีร้านให้ Check-in เพิ่ม",
+        text: "วันนี้คุณได้ Check-in ครบทุกร้านที่ได้รับมอบหมายแล้วค่ะ",
         icon: "info",
         confirmButtonColor: "#1e3a8a",
       });
@@ -212,7 +233,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
     if (type === "checkout" && attendanceStatus === "checked_out") {
       Swal.fire({
         title: "ทำรายการเสร็จสิ้นแล้ว",
-        text: `คุณได้ลงเวลา Check-out ออกจากงานของวันนี้เรียบร้อยแล้วค่ะ`,
+        text: `คุณได้ลงเวลา Check-out ออกจากร้านล่าสุดเรียบร้อยแล้วค่ะ หากจะไปร้านถัดไปให้กด Check-in`,
         icon: "success",
         confirmButtonColor: "#1e3a8a",
       });
@@ -230,7 +251,9 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
     }
 
     const targetStore =
-      type === "checkin" ? storesList[selectedStoreIndex] : activeStoreDisplay;
+      type === "checkin"
+        ? availableStores[selectedStoreIndex]
+        : activeStoreDisplay;
     if (!targetStore) {
       Swal.fire(
         "ไม่พบข้อมูลสาขา",
@@ -281,7 +304,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
       );
 
       const base64Image = await resizeImage(file);
-      const targetStore = storesList[selectedStoreIndex];
+      const targetStore = availableStores[selectedStoreIndex];
 
       if (activeAction === "checkin") {
         const res = await saveCheckInAction({
@@ -417,21 +440,23 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
               สาขาปฏิบัติงาน
             </p>
-            {attendanceStatus === "not_checked_in" ? (
+            {canSelectStore ? (
               <select
-                value={storesList.length > 0 ? selectedStoreIndex : ""}
+                value={availableStores.length > 0 ? selectedStoreIndex : ""}
                 onChange={(e) => setSelectedStoreIndex(Number(e.target.value))}
-                disabled={storesList.length === 0}
+                disabled={availableStores.length === 0}
                 className="w-full p-2 border rounded-lg text-xs font-bold bg-white text-slate-800"
               >
-                {storesList.length === 0 ? (
+                {availableStores.length === 0 ? (
                   <option value="" disabled>
                     {isRefreshing
                       ? "กำลังโหลดรายชื่อสาขา..."
-                      : "ไม่พบสาขาที่ผูกกับบัญชีนี้"}
+                      : storesList.length > 0
+                        ? "Check-in ครบทุกร้านแล้ววันนี้"
+                        : "ไม่พบสาขาที่ผูกกับบัญชีนี้"}
                   </option>
                 ) : (
-                  storesList.map((s, idx) => (
+                  availableStores.map((s, idx) => (
                     <option key={s.store_code} value={idx}>
                       {s.store_name}
                     </option>
@@ -443,18 +468,19 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
                 {activeStoreDisplay?.store_name || "ไม่ได้เลือกร้านค้า"}
               </h4>
             )}
-            {(attendanceStatus === "not_checked_in"
-              ? storesList[selectedStoreIndex]?.img_store
+            {(canSelectStore
+              ? availableStores[selectedStoreIndex]?.img_store
               : activeStoreDisplay?.img_store) && (
               <img
                 src={
-                  attendanceStatus === "not_checked_in"
-                    ? storesList[selectedStoreIndex].img_store || ""
+                  canSelectStore
+                    ? availableStores[selectedStoreIndex].img_store || ""
                     : activeStoreDisplay?.img_store || ""
                 }
                 alt={
-                  attendanceStatus === "not_checked_in"
-                    ? storesList[selectedStoreIndex]?.store_name || "รูปสาขา"
+                  canSelectStore
+                    ? availableStores[selectedStoreIndex]?.store_name ||
+                      "รูปสาขา"
                     : activeStoreDisplay?.store_name || "รูปสาขา"
                 }
                 className="mt-2 w-full max-h-40 rounded-lg object-cover"

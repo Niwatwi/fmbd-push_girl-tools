@@ -75,14 +75,18 @@ export async function checkTodayAttendance(userId: number) {
       .eq("user_id", userId)
       .gte("check_in_at", startOfToday)
       .lte("check_in_at", endOfToday)
-      .maybeSingle();
+      .order("check_in_at", { ascending: false });
 
     if (error) throw error;
 
-    return { success: true, log: data };
+    const logs = data || [];
+    // ให้ความสำคัญกับร้านที่ยังไม่ Check-out ก่อน
+    const log = logs.find((item) => !item.check_out_at) || logs[0] || null;
+
+    return { success: true, log, logs };
   } catch (error) {
     console.error("Check attendance error:", error);
-    return { success: false, log: null };
+    return { success: false, log: null, logs: [] as any[] };
   }
 }
 
@@ -103,6 +107,19 @@ export async function saveCheckInAction({
   base64Image: string;
 }) {
   try {
+    const today = await checkTodayAttendance(userId);
+    if (!today.success) throw new Error("ตรวจสอบสถานะการลงเวลาไม่สำเร็จ");
+    const todayLogs = today.logs || [];
+    const openLog = todayLogs.find((item) => !item.check_out_at);
+    if (openLog) {
+      throw new Error(
+        `ยังไม่ได้ Check-out จากร้าน ${openLog.store_name} กรุณาส่งรายงานและ Check-out ก่อน`,
+      );
+    }
+    if (todayLogs.some((item) => item.store_code === storeCode)) {
+      throw new Error("วันนี้ได้ Check-in ร้านนี้ไปแล้ว");
+    }
+
     const imageUrl = await uploadPhoto(userId, "checkin", base64Image);
 
     const { data, error } = await supabase
@@ -145,6 +162,38 @@ export async function saveCheckOutAction({
   base64Image: string;
 }) {
   try {
+    const { data: existingLog, error: logError } = await supabase
+      .from("pg_attendance_logs")
+      .select("id, user_id, store_code, check_in_at, check_out_at")
+      .eq("id", logId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (logError) throw logError;
+    if (!existingLog) throw new Error("ไม่พบข้อมูลการ Check-in");
+    if (existingLog.check_out_at) throw new Error("Check-out ไปแล้ว");
+
+    // ต้องส่ง Daily Report ของร้านนี้ก่อนจึงจะ Check-out ได้
+    const reportDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(existingLog.check_in_at));
+    const { data: report, error: reportError } = await supabase
+      .from("pg_daily_activity_reports")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("store_code", existingLog.store_code)
+      .eq("report_date", reportDate)
+      .limit(1)
+      .maybeSingle();
+    if (reportError) throw reportError;
+    if (!report) {
+      throw new Error(
+        "กรุณาส่ง Daily Report ของร้านนี้ให้เสร็จก่อน จึงจะ Check-out ได้",
+      );
+    }
+
     const imageUrl = await uploadPhoto(userId, "checkout", base64Image);
 
     const { data, error } = await supabase
