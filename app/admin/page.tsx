@@ -15,6 +15,7 @@ import {
   PackageSearch,
   Film,
   PackagePlus,
+  BadgeDollarSign,
 } from "lucide-react";
 
 export default function AdminHubPage() {
@@ -42,6 +43,18 @@ export default function AdminHubPage() {
       badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
       iconBg: "bg-emerald-600 text-white",
       hoverBorder: "hover:border-emerald-400 hover:shadow-md",
+    },
+    {
+      title: "บันทึก KPI รายได้ BA",
+      subtitle: "BA KPI Entry",
+      description:
+        "คีย์ยอด KPI รายเดือนแยก BA Supervisor, BA BKK และ BA UPC พร้อมรวมยอดเข้ารายงานส่งบัญชี",
+      href: "/admin/kpi",
+      icon: BadgeDollarSign,
+      badge: "รายได้ BA",
+      badgeColor: "bg-teal-50 text-teal-700 border-teal-200",
+      iconBg: "bg-teal-700 text-white",
+      hoverBorder: "hover:border-teal-400 hover:shadow-md",
     },
     {
       title: "สรุปยอดขายราย User แยก SKU",

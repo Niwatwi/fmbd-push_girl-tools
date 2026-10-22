@@ -46,6 +46,11 @@ function getDefaultPayoutPeriod() {
   };
 }
 
+function getMonthEndDate(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+}
+
 export default function AdminSalarySummaryPage() {
   const [dataList, setDataList] = useState<any[]>([]);
   const [filteredData, setFilteredData] = useState<any[]>([]);
@@ -72,7 +77,7 @@ export default function AdminSalarySummaryPage() {
     setPayrollPeriodMode(mode);
     if (mode === "MONTHLY") {
       setStartDate(`${selectedMonth}-01`);
-      setEndDate(`${selectedMonth}-30`);
+      setEndDate(getMonthEndDate(selectedMonth));
     }
   };
 
@@ -80,7 +85,7 @@ export default function AdminSalarySummaryPage() {
     setSelectedMonth(month);
     if (month) {
       setStartDate(`${month}-01`);
-      setEndDate(`${month}-30`);
+      setEndDate(getMonthEndDate(month));
     }
   };
 
@@ -90,6 +95,7 @@ export default function AdminSalarySummaryPage() {
       const res = await getAdminSalarySummaryReportAction({
         startDate,
         endDate,
+        includeKpi: payrollPeriodMode === "MONTHLY",
       });
       if (!res.success) {
         throw new Error(res.message || "ไม่สามารถโหลดข้อมูลสรุปเงินเดือนได้");
@@ -114,7 +120,7 @@ export default function AdminSalarySummaryPage() {
 
   useEffect(() => {
     loadData();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, payrollPeriodMode]);
 
   // Keyword Search
   useEffect(() => {
@@ -142,6 +148,10 @@ export default function AdminSalarySummaryPage() {
     (sum, item) => sum + item.totalCommission,
     0,
   );
+  const totalKpiSum = filteredData.reduce(
+    (sum, item) => sum + (item.totalKpiAmount || 0),
+    0,
+  );
   const totalNetPayableSum = filteredData.reduce(
     (sum, item) => sum + item.totalNetSalary,
     0,
@@ -161,6 +171,7 @@ export default function AdminSalarySummaryPage() {
       "รวมค่าแรงรายวัน (บาท)",
       "ยอดขายสะสม (แพ็ค)",
       "ค่าคอมมิชชั่น/Incentive (บาท)",
+      "KPI BA (บาท)",
       "รายได้รวมสุทธิ (บาท)",
     ];
 
@@ -174,6 +185,7 @@ export default function AdminSalarySummaryPage() {
       item.totalDailyWage,
       item.totalPacks,
       item.totalCommission,
+      item.totalKpiAmount || 0,
       item.totalNetSalary,
     ]);
 
@@ -276,14 +288,14 @@ export default function AdminSalarySummaryPage() {
         </div>
 
         {/* 📊 KPI SUMMARY CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-left">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
               <UserCheck size={20} />
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                จำนวนพนักงาน PG ที่มีผลงาน
+                จำนวนพนักงานที่มีรายได้ในงวด
               </span>
               <span className="text-lg font-black text-slate-800 block">
                 {totalStaffCount} คน
@@ -315,6 +327,23 @@ export default function AdminSalarySummaryPage() {
               </span>
               <span className="text-lg font-black text-amber-600 block">
                 {totalCommissionSum.toLocaleString()} ฿
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-2xl border border-teal-200 shadow-xs flex items-center gap-3">
+            <div className="p-3 bg-teal-50 text-teal-700 rounded-xl">
+              <Award size={20} />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                ยอดรวม KPI BA{" "}
+                {payrollPeriodMode === "MONTHLY"
+                  ? "ประจำเดือน"
+                  : "(เลือกรายเดือนเพื่อรวม)"}
+              </span>
+              <span className="text-lg font-black text-teal-700 block">
+                {totalKpiSum.toLocaleString()} ฿
               </span>
             </div>
           </div>
@@ -359,7 +388,7 @@ export default function AdminSalarySummaryPage() {
                 aria-pressed={payrollPeriodMode === "MONTHLY"}
                 className={`rounded-md px-3 py-1.5 font-bold ${payrollPeriodMode === "MONTHLY" ? "bg-blue-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}
               >
-                รายเดือน (1–30)
+                รายเดือน (ทั้งเดือน)
               </button>
             </div>
 
@@ -375,7 +404,9 @@ export default function AdminSalarySummaryPage() {
                   }
                   className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 text-xs font-bold"
                 />
-                <span className="text-[10px] text-slate-500">วันที่ 1–30</span>
+                <span className="text-[10px] text-slate-500">
+                  ครบทุกวันของเดือน
+                </span>
               </label>
             ) : (
               <div className="flex items-center gap-1.5">
@@ -417,7 +448,7 @@ export default function AdminSalarySummaryPage() {
           <div className="p-4 border-b border-slate-100 flex justify-between items-center">
             <h3 className="text-xs font-black text-slate-800 flex items-center gap-2">
               <Building2 size={16} className="text-blue-600" />
-              ตารางคำนวณเงินเดือนสุทธิประจำงวด (ค่าแรงรายวัน + คอมมิชชั่น)
+              ตารางคำนวณรายได้สุทธิประจำงวด (ค่าแรง + คอมมิชชั่น + KPI BA)
             </h3>
             <span className="text-[10px] text-slate-400 font-bold">
               ทั้งหมด {filteredData.length} รายการ
@@ -451,6 +482,9 @@ export default function AdminSalarySummaryPage() {
                   </th>
                   <th className="p-2.5 border border-slate-200 text-right bg-amber-50/50">
                     ค่าคอมมิชชั่น
+                  </th>
+                  <th className="p-2.5 border border-slate-200 text-right bg-teal-50/60">
+                    KPI BA
                   </th>
                   <th className="p-2.5 border border-slate-200 text-right bg-emerald-100/50 text-emerald-900">
                     💰 รวมจ่ายสุทธิ
@@ -496,6 +530,9 @@ export default function AdminSalarySummaryPage() {
                     </td>
                     <td className="p-2.5 border border-slate-200 text-right font-mono font-bold text-amber-600 bg-amber-50/30">
                       +{item.totalCommission.toLocaleString()} ฿
+                    </td>
+                    <td className="p-2.5 border border-slate-200 text-right font-mono font-bold text-teal-700 bg-teal-50/30">
+                      +{(item.totalKpiAmount || 0).toLocaleString()} ฿
                     </td>
                     <td className="p-2.5 border border-slate-200 text-right font-mono font-black text-emerald-600 bg-emerald-50/50 text-xs">
                       {item.totalNetSalary.toLocaleString()} ฿

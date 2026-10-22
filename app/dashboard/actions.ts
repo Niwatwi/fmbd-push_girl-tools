@@ -1029,6 +1029,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
+  includeKpi?: boolean;
 }) {
   try {
     const supabase = await getAdminClientInstance();
@@ -1355,6 +1356,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
           totalSets: item.allSkuSalesQty,
           totalPacks: item.allSkuSalesQty,
           totalCommission,
+          totalKpiAmount: 0,
           tierStatus: [...dailyCommissionResults, ...monthlyCommissionResults]
             .filter((result) => result.tierStatus)
             .map((result) => result.tierStatus)
@@ -1363,6 +1365,70 @@ export async function getAdminSalarySummaryReportAction(params?: {
         };
       }),
     );
+
+    const requestedMonth = params?.startDate?.slice(0, 7);
+    const monthEndDate = requestedMonth
+      ? new Date(
+          Date.UTC(
+            Number(requestedMonth.slice(0, 4)),
+            Number(requestedMonth.slice(5, 7)),
+            0,
+          ),
+        )
+          .toISOString()
+          .slice(0, 10)
+      : "";
+    if (
+      params?.includeKpi &&
+      params.startDate === `${requestedMonth}-01` &&
+      params.endDate === monthEndDate
+    ) {
+      const periodMonth = `${requestedMonth}-01`;
+      const { data: kpiEntries, error: kpiError } = await supabase
+        .from("ba_kpi_entries")
+        .select("employee_id, employee_name, store_name, amount")
+        .eq("period_month", periodMonth);
+      if (kpiError) throw kpiError;
+
+      const summaryByEmployeeId = new Map(
+        summaryList.map((item) => [
+          String(item.empId).trim().toLowerCase(),
+          item,
+        ]),
+      );
+      for (const entry of kpiEntries || []) {
+        const employeeId = String(entry.employee_id || "").trim();
+        if (!employeeId) continue;
+        const key = employeeId.toLowerCase();
+        const amount = Number(entry.amount || 0);
+        const matched = summaryByEmployeeId.get(key);
+        if (matched) {
+          matched.totalKpiAmount = (matched.totalKpiAmount || 0) + amount;
+          matched.totalNetSalary += amount;
+          continue;
+        }
+
+        const kpiOnlyItem = {
+          userId: `ba-kpi:${key}`,
+          empId: employeeId,
+          displayName: entry.employee_name,
+          storeCode: "",
+          storeName: entry.store_name || "-",
+          account: "",
+          workDaysCount: 0,
+          baseSalaryRate: 0,
+          totalDailyWage: 0,
+          totalSets: 0,
+          totalPacks: 0,
+          totalCommission: 0,
+          totalKpiAmount: amount,
+          tierStatus: "",
+          totalNetSalary: amount,
+        };
+        summaryList.push(kpiOnlyItem);
+        summaryByEmployeeId.set(key, kpiOnlyItem);
+      }
+    }
 
     return { success: true, data: summaryList };
   } catch (error: any) {
