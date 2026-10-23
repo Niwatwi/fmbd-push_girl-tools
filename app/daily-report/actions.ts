@@ -230,6 +230,8 @@ export async function getTodayActiveAttendance() {
             .from("pg_stores")
             .select("account")
             .eq("store_code", data.store_code)
+            .order("id", { ascending: true })
+            .limit(1)
             .maybeSingle()
         : Promise.resolve({ data: null }),
     ]);

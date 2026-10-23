@@ -243,13 +243,20 @@ export async function getPromotionByStoreAction(
         .maybeSingle()
     : { data: null };
   const targetPromotionId = String(storeTarget?.promotion_id || "");
-  const sortedPromotions = targetPromotionId
-    ? [...filteredPromotions].sort(
-        (left, right) =>
-          Number(String(right.id) === targetPromotionId) -
-          Number(String(left.id) === targetPromotionId),
-      )
-    : filteredPromotions;
+  const sortedPromotions = [...filteredPromotions].sort((left, right) => {
+    const leftIsTarget = String(left.id) === targetPromotionId;
+    const rightIsTarget = String(right.id) === targetPromotionId;
+    if (leftIsTarget !== rightIsTarget) return leftIsTarget ? -1 : 1;
+
+    const startDateOrder = String(right.start_date || "").localeCompare(
+      String(left.start_date || ""),
+    );
+    if (startDateOrder !== 0) return startDateOrder;
+
+    return String(right.created_at || "").localeCompare(
+      String(left.created_at || ""),
+    );
+  });
 
   return {
     success: true,
