@@ -171,7 +171,6 @@ export async function getPromotionOptionsAction() {
 export async function getPromotionByStoreAction(
   storeCode?: string,
   companyTag?: string | string[],
-  staffGroup?: string,
   userId?: number,
   includeUpcoming = false,
 ) {
@@ -219,11 +218,6 @@ export async function getPromotionByStoreAction(
       return false;
     }
     if (promo.end_date && String(promo.end_date).slice(0, 10) < today) {
-      return false;
-    }
-    const promoStaffGroup = String(promo.staff_group || "ALL").toUpperCase();
-    const currentStaffGroup = String(staffGroup || "").toUpperCase();
-    if (promoStaffGroup !== "ALL" && promoStaffGroup !== currentStaffGroup) {
       return false;
     }
     if (promo.target_type === "ALL") return true;
@@ -278,7 +272,7 @@ export async function getCurrentUserPromotionBriefAction() {
       .maybeSingle(),
     supabase
       .from("user_profiles")
-      .select("username, company_tag")
+      .select("username")
       .eq("id", session.id)
       .maybeSingle(),
   ]);
@@ -311,13 +305,9 @@ export async function getCurrentUserPromotionBriefAction() {
   ).trim();
   if (checkedInAccount) companyTags.add(checkedInAccount);
 
-  const staffGroup = String(
-    profileResult.data?.company_tag || session.company_tag || "",
-  );
   const result = await getPromotionByStoreAction(
     storeCode,
     [...companyTags],
-    staffGroup,
     session.id,
     true,
   );
@@ -326,7 +316,6 @@ export async function getCurrentUserPromotionBriefAction() {
     storeCode,
     storeCompanyTag: checkedInAccount,
     companyTags: [...companyTags],
-    staffGroup,
   };
 }
 

@@ -653,6 +653,12 @@ export default function CustomerReportPortal() {
 
   const campaignGiftInventory = useMemo(() => {
     const rows = new Map<string, any>();
+    const storeNames = new Map(
+      reportData.map((report) => [
+        String(report.storeCode || report.store_code || ""),
+        report.storeName || report.store_name || "",
+      ]),
+    );
     for (const promotion of promotions.filter(
       (item) => item.track_gift_inventory,
     )) {
@@ -678,6 +684,7 @@ export default function CustomerReportPortal() {
             giftName: gift.name,
             sourceType: gift.source_type,
             storeCode,
+            storeName: storeNames.get(storeCode) || storeCode,
             received: 0,
             given: 0,
             receiptHistory: [],
@@ -1084,6 +1091,9 @@ export default function CustomerReportPortal() {
     userId: "",
     storeCode: "",
     promotionId: "",
+    promotionGiftGiven: {},
+    promotionGiftReceivedQuantities: {},
+    promotionGiftReceivedDate: new Date().toISOString().split("T")[0],
     traffic: 0,
     approach: 0,
     closedSales: 0,
@@ -1107,6 +1117,9 @@ export default function CustomerReportPortal() {
     competitorPromo: "",
     remark: "",
   });
+  const selectedEditPromotion = promotions.find(
+    (promotion) => String(promotion.id) === String(editForm.promotionId),
+  );
 
   useEffect(() => {
     let isCurrent = true;
@@ -1992,7 +2005,14 @@ export default function CustomerReportPortal() {
       reportDate: row.reportDate || new Date().toISOString().split("T")[0],
       userId: row.userId || "",
       storeCode: row.storeCode || "",
-      promotionId: row.promotionId || "",
+      promotionId: row.promotionId || row.promotion_id || "",
+      promotionGiftGiven:
+        row.promotion_gift_given && typeof row.promotion_gift_given === "object"
+          ? { ...row.promotion_gift_given }
+          : {},
+      promotionGiftReceivedQuantities: {},
+      promotionGiftReceivedDate:
+        row.reportDate || new Date().toISOString().split("T")[0],
       traffic: row.traffic || 0,
       approach: row.approach || 0,
       closedSales: row.closedSales || 0,
@@ -2049,6 +2069,9 @@ export default function CustomerReportPortal() {
       userId: userOptions[0]?.[0] || "",
       storeCode: storeOptions[0]?.[0] || "",
       promotionId: promotions[0]?.id || "",
+      promotionGiftGiven: {},
+      promotionGiftReceivedQuantities: {},
+      promotionGiftReceivedDate: new Date().toISOString().split("T")[0],
       traffic: 0,
       approach: 0,
       closedSales: 0,
@@ -2133,6 +2156,20 @@ export default function CustomerReportPortal() {
         promotionId: editForm.promotionId
           ? Number(editForm.promotionId)
           : undefined,
+        promotionGiftGiven: Object.fromEntries(
+          Object.entries(editForm.promotionGiftGiven || {}).filter(
+            ([, quantity]) => Number(quantity) > 0,
+          ),
+        ),
+        promotionGiftReceipts: Object.entries(
+          editForm.promotionGiftReceivedQuantities || {},
+        )
+          .filter(([, quantity]) => Number(quantity) > 0)
+          .map(([giftKey, quantity]) => ({
+            giftKey,
+            quantity: Number(quantity),
+            receivedDate: editForm.promotionGiftReceivedDate,
+          })),
         trafficCount: Number(editForm.traffic || 0),
         approachCount: Number(editForm.approach || 0),
         closedSalesCount: Number(editForm.closedSales || 0),
@@ -2948,8 +2985,8 @@ export default function CustomerReportPortal() {
                               ? "หยิบหน้าร้าน"
                               : "ส่งจากบริษัท"}
                           </td>
-                          <td className="px-2 py-2 font-mono text-slate-600">
-                            {row.storeCode}
+                          <td className="px-2 py-2 text-slate-600">
+                            {row.storeName}
                           </td>
                           <td className="px-2 py-2 text-slate-600">
                             {row.receiptHistory.length
@@ -4154,7 +4191,12 @@ export default function CustomerReportPortal() {
                   <select
                     value={editForm.promotionId}
                     onChange={(e) =>
-                      setEditForm({ ...editForm, promotionId: e.target.value })
+                      setEditForm({
+                        ...editForm,
+                        promotionId: e.target.value,
+                        promotionGiftGiven: {},
+                        promotionGiftReceivedQuantities: {},
+                      })
                     }
                     className="w-full border p-2 rounded-lg font-bold bg-amber-50 text-slate-800"
                   >
@@ -4167,6 +4209,97 @@ export default function CustomerReportPortal() {
                   </select>
                 </div>
               </div>
+
+              {selectedEditPromotion?.track_gift_inventory &&
+                selectedEditPromotion.gift_items?.length > 0 && (
+                  <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                    <div className="flex flex-col gap-2 border-b border-amber-200/60 pb-2 sm:flex-row sm:items-end sm:justify-between">
+                      <span className="font-bold text-amber-900">
+                        🎁 บันทึกของแถมที่แจกและรับเข้า
+                      </span>
+                      <label className="font-bold text-slate-600 sm:w-52">
+                        วันที่รับของแถม
+                        <input
+                          type="date"
+                          value={editForm.promotionGiftReceivedDate}
+                          onChange={(event) =>
+                            setEditForm({
+                              ...editForm,
+                              promotionGiftReceivedDate: event.target.value,
+                            })
+                          }
+                          className="mt-1 w-full rounded-lg border border-amber-200 bg-white p-2 font-mono text-xs"
+                        />
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {selectedEditPromotion.gift_items.map((gift: any) => (
+                        <div
+                          key={gift.key}
+                          className="rounded-lg border border-amber-200 bg-white p-2.5 font-bold text-slate-700"
+                        >
+                          <span className="mb-1 block text-[11px]">
+                            {gift.name}
+                          </span>
+                          <span className="mb-1 block text-[9px] font-medium text-slate-500">
+                            {gift.source_type === "STORE_PICKUP"
+                              ? "ของแถมหยิบหน้าร้าน"
+                              : "ของแถมส่งเข้าจากบริษัท"}
+                          </span>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="text-[10px] text-slate-600">
+                              จำนวนแจก
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={
+                                  editForm.promotionGiftGiven?.[gift.key] ?? ""
+                                }
+                                onChange={(event) =>
+                                  setEditForm({
+                                    ...editForm,
+                                    promotionGiftGiven: {
+                                      ...(editForm.promotionGiftGiven || {}),
+                                      [gift.key]: event.target.value,
+                                    },
+                                  })
+                                }
+                                className="mt-1 w-full rounded-lg border border-amber-200 bg-amber-50/50 p-2 font-mono text-xs"
+                                placeholder="จำนวนชิ้น"
+                              />
+                            </label>
+                            <label className="text-[10px] text-slate-600">
+                              จำนวนรับเข้า
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={
+                                  editForm.promotionGiftReceivedQuantities?.[
+                                    gift.key
+                                  ] ?? ""
+                                }
+                                onChange={(event) =>
+                                  setEditForm({
+                                    ...editForm,
+                                    promotionGiftReceivedQuantities: {
+                                      ...(editForm.promotionGiftReceivedQuantities ||
+                                        {}),
+                                      [gift.key]: event.target.value,
+                                    },
+                                  })
+                                }
+                                className="mt-1 w-full rounded-lg border border-amber-200 bg-white p-2 font-mono text-xs"
+                                placeholder="จำนวนชิ้น"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
               {/* 2. สถิติ Funnel */}
               <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100">

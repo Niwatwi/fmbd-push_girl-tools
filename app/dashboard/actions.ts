@@ -1711,6 +1711,38 @@ export async function adminSaveReportWithImagesAction(payload: any) {
     const competitorPrices = normalizeCompetitorPrices(
       payload.competitorPrices,
     );
+    const giftReceipts = (payload.promotionGiftReceipts || []).filter(
+      (receipt: any) => Number(receipt.quantity) > 0,
+    );
+    if (
+      giftReceipts.some(
+        (receipt: any) => !Number.isInteger(Number(receipt.quantity)),
+      )
+    ) {
+      throw new Error("จำนวนรับของแถมต้องเป็นจำนวนเต็ม");
+    }
+    if (giftReceipts.length > 0) {
+      if (!payload.promotionId) {
+        throw new Error("กรุณาเลือกรอบโปรโมชั่นก่อนบันทึกยอดรับของแถม");
+      }
+      const { data: promotion, error: promotionError } = await supabase
+        .from("promotions")
+        .select("track_gift_inventory, gift_items")
+        .eq("id", String(payload.promotionId))
+        .maybeSingle();
+      if (promotionError) throw promotionError;
+      if (
+        !promotion?.track_gift_inventory ||
+        giftReceipts.some(
+          (receipt: any) =>
+            !(promotion.gift_items || []).some(
+              (gift: any) => gift.key === receipt.giftKey,
+            ),
+        )
+      ) {
+        throw new Error("ไม่พบรายการของแถมในรอบโปรโมชั่นที่เลือก");
+      }
+    }
     const BUCKET_NAME = "pg-attendance-photos";
 
     const finalPhotos: any[] = [];
@@ -1787,6 +1819,15 @@ export async function adminSaveReportWithImagesAction(payload: any) {
       report_date: payload.reportDateInput,
       user_id: payload.userId,
       store_code: payload.storeCode,
+      promotion_id: payload.promotionId ? String(payload.promotionId) : null,
+      promotion_gift_given: Object.fromEntries(
+        Object.entries(payload.promotionGiftGiven || {})
+          .map(([giftKey, quantity]) => [
+            giftKey,
+            Math.max(0, Math.floor(Number(quantity) || 0)),
+          ])
+          .filter(([, quantity]) => Number(quantity) > 0),
+      ),
       traffic_count: payload.trafficCount,
       approach_count: payload.approachCount,
       closed_sales_count: payload.closedSalesCount,
@@ -1842,6 +1883,20 @@ export async function adminSaveReportWithImagesAction(payload: any) {
         .single();
       if (error) throw error;
       reportId = data.id;
+    }
+
+    if (giftReceipts.length > 0) {
+      const { error } = await supabase.from("promotion_gift_receipts").insert(
+        giftReceipts.map((receipt: any) => ({
+          promotion_id: Number(payload.promotionId),
+          gift_key: receipt.giftKey,
+          store_code: payload.storeCode,
+          received_date: receipt.receivedDate || payload.reportDateInput,
+          quantity: Number(receipt.quantity),
+          created_by: payload.userId,
+        })),
+      );
+      if (error) throw error;
     }
 
     if (reportId && Array.isArray(payload.products)) {

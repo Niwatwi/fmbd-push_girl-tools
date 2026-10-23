@@ -64,7 +64,6 @@ export default function PromotionsAdminPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [specialTierText, setSpecialTierText] = useState("");
-  const [staffGroup, setStaffGroup] = useState<string>("ALL");
   const [trackGiftInventory, setTrackGiftInventory] = useState(false);
   const [giftItems, setGiftItems] = useState<PromotionGiftItem[]>([]);
   const [calculationPeriod, setCalculationPeriod] = useState<
@@ -239,7 +238,6 @@ export default function PromotionsAdminPage() {
     setStartDate(promo.start_date?.slice(0, 10) || "");
     setEndDate(promo.end_date?.slice(0, 10) || "");
     setSpecialTierText(promo.special_tier_text || "");
-    setStaffGroup(promo.staff_group || "ALL");
     setTrackGiftInventory(Boolean(promo.track_gift_inventory));
     setGiftItems(promo.gift_items || []);
     setCalculationPeriod(promo.calculation_period || "DAILY");
@@ -276,7 +274,6 @@ export default function PromotionsAdminPage() {
     setStartDate("");
     setEndDate("");
     setSpecialTierText("");
-    setStaffGroup("ALL");
     setTrackGiftInventory(false);
     setGiftItems([]);
     setCalculationPeriod("DAILY");
@@ -431,7 +428,7 @@ export default function PromotionsAdminPage() {
       end_date: endDate || null,
       special_tier_text: specialTierText,
       is_active: isActive,
-      staff_group: staffGroup,
+      staff_group: "ALL",
       track_gift_inventory: trackGiftInventory,
       gift_items: giftItems.filter((gift) => gift.name.trim()),
       calculation_period: calculationPeriod,
@@ -619,35 +616,6 @@ export default function PromotionsAdminPage() {
               className="w-full border rounded-lg p-2 text-xs font-bold"
               required
             />
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-slate-600 block mb-1">
-              กลุ่มพนักงาน
-            </label>
-            <select
-              value={staffGroup}
-              onChange={(event) => setStaffGroup(event.target.value)}
-              className="w-full border rounded-lg p-2 text-xs font-bold bg-white"
-            >
-              <option value="ALL">ทั้งหมด</option>
-              {Array.from(
-                new Set(
-                  [
-                    ...stores.map((store) =>
-                      String(store.company_tag || "").trim(),
-                    ),
-                    staffGroup !== "ALL" ? staffGroup : "",
-                  ].filter(Boolean),
-                ),
-              )
-                .sort()
-                .map((group) => (
-                  <option key={group} value={group}>
-                    {group}
-                  </option>
-                ))}
-            </select>
           </div>
         </div>
 

@@ -442,29 +442,13 @@ export async function submitFullDailyActivityReportAction(
         throw new Error("แคมเปญนี้อยู่นอกช่วงวันที่ใช้งาน");
       }
 
-      const [profileResult, storeResult] = await Promise.all([
-        supabase
-          .from("user_profiles")
-          .select("company_tag")
-          .eq("id", userId)
-          .maybeSingle(),
-        supabase
-          .from("pg_stores")
-          .select("account")
-          .eq("store_code", payload.storeCode)
-          .maybeSingle(),
-      ]);
-      const staffGroup = String(profileResult.data?.company_tag || "")
-        .trim()
-        .toUpperCase();
-      const allowedGroup = String(campaign.staff_group || "ALL")
-        .trim()
-        .toUpperCase();
-      if (allowedGroup !== "ALL" && allowedGroup !== staffGroup) {
-        throw new Error("กลุ่มพนักงานไม่มีสิทธิ์ส่งรายงานในแคมเปญนี้");
-      }
+      const { data: storeResult } = await supabase
+        .from("pg_stores")
+        .select("account")
+        .eq("store_code", payload.storeCode)
+        .maybeSingle();
 
-      const storeCompanyTag = String(storeResult.data?.account || "");
+      const storeCompanyTag = String(storeResult?.account || "");
       const targetMatches =
         campaign.target_type === "ALL" ||
         (campaign.target_type === "STORE_CODE" &&

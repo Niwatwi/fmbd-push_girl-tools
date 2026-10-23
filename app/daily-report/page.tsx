@@ -298,7 +298,6 @@ export default function DailyReportPage() {
         const res = await getPromotionByStoreAction(
           storeCode,
           attendanceLog.store_company_tag,
-          attendanceLog.staff_group,
           user?.id,
           true,
         );
