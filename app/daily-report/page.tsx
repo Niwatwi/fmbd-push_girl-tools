@@ -30,6 +30,7 @@ import {
   getStoreInitialGiftsAction,
   getPromotionGiftInventoryAction,
   receivePromotionGiftStockAction,
+  uploadDailyReportPhotoAction,
 } from "./actions";
 import {
   getPromotionByStoreAction,
@@ -786,9 +787,50 @@ export default function DailyReportPage() {
             });
           }
 
+          const reportUserId = user?.id || 102;
+          const uploadPhoto = async (base64: string, prefix: string) => {
+            if (!base64.startsWith("data:image/")) return base64;
+            const uploadResult = await uploadDailyReportPhotoAction({
+              userId: reportUserId,
+              base64,
+              prefix,
+            });
+            if (!uploadResult.success || !uploadResult.url) {
+              throw new Error(uploadResult.message || "อัปโหลดรูปภาพไม่สำเร็จ");
+            }
+            return uploadResult.url;
+          };
+          const uploadedActivityPhotos = await Promise.all(
+            activityPhotos
+              .filter((photo) => photo.base64)
+              .map(async (photo) => ({
+                ...photo,
+                base64: await uploadPhoto(photo.base64, `act_${photo.type}`),
+              })),
+          );
+          const uploadedProducts = await Promise.all(
+            Array.from(reportProductsByBarcode.values()).map(
+              async (product) => ({
+                ...product,
+                img_product_base64: await uploadPhoto(
+                  product.img_product_base64,
+                  `prod_${product.barcode}_item`,
+                ),
+                img_shelf_base64: await uploadPhoto(
+                  product.img_shelf_base64,
+                  `prod_${product.barcode}_shelf`,
+                ),
+                img_stock_scanner_base64: await uploadPhoto(
+                  product.img_stock_scanner_base64,
+                  `prod_${product.barcode}_scan`,
+                ),
+              }),
+            ),
+          );
+
           const res = await submitFullDailyActivityReportAction({
             attendanceLogId: attendanceLog.id,
-            userId: user?.id || 102,
+            userId: reportUserId,
             storeCode: attendanceLog.store_code,
             promotionId: isPromotionActiveToday
               ? activePromotion?.id
@@ -818,8 +860,8 @@ export default function DailyReportPage() {
             feedbackStore: feedback,
             competitorPromotion: compPromo,
             remark: remark,
-            activityPhotos: activityPhotos.filter((p) => p.base64 !== ""),
-            products: Array.from(reportProductsByBarcode.values()),
+            activityPhotos: uploadedActivityPhotos,
+            products: uploadedProducts,
             priceOurGreen90: nourishGreen
               ? Number(nourishGreen.price_our) || 0
               : 0,

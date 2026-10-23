@@ -87,7 +87,9 @@ async function uploadBase64File(
   prefix: string,
   supabaseClient: any,
 ): Promise<string | null> {
-  if (!base64Data || !base64Data.startsWith("data:")) return null;
+  if (!base64Data) return null;
+  if (base64Data.startsWith("https://")) return base64Data;
+  if (!base64Data.startsWith("data:image/")) return null;
   try {
     const buffer = Buffer.from(
       base64Data.replace(/^data:image\/\w+;base64,/, ""),
@@ -116,6 +118,38 @@ async function uploadBase64File(
     console.error("Upload base64 photo exception:", error);
     return null;
   }
+}
+
+export async function uploadDailyReportPhotoAction(input: {
+  userId: number;
+  base64: string;
+  prefix: string;
+}) {
+  await requireUserOrAdminSession(input.userId);
+
+  if (!input.base64.startsWith("data:image/")) {
+    return { success: false, message: "ไฟล์รูปภาพไม่ถูกต้อง" };
+  }
+
+  const encodedImage = input.base64.split(",", 2)[1] || "";
+  if (Buffer.byteLength(encodedImage, "base64") > 3 * 1024 * 1024) {
+    return {
+      success: false,
+      message: "รูปภาพมีขนาดใหญ่เกินไป กรุณาเลือกรูปใหม่",
+    };
+  }
+
+  const safePrefix = input.prefix.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  const url = await uploadBase64File(
+    input.base64,
+    input.userId,
+    safePrefix,
+    getClientInstance(),
+  );
+
+  return url
+    ? { success: true, url }
+    : { success: false, message: "อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองอีกครั้ง" };
 }
 
 // 1. ค้นหาบาร์โค้ดสินค้าในตารางหลัก
@@ -497,7 +531,11 @@ export async function submitFullDailyActivityReportAction(
       payload.activityPhotos.length > 0
     ) {
       const uploadPromises = payload.activityPhotos.map(async (photo) => {
-        if (photo.base64 && photo.base64.startsWith("data:")) {
+        if (
+          photo.base64 &&
+          (photo.base64.startsWith("data:") ||
+            photo.base64.startsWith("https://"))
+        ) {
           const url = await uploadBase64File(
             photo.base64,
             userId,
