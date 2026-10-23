@@ -321,9 +321,17 @@ export default function DailyReportPage() {
                 campaign.start_date &&
                 String(campaign.start_date).slice(0, 10) > today,
             )
-            .sort((left, right) =>
-              String(left.start_date).localeCompare(String(right.start_date)),
-            )[0];
+            .sort((left, right) => {
+              const preferredId = String(res.promotion?.id || "");
+              const leftPreferred = String(left.id) === preferredId;
+              const rightPreferred = String(right.id) === preferredId;
+              if (leftPreferred !== rightPreferred) {
+                return leftPreferred ? -1 : 1;
+              }
+              return String(left.start_date).localeCompare(
+                String(right.start_date),
+              );
+            })[0];
           const displayCampaign = activeCampaign || nextCampaign || null;
           setPromotionData(displayCampaign);
           setActivePromotion(displayCampaign);
@@ -838,7 +846,7 @@ export default function DailyReportPage() {
               ? activePromotion?.commission_rules || null
               : null,
             promotionGiftGiven:
-              activePromotion?.track_gift_inventory && isPromotionActiveToday
+              activePromotion?.gift_items?.length && isPromotionActiveToday
                 ? Object.fromEntries(
                     (activePromotion.gift_items || []).map((gift) => [
                       gift.key,
@@ -1645,6 +1653,39 @@ export default function DailyReportPage() {
               )}
             </div>
           )}
+
+          {!activePromotion?.track_gift_inventory &&
+          activePromotion?.gift_items?.length ? (
+            <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 shadow-xs space-y-3 text-left">
+              <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5 border-b border-amber-200/60 pb-2">
+                <Package size={14} /> บันทึกจำนวนของแถมที่แจก
+              </h4>
+              <div className="grid grid-cols-2 gap-2">
+                {activePromotion.gift_items.map((gift) => (
+                  <label
+                    key={gift.key}
+                    className="block rounded-lg border border-amber-200 bg-white p-2.5 text-[10px] font-bold text-slate-700"
+                  >
+                    {gift.name}
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      placeholder="จำนวนที่แจก"
+                      value={giftGivenQuantities[gift.key] || ""}
+                      onChange={(event) =>
+                        setGiftGivenQuantities((current) => ({
+                          ...current,
+                          [gift.key]: event.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded border border-slate-300 bg-amber-50/50 p-2 text-xs"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {/* Section 3: ราคาคู่แข่ง และข้อมูลการตลาด */}
           <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3 text-left">

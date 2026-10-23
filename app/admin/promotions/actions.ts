@@ -235,10 +235,26 @@ export async function getPromotionByStoreAction(
     return false;
   });
 
+  const { data: storeTarget } = storeCode
+    ? await supabase
+        .from("store_targets")
+        .select("promotion_id")
+        .eq("store_code", storeCode)
+        .maybeSingle()
+    : { data: null };
+  const targetPromotionId = String(storeTarget?.promotion_id || "");
+  const sortedPromotions = targetPromotionId
+    ? [...filteredPromotions].sort(
+        (left, right) =>
+          Number(String(right.id) === targetPromotionId) -
+          Number(String(left.id) === targetPromotionId),
+      )
+    : filteredPromotions;
+
   return {
     success: true,
-    promotions: filteredPromotions,
-    promotion: filteredPromotions[0] || null, // เพิ่ม promotion เพื่อให้สอดคล้องกับ daily-report
+    promotions: sortedPromotions,
+    promotion: sortedPromotions[0] || null,
   };
 }
 
