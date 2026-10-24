@@ -610,6 +610,122 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
       .eq("user_id", userId)
       .gte("report_date", firstDayOfMonth);
 
+    const { data: giftReports } = await supabase
+      .from("pg_daily_activity_reports")
+      .select("store_code, promotion_id, promotion_gift_given")
+      .eq("user_id", userId)
+      .not("promotion_id", "is", null);
+    const giftPromotionIds = Array.from(
+      new Set(
+        (giftReports || []).map((report: any) => String(report.promotion_id)),
+      ),
+    );
+    const giftPromotionsResult = giftPromotionIds.length
+      ? await supabase
+          .from("promotions")
+          .select("id, campaign_title, track_gift_inventory, gift_items")
+          .in("id", giftPromotionIds)
+      : { data: [] };
+    const trackedGiftPromotions = (giftPromotionsResult.data || []).filter(
+      (promotion: any) => promotion.track_gift_inventory,
+    );
+    const giftPromotionById = new Map(
+      trackedGiftPromotions.map((promotion: any) => [
+        String(promotion.id),
+        promotion,
+      ]),
+    );
+    const giftStoreCodes = Array.from(
+      new Set(
+        (giftReports || [])
+          .filter((report: any) =>
+            giftPromotionById.has(String(report.promotion_id)),
+          )
+          .map((report: any) => String(report.store_code || ""))
+          .filter(Boolean),
+      ),
+    );
+    const { data: giftStores } = giftStoreCodes.length
+      ? await supabase
+          .from("pg_stores")
+          .select("store_code, store_name")
+          .in("store_code", giftStoreCodes)
+      : { data: [] };
+    const giftStoreNames = new Map(
+      (giftStores || []).map((store: any) => [
+        String(store.store_code),
+        String(store.store_name || store.store_code),
+      ]),
+    );
+    const giftInventoryRows = new Map<string, any>();
+
+    for (const promotion of trackedGiftPromotions as any[]) {
+      const promotionReports = (giftReports || []).filter(
+        (report: any) => String(report.promotion_id) === String(promotion.id),
+      );
+      const storeCodes = new Set(
+        promotionReports
+          .map((report: any) => String(report.store_code || ""))
+          .filter(Boolean),
+      );
+      for (const gift of promotion.gift_items || []) {
+        const giftKey = String(gift.key || "");
+        if (!giftKey) continue;
+        for (const storeCode of storeCodes) {
+          const key = `${promotion.id}:${giftKey}:${storeCode}`;
+          giftInventoryRows.set(key, {
+            key,
+            promotionId: String(promotion.id),
+            storeCode,
+            campaignTitle: promotion.campaign_title || "แคมเปญ",
+            giftName: gift.name || giftKey,
+            given: 0,
+          });
+        }
+      }
+    }
+
+    for (const report of giftReports || []) {
+      const quantities = report.promotion_gift_given || {};
+      for (const [giftKey, quantity] of Object.entries(quantities)) {
+        const key = `${report.promotion_id}:${giftKey}:${report.store_code}`;
+        const row = giftInventoryRows.get(key);
+        if (row) row.given += Number(quantity || 0);
+      }
+    }
+
+    const giftPerformanceGroups = new Map<string, any>();
+    for (const inventoryRow of giftInventoryRows.values()) {
+      const groupKey = `${inventoryRow.promotionId}:${inventoryRow.storeCode}`;
+      let group = giftPerformanceGroups.get(groupKey);
+      if (!group) {
+        group = {
+          key: groupKey,
+          storeCode: inventoryRow.storeCode,
+          storeName:
+            giftStoreNames.get(inventoryRow.storeCode) ||
+            inventoryRow.storeCode,
+          campaignTitle: inventoryRow.campaignTitle,
+          totalGiven: 0,
+          gifts: [],
+        };
+        giftPerformanceGroups.set(groupKey, group);
+      }
+      group.totalGiven += inventoryRow.given;
+      group.gifts.push({
+        key: inventoryRow.key,
+        name: inventoryRow.giftName,
+        given: inventoryRow.given,
+      });
+    }
+    const giftPerformance = Array.from(giftPerformanceGroups.values()).sort(
+      (a: any, b: any) =>
+        `${a.storeName}:${a.campaignTitle}`.localeCompare(
+          `${b.storeName}:${b.campaignTitle}`,
+          "th",
+        ),
+    );
+
     let monthlyTotalPacks = 0;
     if (monthlyReports && monthlyReports.length > 0) {
       monthlyReports.forEach((r: any) => {
@@ -636,6 +752,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
       monthlyProgress: {
         total_packs: monthlyTotalPacks,
       },
+      giftPerformance,
     };
   } catch (error: any) {
     console.error("GetUserDashboardDataAction Error:", error);

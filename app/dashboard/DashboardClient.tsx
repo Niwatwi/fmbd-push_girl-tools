@@ -270,17 +270,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
 
           setProductDetails(displayedProductDetails);
 
-          // 5. รายงานของแถม
-          setGiftSummary([
-            {
-              name: "ทิชชู่ส้มพรีเมียม",
-              given: Number(res.todaySales?.gift_orange_given || 0),
-            },
-            {
-              name: "ทิชชู่สูตรบำรุงผิว",
-              given: Number(res.todaySales?.gift_nourish_given || 0),
-            },
-          ]);
+          setGiftSummary(res.giftPerformance || []);
         }
       } catch (error) {
         console.error("Error loading dashboard data:", error);
@@ -585,34 +575,67 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           </div>
         </div>
 
-        {/* 🎁 ตารางคลังของแถมเฉพาะสาขา Tops */}
-        {!isBigC && (
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-xs space-y-2.5 text-left">
-            <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <Gift size={14} className="text-amber-500" />{" "}
-              รายงานยอดแจกของแถมแคมเปญ Tops
-            </h4>
+        <section className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-xs space-y-3 text-left">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-2">
+            <div>
+              <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <Gift size={14} className="text-amber-500" />{" "}
+                ยอดแจกของแถมตามแคมเปญ
+              </h4>
+              <p className="mt-1 text-[9px] font-medium text-slate-500">
+                ตามรีพอร์ตทั้งหมดของ {empCode} แยกตามร้านและแคมเปญ
+              </p>
+            </div>
+            <strong className="shrink-0 text-xs font-black text-amber-700">
+              {giftSummary.reduce(
+                (total, row) => total + Number(row.totalGiven || 0),
+                0,
+              )}{" "}
+              ชิ้น
+            </strong>
+          </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {giftSummary.map((gift, idx) => (
-                <div
-                  key={idx}
-                  className="bg-amber-50/50 p-2.5 rounded-xl border border-amber-200/60 space-y-1"
-                >
-                  <span className="text-[10px] font-black text-slate-800 block truncate">
-                    {gift.name}
-                  </span>
-                  <div className="flex justify-between items-center text-[9px] text-slate-500 font-bold">
-                    <span>แจกไปแล้ว:</span>
-                    <span className="text-amber-700 font-black font-mono text-xs">
-                      {gift.given} ชิ้น
+          {giftSummary.length ? (
+            <div className="divide-y divide-slate-100">
+              {giftSummary.map((row) => (
+                <div key={row.key} className="py-2.5 first:pt-0 last:pb-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-slate-800">
+                        {row.storeName}
+                      </p>
+                      <p className="mt-0.5 text-[9px] font-medium text-slate-500">
+                        {row.campaignTitle}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[10px] font-black text-emerald-700">
+                      {row.totalGiven} ชิ้น
                     </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-1.5">
+                    {row.gifts.map((gift: any) => (
+                      <div
+                        key={gift.key}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-2.5 py-2"
+                      >
+                        <span className="min-w-0 text-[10px] font-bold text-slate-700">
+                          {gift.name}
+                        </span>
+                        <span className="shrink-0 text-[10px] font-black text-slate-600">
+                          {gift.given} ชิ้น
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="py-3 text-center text-[10px] font-medium text-slate-500">
+              ยังไม่มีรายการแคมเปญของแถมในรีพอร์ตของคุณ
+            </p>
+          )}
+        </section>
       </main>
     </div>
   );
