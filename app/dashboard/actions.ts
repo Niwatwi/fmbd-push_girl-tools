@@ -2043,6 +2043,19 @@ export async function getProducts() {
 }
 
 // ดึงรายงานเต็มแบบ Customer Portal แบบปลอดภัย โดยรองรับตารางปัจจุบันและ legacy
+export async function getPromotionGiftReceiptsAction() {
+  try {
+    const supabase = await getCustomerPortalClientInstance();
+    const { data, error } = await supabase
+      .from("promotion_gift_receipts")
+      .select("promotion_id, gift_key, store_code, received_date, quantity");
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (error: any) {
+    return { success: false, data: [], message: error.message };
+  }
+}
+
 export async function getCustomerFullActivityReport() {
   try {
     const supabase = await getCustomerPortalClientInstance();

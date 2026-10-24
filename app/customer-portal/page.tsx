@@ -48,6 +48,7 @@ import {
 import {
   getCustomerPortalAdminAccess,
   getCustomerFullActivityReport,
+  getPromotionGiftReceiptsAction,
   adminSaveReportWithImagesAction,
   getAdminSalarySummaryReportAction,
 } from "../dashboard/actions";
@@ -1195,10 +1196,8 @@ export default function CustomerReportPortal() {
       if (promoRes.success) {
         setPromotions(promoRes.data || []);
       }
-      const { data: receiptData, error: receiptError } = await supabase
-        .from("promotion_gift_receipts")
-        .select("promotion_id, gift_key, store_code, received_date, quantity");
-      if (!receiptError && receiptData) setGiftReceipts(receiptData);
+      const receiptRes = await getPromotionGiftReceiptsAction();
+      if (receiptRes.success) setGiftReceipts(receiptRes.data);
     } catch (error: any) {
       console.error("Customer portal data load error:", error);
       Swal.fire(
