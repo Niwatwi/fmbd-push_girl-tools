@@ -2050,9 +2050,26 @@ export async function getPromotionGiftReceiptsAction() {
       .from("promotion_gift_receipts")
       .select("promotion_id, gift_key, store_code, received_date, quantity");
     if (error) throw error;
-    return { success: true, data: data || [] };
+
+    const storeCodes = Array.from(
+      new Set((data || []).map((row) => String(row.store_code))),
+    );
+    const { data: stores } = storeCodes.length
+      ? await supabase
+          .from("pg_stores")
+          .select("store_code, store_name")
+          .in("store_code", storeCodes)
+          .order("id", { ascending: true })
+      : { data: [] };
+    const storeNames: Record<string, string> = {};
+    for (const store of stores || []) {
+      if (store.store_name && !storeNames[store.store_code]) {
+        storeNames[store.store_code] = store.store_name;
+      }
+    }
+    return { success: true, data: data || [], storeNames };
   } catch (error: any) {
-    return { success: false, data: [], message: error.message };
+    return { success: false, data: [], storeNames: {}, message: error.message };
   }
 }
 

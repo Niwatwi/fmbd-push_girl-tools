@@ -653,6 +653,9 @@ export default function CustomerReportPortal() {
   const [loading, setLoading] = useState(true);
   const [reportProducts, setReportProducts] = useState<any[]>([]);
   const [giftReceipts, setGiftReceipts] = useState<any[]>([]);
+  const [giftStoreNames, setGiftStoreNames] = useState<Record<string, string>>(
+    {},
+  );
 
   const campaignGiftInventory = useMemo(() => {
     const rows = new Map<string, any>();
@@ -687,7 +690,10 @@ export default function CustomerReportPortal() {
             giftName: gift.name,
             sourceType: gift.source_type,
             storeCode,
-            storeName: storeNames.get(storeCode) || storeCode,
+            storeName:
+              storeNames.get(storeCode) ||
+              giftStoreNames[storeCode] ||
+              storeCode,
             received: 0,
             given: 0,
             receiptHistory: [],
@@ -720,7 +726,7 @@ export default function CustomerReportPortal() {
       ...row,
       remaining: Math.max(0, row.received - row.given),
     }));
-  }, [promotions, reportData, giftReceipts]);
+  }, [promotions, reportData, giftReceipts, giftStoreNames]);
 
   const fetchProductsData = async () => {
     const { data, error } = await supabase
@@ -1197,7 +1203,10 @@ export default function CustomerReportPortal() {
         setPromotions(promoRes.data || []);
       }
       const receiptRes = await getPromotionGiftReceiptsAction();
-      if (receiptRes.success) setGiftReceipts(receiptRes.data);
+      if (receiptRes.success) {
+        setGiftReceipts(receiptRes.data);
+        setGiftStoreNames(receiptRes.storeNames);
+      }
     } catch (error: any) {
       console.error("Customer portal data load error:", error);
       Swal.fire(
