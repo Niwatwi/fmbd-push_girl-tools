@@ -448,6 +448,8 @@ export async function submitFullDailyActivityReportAction(
         .from("pg_stores")
         .select("account")
         .eq("store_code", payload.storeCode)
+        .order("id", { ascending: true })
+        .limit(1)
         .maybeSingle();
 
       const storeCompanyTag = String(storeResult?.account || "");

@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Clock,
   Package,
+  Video,
 } from "lucide-react";
 
 interface UserSession {
@@ -576,6 +577,16 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
             <span className="font-black text-slate-800 flex items-center gap-3">
               <FileSpreadsheet className="text-blue-600" /> ส่งรายงาน Daily
               Report
+            </span>
+            <ChevronRight size={16} />
+          </button>
+
+          <button
+            onClick={() => router.push("/sales-videos/upload")}
+            className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+          >
+            <span className="font-black text-slate-800 flex items-center gap-3">
+              <Video className="text-rose-600" /> อัปโหลดคลิปวิดีโอการเชียร์ขาย
             </span>
             <ChevronRight size={16} />
           </button>

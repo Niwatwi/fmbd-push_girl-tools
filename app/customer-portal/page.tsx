@@ -27,7 +27,9 @@ import {
   Upload,
   Tag,
   LogOut,
+  Video,
 } from "lucide-react";
+import Link from "next/link";
 import {
   BarChart,
   Bar,
@@ -2783,6 +2785,13 @@ export default function CustomerReportPortal() {
               </div>
 
               <div className="flex items-center gap-1 sm:gap-2">
+                <Link
+                  href="/customer-portal/videos"
+                  className="portal-button-soft flex items-center gap-1 px-2.5 py-1.5 text-slate-800 font-bold text-[11px] sm:text-xs rounded-xl transition cursor-pointer whitespace-nowrap"
+                >
+                  <Video size={14} />
+                  <span>คลิปเชียร์ขาย</span>
+                </Link>
                 <button
                   onClick={handleExportExcel}
                   className="portal-button-primary flex items-center gap-1.5 px-3 py-1.5 text-white rounded-xl hover:brightness-105 text-sm font-semibold transition-all cursor-pointer"
