@@ -19,7 +19,7 @@ function getClientInstance() {
 export interface ActivityPhotoPayload {
   type: string;
   label: string;
-  base64: string;
+  url: string;
 }
 
 export interface ProductReportPayload {
@@ -33,9 +33,9 @@ export interface ProductReportPayload {
   stock_before: number;
   sales_qty: number;
   stock_after: number;
-  img_product_base64?: string;
-  img_shelf_base64?: string;
-  img_stock_scanner_base64?: string;
+  img_product_url?: string;
+  img_shelf_url?: string;
+  img_stock_scanner_url?: string;
 }
 
 export interface DbProductItem {
@@ -132,7 +132,7 @@ export async function uploadDailyReportPhotoAction(input: {
   }
 
   const encodedImage = input.base64.split(",", 2)[1] || "";
-  if (Buffer.byteLength(encodedImage, "base64") > 3 * 1024 * 1024) {
+  if (Buffer.byteLength(encodedImage, "base64") > 500 * 1024) {
     return {
       success: false,
       message: "รูปภาพมีขนาดใหญ่เกินไป กรุณาเลือกรูปใหม่",
@@ -419,6 +419,24 @@ export async function submitFullDailyActivityReportAction(
   const supabase = getClientInstance();
   try {
     const userId = payload.userId;
+    const storageUrlPrefix = `${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/public/pg-attendance-photos/`;
+    const requirePhotoUrl = (url: string | undefined) => {
+      if (!url) return "";
+      if (!url.startsWith(storageUrlPrefix)) {
+        throw new Error("รูปภาพยังไม่ได้อัปโหลดไปยังที่จัดเก็บ กรุณาลองใหม่");
+      }
+      return url;
+    };
+    const activityPhotos = (payload.activityPhotos || []).map((photo) => ({
+      ...photo,
+      url: requirePhotoUrl(photo.url),
+    }));
+    const products = (payload.products || []).map((product) => ({
+      ...product,
+      img_product_url: requirePhotoUrl(product.img_product_url),
+      img_shelf_url: requirePhotoUrl(product.img_shelf_url),
+      img_stock_scanner_url: requirePhotoUrl(product.img_stock_scanner_url),
+    }));
 
     if (payload.promotionId) {
       const { data: campaign, error: campaignError } = await supabase
@@ -514,40 +532,15 @@ export async function submitFullDailyActivityReportAction(
     let photoAtmosphere1 = "";
     let photoAtmosphere2 = "";
 
-    if (
-      Array.isArray(payload.activityPhotos) &&
-      payload.activityPhotos.length > 0
-    ) {
-      const uploadPromises = payload.activityPhotos.map(async (photo) => {
-        if (
-          photo.base64 &&
-          (photo.base64.startsWith("data:") ||
-            photo.base64.startsWith("https://"))
-        ) {
-          const url = await uploadBase64File(
-            photo.base64,
-            userId,
-            `act_${photo.type}`,
-            supabase,
-          );
-          return { type: photo.type, url: url || "" };
-        }
-        return null;
-      });
-
-      const results = await Promise.all(uploadPromises);
-
-      for (const res of results) {
-        if (!res) continue;
-        if (res.type === "staff_holding") photoStaffHolding = res.url;
-        else if (res.type === "cheer_sales") photoCheerSales = res.url;
-        else if (res.type === "customer_basket_1")
-          photoCustomerBasket1 = res.url;
-        else if (res.type === "customer_basket_2")
-          photoCustomerBasket2 = res.url;
-        else if (res.type === "atmosphere_1") photoAtmosphere1 = res.url;
-        else if (res.type === "atmosphere_2") photoAtmosphere2 = res.url;
-      }
+    for (const photo of activityPhotos) {
+      if (photo.type === "staff_holding") photoStaffHolding = photo.url;
+      else if (photo.type === "cheer_sales") photoCheerSales = photo.url;
+      else if (photo.type === "customer_basket_1")
+        photoCustomerBasket1 = photo.url;
+      else if (photo.type === "customer_basket_2")
+        photoCustomerBasket2 = photo.url;
+      else if (photo.type === "atmosphere_1") photoAtmosphere1 = photo.url;
+      else if (photo.type === "atmosphere_2") photoAtmosphere2 = photo.url;
     }
 
     // บันทึกตารางหลัก pg_daily_activity_reports พร้อมคอลัมน์รูปภาพใหม่
@@ -617,59 +610,23 @@ export async function submitFullDailyActivityReportAction(
     if (deleteProductsError) throw deleteProductsError;
 
     // บันทึกรายการสินค้าเข้าตาราง pg_daily_report_products (Dynamic)
-    if (
-      Array.isArray(payload.products) &&
-      payload.products.length > 0 &&
-      reportData?.id
-    ) {
-      const productPromises = payload.products.map(async (prod) => {
-        const [imgProductUrl, imgShelfUrl, imgStockScannerUrl] =
-          await Promise.all([
-            prod.img_product_base64
-              ? uploadBase64File(
-                  prod.img_product_base64,
-                  userId,
-                  `prod_${prod.barcode}_item`,
-                  supabase,
-                )
-              : Promise.resolve(""),
-            prod.img_shelf_base64
-              ? uploadBase64File(
-                  prod.img_shelf_base64,
-                  userId,
-                  `prod_${prod.barcode}_shelf`,
-                  supabase,
-                )
-              : Promise.resolve(""),
-            prod.img_stock_scanner_base64
-              ? uploadBase64File(
-                  prod.img_stock_scanner_base64,
-                  userId,
-                  `prod_${prod.barcode}_scan`,
-                  supabase,
-                )
-              : Promise.resolve(""),
-          ]);
-
-        return {
-          report_id: reportData.id,
-          barcode: prod.barcode,
-          descriptions: prod.descriptions,
-          item_scope: prod.item_scope || "OUR",
-          credit_factor: Number(prod.credit_factor ?? 1),
-          promotion_target_qty: Number(prod.promotion_target_qty || 0),
-          competitor_price: Number(prod.competitor_price || 0),
-          price_our: Number(prod.price_our || 0),
-          stock_before: Number(prod.stock_before || 0),
-          sales_qty: Number(prod.sales_qty || 0),
-          stock_after: Number(prod.stock_after || 0),
-          img_product: imgProductUrl || "",
-          img_shelf: imgShelfUrl || "",
-          img_stock_scanner: imgStockScannerUrl || "",
-        };
-      });
-
-      const productRecords = await Promise.all(productPromises);
+    if (products.length > 0 && reportData?.id) {
+      const productRecords = products.map((prod) => ({
+        report_id: reportData.id,
+        barcode: prod.barcode,
+        descriptions: prod.descriptions,
+        item_scope: prod.item_scope || "OUR",
+        credit_factor: Number(prod.credit_factor ?? 1),
+        promotion_target_qty: Number(prod.promotion_target_qty || 0),
+        competitor_price: Number(prod.competitor_price || 0),
+        price_our: Number(prod.price_our || 0),
+        stock_before: Number(prod.stock_before || 0),
+        sales_qty: Number(prod.sales_qty || 0),
+        stock_after: Number(prod.stock_after || 0),
+        img_product: prod.img_product_url || "",
+        img_shelf: prod.img_shelf_url || "",
+        img_stock_scanner: prod.img_stock_scanner_url || "",
+      }));
 
       if (productRecords.length > 0) {
         const { error: prodInsertError } = await supabase

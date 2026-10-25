@@ -506,45 +506,114 @@ export default function DailyReportPage() {
     }
   };
 
-  const processFileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          const MAX_WIDTH = 800;
-          const MAX_HEIGHT = 800;
-          let width = img.width;
-          let height = img.height;
+  const processFileToBase64 = async (file: File): Promise<string | null> => {
+    if (!file.type.startsWith("image/")) {
+      Swal.fire("ไฟล์ไม่รองรับ", "กรุณาเลือกไฟล์รูปภาพค่ะ", "warning");
+      return null;
+    }
 
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
+    let imageSource: CanvasImageSource | null = null;
+    let imageWidth = 0;
+    let imageHeight = 0;
+    let cleanup = () => {};
+    let canvas: HTMLCanvasElement | null = null;
+
+    try {
+      if (typeof createImageBitmap === "function") {
+        try {
+          const bitmap = await createImageBitmap(file);
+          imageSource = bitmap;
+          imageWidth = bitmap.width;
+          imageHeight = bitmap.height;
+          cleanup = () => bitmap.close();
+        } catch {
+          // Fall back to the browser image decoder for formats it supports.
+        }
+      }
+
+      if (!imageWidth || !imageHeight) {
+        const objectUrl = URL.createObjectURL(file);
+        const image = new Image();
+        try {
+          await new Promise<void>((resolve, reject) => {
+            image.onload = () => resolve();
+            image.onerror = () => reject(new Error("เปิดไฟล์รูปภาพนี้ไม่ได้"));
+            image.src = objectUrl;
+          });
+          imageSource = image;
+          imageWidth = image.naturalWidth;
+          imageHeight = image.naturalHeight;
+          cleanup = () => URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+          URL.revokeObjectURL(objectUrl);
+          throw error;
+        }
+      }
+
+      if (!imageSource || !imageWidth || !imageHeight) {
+        throw new Error("ไม่พบขนาดรูปภาพ กรุณาเลือกรูปใหม่");
+      }
+
+      const maxDimension = 1280;
+      let width = Math.round(
+        imageWidth *
+          Math.min(1, maxDimension / Math.max(imageWidth, imageHeight)),
+      );
+      let height = Math.round(
+        imageHeight *
+          Math.min(1, maxDimension / Math.max(imageWidth, imageHeight)),
+      );
+      canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("เตรียมรูปภาพสำหรับบันทึกไม่สำเร็จ");
+
+      for (let resizeAttempt = 0; resizeAttempt < 6; resizeAttempt += 1) {
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(imageSource, 0, 0, width, height);
+
+        for (const quality of [0.76, 0.64, 0.52, 0.4]) {
+          const compressedBlob = await new Promise<Blob>((resolve, reject) => {
+            canvas?.toBlob(
+              (blob) =>
+                blob
+                  ? resolve(blob)
+                  : reject(new Error("บีบอัดรูปภาพไม่สำเร็จ")),
+              "image/jpeg",
+              quality,
+            );
+          });
+
+          if (compressedBlob.size <= 350 * 1024) {
+            return await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () =>
+                typeof reader.result === "string"
+                  ? resolve(reader.result)
+                  : reject(new Error("เตรียมรูปภาพไม่สำเร็จ"));
+              reader.onerror = () => reject(new Error("อ่านรูปภาพไม่สำเร็จ"));
+              reader.readAsDataURL(compressedBlob);
+            });
           }
+        }
 
-          canvas.width = width;
-          canvas.height = height;
+        width = Math.round(width * 0.8);
+        height = Math.round(height * 0.8);
+      }
 
-          const ctx = canvas.getContext("2d");
-          ctx?.drawImage(img, 0, 0, width, height);
-
-          const compressedBase64 = canvas.toDataURL("image/jpeg", 0.5);
-          resolve(compressedBase64);
-        };
-        img.onerror = reject;
-      };
-      reader.onerror = reject;
-    });
+      throw new Error("ลดขนาดรูปภาพไม่สำเร็จ กรุณาเลือกรูปอื่นค่ะ");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "กรุณาเลือกรูปใหม่ค่ะ";
+      Swal.fire("ไม่สามารถใช้รูปภาพได้", message, "error");
+      return null;
+    } finally {
+      cleanup();
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+    }
   };
 
   const handleProductPhotoChange = async (
@@ -562,6 +631,7 @@ export default function DailyReportPage() {
       return;
     }
     const base64Str = await processFileToBase64(file);
+    if (!base64Str) return;
     setProductsForm((prev) =>
       prev.map((p) =>
         p.barcode === barcode ? { ...p, [field]: base64Str } : p,
@@ -576,6 +646,7 @@ export default function DailyReportPage() {
   ) => {
     if (!file) return;
     const base64 = await processFileToBase64(file);
+    if (!base64) return;
     setCompetitorPhotos((current) => ({
       ...current,
       [barcode]: { ...current[barcode], [field]: base64 },
@@ -590,6 +661,7 @@ export default function DailyReportPage() {
       return;
     }
     const base64Str = await processFileToBase64(file);
+    if (!base64Str) return;
     setActivityPhotos((prev) =>
       prev.map((p) => (p.type === type ? { ...p, base64: base64Str } : p)),
     );
@@ -861,31 +933,42 @@ export default function DailyReportPage() {
           const uploadedActivityPhotos = await mapWithConcurrency(
             activityPhotos.filter((photo) => photo.base64),
             3,
-            async (photo) => ({
-              ...photo,
-              base64: await uploadPhoto(photo.base64, `act_${photo.type}`),
-            }),
+            async (photo) => {
+              const { base64, ...photoData } = photo;
+              return {
+                ...photoData,
+                url: await uploadPhoto(base64, `act_${photo.type}`),
+              };
+            },
           );
           submissionStage = "อัปโหลดรูปสินค้า";
           Swal.update({ title: "กำลังอัปโหลดรูปสินค้า..." });
           const uploadedProducts = await mapWithConcurrency(
             Array.from(reportProductsByBarcode.values()),
             3,
-            async (product) => ({
-              ...product,
-              img_product_base64: await uploadPhoto(
-                product.img_product_base64,
-                `prod_${product.barcode}_item`,
-              ),
-              img_shelf_base64: await uploadPhoto(
-                product.img_shelf_base64,
-                `prod_${product.barcode}_shelf`,
-              ),
-              img_stock_scanner_base64: await uploadPhoto(
-                product.img_stock_scanner_base64,
-                `prod_${product.barcode}_scan`,
-              ),
-            }),
+            async (product) => {
+              const {
+                img_product_base64,
+                img_shelf_base64,
+                img_stock_scanner_base64,
+                ...productData
+              } = product;
+              return {
+                ...productData,
+                img_product_url: await uploadPhoto(
+                  img_product_base64,
+                  `prod_${product.barcode}_item`,
+                ),
+                img_shelf_url: await uploadPhoto(
+                  img_shelf_base64,
+                  `prod_${product.barcode}_shelf`,
+                ),
+                img_stock_scanner_url: await uploadPhoto(
+                  img_stock_scanner_base64,
+                  `prod_${product.barcode}_scan`,
+                ),
+              };
+            },
           );
 
           submissionStage = "บันทึกรายงานลงฐานข้อมูล";
