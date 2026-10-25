@@ -1792,39 +1792,60 @@ export default function DailyReportPage() {
                           ).map(([field, label]) => {
                             const photo = competitorPhotos[barcode]?.[field];
                             return (
-                              <label
+                              <div
                                 key={field}
-                                className="flex h-14 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-white text-[8px] font-bold text-slate-500"
-                                title={`${label}: ถ่ายรูปหรือเลือกไฟล์`}
+                                className="flex h-16 flex-col items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-white text-[8px] font-bold text-slate-500"
+                                title={label}
                               >
                                 {photo ? (
                                   <img
                                     src={photo}
                                     alt={label}
-                                    className="h-8 w-full object-cover"
+                                    className="h-7 w-full object-cover"
                                   />
                                 ) : (
-                                  <Camera
+                                  <ImageIcon
                                     size={14}
-                                    className="mb-1 text-slate-400"
+                                    className="text-slate-400"
                                   />
                                 )}
                                 <span className="truncate px-1">{label}</span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  capture="environment"
-                                  className="sr-only"
-                                  onChange={(event) => {
-                                    void handleCompetitorPhotoChange(
-                                      barcode,
-                                      field,
-                                      event.target.files?.[0] || null,
-                                    );
-                                    event.target.value = "";
-                                  }}
-                                />
-                              </label>
+                                <div className="flex w-full items-center justify-center gap-1">
+                                  <label className="flex cursor-pointer items-center gap-0.5 text-[7px] text-slate-600">
+                                    <Camera size={10} /> กล้อง
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      capture="environment"
+                                      className="sr-only"
+                                      onChange={(event) => {
+                                        void handleCompetitorPhotoChange(
+                                          barcode,
+                                          field,
+                                          event.target.files?.[0] || null,
+                                        );
+                                        event.target.value = "";
+                                      }}
+                                    />
+                                  </label>
+                                  <label className="flex cursor-pointer items-center gap-0.5 text-[7px] text-slate-600">
+                                    <ImageIcon size={10} /> แกลเลอรี
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="sr-only"
+                                      onChange={(event) => {
+                                        void handleCompetitorPhotoChange(
+                                          barcode,
+                                          field,
+                                          event.target.files?.[0] || null,
+                                        );
+                                        event.target.value = "";
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+                              </div>
                             );
                           })}
                         </div>
