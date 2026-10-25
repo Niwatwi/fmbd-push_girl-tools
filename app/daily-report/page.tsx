@@ -124,6 +124,50 @@ const QUICK_PRODUCTS = [
   },
 ];
 
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+) {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(
+      () => reject(new Error(message)),
+      timeoutMs,
+    );
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex++;
+        results[index] = await mapper(items[index]);
+      }
+    }),
+  );
+
+  return results;
+}
+
 export default function DailyReportPage() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -701,6 +745,7 @@ export default function DailyReportPage() {
           didOpen: () => Swal.showLoading(),
         });
 
+        let submissionStage = "เตรียมข้อมูลรายงาน";
         try {
           const today = new Intl.DateTimeFormat("en-CA", {
             timeZone: "Asia/Bangkok",
@@ -797,45 +842,55 @@ export default function DailyReportPage() {
           const reportUserId = user?.id || 102;
           const uploadPhoto = async (base64: string, prefix: string) => {
             if (!base64.startsWith("data:image/")) return base64;
-            const uploadResult = await uploadDailyReportPhotoAction({
-              userId: reportUserId,
-              base64,
-              prefix,
-            });
+            const uploadResult = await withTimeout(
+              uploadDailyReportPhotoAction({
+                userId: reportUserId,
+                base64,
+                prefix,
+              }),
+              60_000,
+              `อัปโหลดรูป ${prefix} ใช้เวลานานเกินไป กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่`,
+            );
             if (!uploadResult.success || !uploadResult.url) {
               throw new Error(uploadResult.message || "อัปโหลดรูปภาพไม่สำเร็จ");
             }
             return uploadResult.url;
           };
-          const uploadedActivityPhotos = await Promise.all(
-            activityPhotos
-              .filter((photo) => photo.base64)
-              .map(async (photo) => ({
-                ...photo,
-                base64: await uploadPhoto(photo.base64, `act_${photo.type}`),
-              })),
+          submissionStage = "อัปโหลดรูปกิจกรรม";
+          Swal.update({ title: "กำลังอัปโหลดรูปกิจกรรม..." });
+          const uploadedActivityPhotos = await mapWithConcurrency(
+            activityPhotos.filter((photo) => photo.base64),
+            3,
+            async (photo) => ({
+              ...photo,
+              base64: await uploadPhoto(photo.base64, `act_${photo.type}`),
+            }),
           );
-          const uploadedProducts = await Promise.all(
-            Array.from(reportProductsByBarcode.values()).map(
-              async (product) => ({
-                ...product,
-                img_product_base64: await uploadPhoto(
-                  product.img_product_base64,
-                  `prod_${product.barcode}_item`,
-                ),
-                img_shelf_base64: await uploadPhoto(
-                  product.img_shelf_base64,
-                  `prod_${product.barcode}_shelf`,
-                ),
-                img_stock_scanner_base64: await uploadPhoto(
-                  product.img_stock_scanner_base64,
-                  `prod_${product.barcode}_scan`,
-                ),
-              }),
-            ),
+          submissionStage = "อัปโหลดรูปสินค้า";
+          Swal.update({ title: "กำลังอัปโหลดรูปสินค้า..." });
+          const uploadedProducts = await mapWithConcurrency(
+            Array.from(reportProductsByBarcode.values()),
+            3,
+            async (product) => ({
+              ...product,
+              img_product_base64: await uploadPhoto(
+                product.img_product_base64,
+                `prod_${product.barcode}_item`,
+              ),
+              img_shelf_base64: await uploadPhoto(
+                product.img_shelf_base64,
+                `prod_${product.barcode}_shelf`,
+              ),
+              img_stock_scanner_base64: await uploadPhoto(
+                product.img_stock_scanner_base64,
+                `prod_${product.barcode}_scan`,
+              ),
+            }),
           );
 
-          const res = await submitFullDailyActivityReportAction({
+          submissionStage = "บันทึกรายงานลงฐานข้อมูล";
+          Swal.update({ title: "กำลังบันทึกรายงานลงฐานข้อมูล..." });
+          const submissionPromise = submitFullDailyActivityReportAction({
             attendanceLogId: attendanceLog.id,
             userId: reportUserId,
             storeCode: attendanceLog.store_code,
@@ -941,6 +996,11 @@ export default function DailyReportPage() {
                 ? giftNourishAfter
                 : 0,
           } as any);
+          const res = await withTimeout(
+            submissionPromise,
+            90_000,
+            "บันทึกรายงานใช้เวลานานเกินไป กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่",
+          );
 
           Swal.close();
           if (res?.success) {
@@ -961,7 +1021,8 @@ export default function DailyReportPage() {
           Swal.close();
           Swal.fire(
             "การเชื่อมต่อขัดข้อง",
-            "ขนาดไฟล์รูปภาพอาจใหญ่เกินไป หรือสัญญาณอินเทอร์เน็ตหลุด กรุณาลองใหม่อีกครั้ง",
+            error?.message ||
+              `การเชื่อมต่อขัดข้องระหว่าง${submissionStage} กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่`,
             "error",
           );
         }
