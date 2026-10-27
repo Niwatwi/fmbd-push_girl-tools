@@ -531,58 +531,59 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
     const firstDayOfMonth = `${yearMonthDay.substring(0, 7)}-01`;
 
-    let profile: any = null;
-    const { data: p1 } = await supabase
-      .from("user_profiles")
-      .select("display_name, employee_id, area, company_tag")
-      .eq("id", userId)
-      .maybeSingle();
-    profile = p1;
-
-    if (!profile) {
-      const { data: p2 } = await supabase
+    const [
+      profileById,
+      profileByUserId,
+      profileLegacy,
+      { data: attendance },
+      { data: recentReports },
+      { data: monthlyReports },
+      { data: giftReports },
+    ] = await Promise.all([
+      supabase
+        .from("user_profiles")
+        .select("display_name, employee_id, area, company_tag")
+        .eq("id", userId)
+        .maybeSingle(),
+      supabase
         .from("user_profiles")
         .select("display_name, employee_id, area, company_tag")
         .eq("user_id", userId)
-        .maybeSingle();
-      profile = p2;
-    }
-
-    if (!profile) {
-      const { data: p3 } = await supabase
+        .maybeSingle(),
+      supabase
         .from("profiles")
         .select("display_name, employee_id, area, company_tag")
         .eq("id", userId)
-        .maybeSingle();
-      profile = p3;
-    }
+        .maybeSingle(),
+      supabase
+        .from("pg_attendance_logs")
+        .select("store_code, store_name")
+        .eq("user_id", userId)
+        .order("check_in_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("pg_daily_activity_reports")
+        .select("*, pg_daily_report_products (*)")
+        .eq("user_id", userId)
+        .order("id", { ascending: false })
+        .limit(5),
+      supabase
+        .from("pg_daily_activity_reports")
+        .select("*, pg_daily_report_products (*)")
+        .eq("user_id", userId)
+        .gte("report_date", firstDayOfMonth),
+      supabase
+        .from("pg_daily_activity_reports")
+        .select("store_code, promotion_id, promotion_gift_given")
+        .eq("user_id", userId)
+        .not("promotion_id", "is", null),
+    ]);
 
-    const { data: attendance } = await supabase
-      .from("pg_attendance_logs")
-      .select("store_code, store_name")
-      .eq("user_id", userId)
-      .order("check_in_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const profile: any =
+      profileById.data || profileByUserId.data || profileLegacy.data || null;
 
     const activeStoreCode = attendance?.store_code || profile?.area || "";
-
-    let storeTarget = null;
-    if (activeStoreCode) {
-      const { data: targetData } = await supabase
-        .from("store_targets")
-        .select("*")
-        .eq("store_code", activeStoreCode)
-        .maybeSingle();
-      storeTarget = targetData;
-    }
-
-    const { data: recentReports } = await supabase
-      .from("pg_daily_activity_reports")
-      .select("*, pg_daily_report_products (*)")
-      .eq("user_id", userId)
-      .order("id", { ascending: false })
-      .limit(5);
 
     let todayReport =
       (recentReports || []).find((r: any) => {
@@ -592,40 +593,39 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
       recentReports?.[0] ||
       null;
 
-    let currentPromotion = null;
-    if (todayReport?.promotion_id) {
-      const { data: promotion } = await supabase
-        .from("promotions")
-        .select(
-          "id, campaign_title, items:promotion_items(*, products(barcode, descriptions, sku_code))",
-        )
-        .eq("id", String(todayReport.promotion_id))
-        .maybeSingle();
-      currentPromotion = promotion;
-    }
-
-    const { data: monthlyReports } = await supabase
-      .from("pg_daily_activity_reports")
-      .select("*, pg_daily_report_products (*)")
-      .eq("user_id", userId)
-      .gte("report_date", firstDayOfMonth);
-
-    const { data: giftReports } = await supabase
-      .from("pg_daily_activity_reports")
-      .select("store_code, promotion_id, promotion_gift_given")
-      .eq("user_id", userId)
-      .not("promotion_id", "is", null);
     const giftPromotionIds = Array.from(
       new Set(
         (giftReports || []).map((report: any) => String(report.promotion_id)),
       ),
     );
-    const giftPromotionsResult = giftPromotionIds.length
-      ? await supabase
-          .from("promotions")
-          .select("id, campaign_title, track_gift_inventory, gift_items")
-          .in("id", giftPromotionIds)
-      : { data: [] };
+
+    const [targetResult, promotionResult, giftPromotionsResult] =
+      await Promise.all([
+        activeStoreCode
+          ? supabase
+              .from("store_targets")
+              .select("*")
+              .eq("store_code", activeStoreCode)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+        todayReport?.promotion_id
+          ? supabase
+              .from("promotions")
+              .select(
+                "id, campaign_title, items:promotion_items(*, products(barcode, descriptions, sku_code))",
+              )
+              .eq("id", String(todayReport.promotion_id))
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+        giftPromotionIds.length
+          ? supabase
+              .from("promotions")
+              .select("id, campaign_title, track_gift_inventory, gift_items")
+              .in("id", giftPromotionIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+    const storeTarget = targetResult.data;
+    const currentPromotion = promotionResult.data;
     const trackedGiftPromotions = (giftPromotionsResult.data || []).filter(
       (promotion: any) => promotion.track_gift_inventory,
     );

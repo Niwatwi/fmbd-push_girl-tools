@@ -28,6 +28,7 @@ import {
   submitFullDailyActivityReportAction,
   getProductByBarcode,
   getStoreInitialGiftsAction,
+  getLatestSavedReportAction,
   getPromotionGiftInventoryAction,
   receivePromotionGiftStockAction,
   uploadDailyReportPhotoAction,
@@ -123,6 +124,12 @@ const QUICK_PRODUCTS = [
     className: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
   },
 ];
+
+const PHOTO_SUFFIX = {
+  img_product_base64: "item",
+  img_shelf_base64: "shelf",
+  img_stock_scanner_base64: "scan",
+} as const;
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -287,6 +294,218 @@ export default function DailyReportPage() {
   const [compPromo, setCompPromo] = useState("");
 
   const storeCode = attendanceLog?.store_code || "";
+
+  // ฉบับร่างรายวัน: เก็บเฉพาะรูปที่อัปโหลดแล้ว (https) เพื่อไม่ให้เกินโควตา localStorage
+  const draftKey =
+    user?.id && storeCode
+      ? `daily-report-draft:${user.id}:${storeCode}:${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date())}`
+      : null;
+  const draftReadyRef = useRef(false);
+
+  useEffect(() => {
+    if (!draftKey) return;
+    draftReadyRef.current = false;
+    let cancelled = false;
+    // ฉบับร่างว่าง (ไม่มีสินค้า) ไม่นับ เพื่อให้ยังดึงรายงานล่าสุดจากเซิร์ฟเวอร์ได้
+    let hasLocalDraft = false;
+    try {
+      const saved = JSON.parse(localStorage.getItem(draftKey) || "null");
+      hasLocalDraft =
+        Array.isArray(saved?.productsForm) && saved.productsForm.length > 0;
+    } catch {
+      hasLocalDraft = false;
+    }
+
+    // ไม่มีฉบับร่างในเครื่อง: ดึงรายงานล่าสุดที่บันทึกแล้วจากเซิร์ฟเวอร์มาเติม
+    const loadSavedReport = async () => {
+      if (hasLocalDraft || !user?.id) return;
+      const res = await getLatestSavedReportAction(user.id, storeCode);
+      if (cancelled || !res.success || !res.report) return;
+      const report: any = res.report;
+      const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Bangkok",
+      }).format(new Date());
+      const isToday = String(report.report_date).slice(0, 10) === today;
+      const info = new Map(
+        ((res as any).productInfo || []).map((p: any) => [
+          String(p.barcode),
+          p,
+        ]),
+      );
+      const rows: any[] = report.pg_daily_report_products || [];
+      const ourRows = rows.filter((r) => r.item_scope !== "COMPETITOR");
+      const competitorRows = rows.filter((r) => r.item_scope === "COMPETITOR");
+      const str = (v: any) => (v === null || v === undefined ? "" : String(v));
+
+      setProductsForm(
+        ourRows.map((r) => {
+          const p: any = info.get(String(r.barcode)) || {};
+          return {
+            barcode: String(r.barcode),
+            sku_code: p.sku_code || "",
+            item_scope: "OUR" as const,
+            target_qty: Number(r.promotion_target_qty || 0),
+            credit_factor: Number(r.credit_factor ?? 1),
+            descriptions: r.descriptions || "",
+            imageurl: p.imageurl || p.img_front || "",
+            segment: p.segment || "",
+            price_our: str(r.price_our),
+            competitor_price: str(r.competitor_price),
+            // วันใหม่: ยอดคงเหลือของเมื่อวานคือยอดยกมา และยอดขายต้องคีย์ใหม่
+            stock_before: isToday
+              ? str(r.stock_before)
+              : str(r.stock_after ?? r.stock_before),
+            sales_qty: isToday ? str(r.sales_qty) : "",
+            img_product_base64: r.img_product || "",
+            img_shelf_base64: r.img_shelf || "",
+            img_stock_scanner_base64: r.img_stock_scanner || "",
+          };
+        }),
+      );
+
+      const prices: Record<string, string> = {};
+      for (const [k, v] of Object.entries(report.competitor_prices || {})) {
+        if (v !== null && v !== undefined && Number(v) > 0) prices[k] = str(v);
+      }
+      const sales: Record<string, string> = {};
+      const photos: Record<
+        string,
+        Partial<Record<ProductPhotoField, string>>
+      > = {};
+      for (const r of competitorRows) {
+        const barcode = String(r.barcode);
+        if (Number(r.competitor_price) > 0)
+          prices[barcode] = str(r.competitor_price);
+        if (isToday && Number(r.sales_qty) > 0)
+          sales[barcode] = str(r.sales_qty);
+        photos[barcode] = {
+          img_product_base64: r.img_product || "",
+          img_shelf_base64: r.img_shelf || "",
+          img_stock_scanner_base64: r.img_stock_scanner || "",
+        };
+      }
+      setCompetitorPrices(prices);
+      setCompetitorSales(sales);
+      setCompetitorPhotos(photos);
+
+      if (isToday) {
+        setTraffic(str(report.traffic_count));
+        setApproach(str(report.approach_count));
+        setClosedSales(str(report.closed_sales_count));
+        setFeedback(report.feedback_store || "");
+        setCompPromo(report.competitor_promotion || "");
+        setRemark(report.remark || "");
+        const actPhotos: Record<string, string> = {
+          staff_holding: report.photo_staff_holding,
+          cheer_sales: report.photo_cheer_sales,
+          customer_basket_1: report.photo_customer_basket_1,
+          customer_basket_2: report.photo_customer_basket_2,
+          atmosphere_1: report.photo_atmosphere_1,
+          atmosphere_2: report.photo_atmosphere_2,
+        };
+        setActivityPhotos((prev) =>
+          prev.map((p) => ({ ...p, base64: actPhotos[p.type] || "" })),
+        );
+      }
+    };
+
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (Array.isArray(d.productsForm)) setProductsForm(d.productsForm);
+        if (d.traffic !== undefined) setTraffic(d.traffic);
+        if (d.approach !== undefined) setApproach(d.approach);
+        if (d.closedSales !== undefined) setClosedSales(d.closedSales);
+        if (d.giftNourishGiven !== undefined)
+          setGiftNourishGiven(d.giftNourishGiven);
+        if (d.giftGivenQuantities)
+          setGiftGivenQuantities(d.giftGivenQuantities);
+        if (d.competitorPrices) setCompetitorPrices(d.competitorPrices);
+        if (d.competitorSales) setCompetitorSales(d.competitorSales);
+        if (d.competitorPhotos) setCompetitorPhotos(d.competitorPhotos);
+        if (d.remark !== undefined) setRemark(d.remark);
+        if (d.feedback !== undefined) setFeedback(d.feedback);
+        if (d.compPromo !== undefined) setCompPromo(d.compPromo);
+        if (d.activityPhotos) {
+          setActivityPhotos((prev) =>
+            prev.map((p) => ({
+              ...p,
+              base64: d.activityPhotos[p.type] || "",
+            })),
+          );
+        }
+      }
+    } catch {
+      // ฉบับร่างเสียหาย ให้เริ่มใหม่
+    }
+    loadSavedReport()
+      .catch((error) => console.error("Load saved report failed:", error))
+      .finally(() => {
+        if (!cancelled) draftReadyRef.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftKey || !draftReadyRef.current) return;
+    const timer = window.setTimeout(() => {
+      const keep = (v: string) => (v?.startsWith("https://") ? v : "");
+      const photoSet = (p: Partial<Record<ProductPhotoField, string>>) => ({
+        img_product_base64: keep(p.img_product_base64 || ""),
+        img_shelf_base64: keep(p.img_shelf_base64 || ""),
+        img_stock_scanner_base64: keep(p.img_stock_scanner_base64 || ""),
+      });
+      try {
+        localStorage.setItem(
+          draftKey,
+          JSON.stringify({
+            productsForm: productsForm.map((p) => ({ ...p, ...photoSet(p) })),
+            traffic,
+            approach,
+            closedSales,
+            giftNourishGiven,
+            giftGivenQuantities,
+            competitorPrices,
+            competitorSales,
+            competitorPhotos: Object.fromEntries(
+              Object.entries(competitorPhotos).map(([k, v]) => [
+                k,
+                photoSet(v),
+              ]),
+            ),
+            remark,
+            feedback,
+            compPromo,
+            activityPhotos: Object.fromEntries(
+              activityPhotos.map((p) => [p.type, keep(p.base64)]),
+            ),
+          }),
+        );
+      } catch {
+        // โควตาเต็ม ข้ามการบันทึกฉบับร่าง
+      }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [
+    draftKey,
+    productsForm,
+    traffic,
+    approach,
+    closedSales,
+    giftNourishGiven,
+    giftGivenQuantities,
+    competitorPrices,
+    competitorSales,
+    competitorPhotos,
+    remark,
+    feedback,
+    compPromo,
+    activityPhotos,
+  ]);
+
   const competitorPromotionItems = (activePromotion?.items || []).filter(
     (item) =>
       item.item_scope === "COMPETITOR" ||
@@ -616,6 +835,20 @@ export default function DailyReportPage() {
     }
   };
 
+  // อัปโหลดทันทีหลังเลือกรูป เพื่อให้ตอนกดส่งไม่ต้องรอ และเก็บเฉพาะ URL ลงฉบับร่างได้
+  const uploadInBackground = (
+    base64: string,
+    prefix: string,
+    apply: (url: string) => void,
+  ) => {
+    if (!user?.id) return;
+    uploadDailyReportPhotoAction({ userId: user.id, base64, prefix })
+      .then((result) => {
+        if (result.success && result.url) apply(result.url);
+      })
+      .catch(() => {});
+  };
+
   const handleProductPhotoChange = async (
     barcode: string,
     field:
@@ -637,6 +870,18 @@ export default function DailyReportPage() {
         p.barcode === barcode ? { ...p, [field]: base64Str } : p,
       ),
     );
+    uploadInBackground(
+      base64Str,
+      `prod_${barcode}_${PHOTO_SUFFIX[field]}`,
+      (url) =>
+        setProductsForm((prev) =>
+          prev.map((p) =>
+            p.barcode === barcode && p[field] === base64Str
+              ? { ...p, [field]: url }
+              : p,
+          ),
+        ),
+    );
   };
 
   const handleCompetitorPhotoChange = async (
@@ -651,6 +896,16 @@ export default function DailyReportPage() {
       ...current,
       [barcode]: { ...current[barcode], [field]: base64 },
     }));
+    uploadInBackground(
+      base64,
+      `prod_${barcode}_${PHOTO_SUFFIX[field]}`,
+      (url) =>
+        setCompetitorPhotos((current) =>
+          current[barcode]?.[field] === base64
+            ? { ...current, [barcode]: { ...current[barcode], [field]: url } }
+            : current,
+        ),
+    );
   };
 
   const handleActivityPhotoChange = async (type: string, file: File | null) => {
@@ -664,6 +919,13 @@ export default function DailyReportPage() {
     if (!base64Str) return;
     setActivityPhotos((prev) =>
       prev.map((p) => (p.type === type ? { ...p, base64: base64Str } : p)),
+    );
+    uploadInBackground(base64Str, `act_${type}`, (url) =>
+      setActivityPhotos((prev) =>
+        prev.map((p) =>
+          p.type === type && p.base64 === base64Str ? { ...p, base64: url } : p,
+        ),
+      ),
     );
   };
 
@@ -814,6 +1076,8 @@ export default function DailyReportPage() {
         Swal.fire({
           title: "กำลังจัดเก็บรายงานลงฐานข้อมูล...",
           allowOutsideClick: false,
+          allowEscapeKey: false,
+          showConfirmButton: false,
           didOpen: () => Swal.showLoading(),
         });
 
@@ -929,7 +1193,10 @@ export default function DailyReportPage() {
             return uploadResult.url;
           };
           submissionStage = "อัปโหลดรูปกิจกรรม";
-          Swal.update({ title: "กำลังอัปโหลดรูปกิจกรรม..." });
+          Swal.update({
+            title: "กำลังอัปโหลดรูปกิจกรรม...",
+            showConfirmButton: false,
+          });
           const uploadedActivityPhotos = await mapWithConcurrency(
             activityPhotos.filter((photo) => photo.base64),
             3,
@@ -942,7 +1209,10 @@ export default function DailyReportPage() {
             },
           );
           submissionStage = "อัปโหลดรูปสินค้า";
-          Swal.update({ title: "กำลังอัปโหลดรูปสินค้า..." });
+          Swal.update({
+            title: "กำลังอัปโหลดรูปสินค้า...",
+            showConfirmButton: false,
+          });
           const uploadedProducts = await mapWithConcurrency(
             Array.from(reportProductsByBarcode.values()),
             3,
@@ -972,7 +1242,10 @@ export default function DailyReportPage() {
           );
 
           submissionStage = "บันทึกรายงานลงฐานข้อมูล";
-          Swal.update({ title: "กำลังบันทึกรายงานลงฐานข้อมูล..." });
+          Swal.update({
+            title: "กำลังบันทึกรายงานลงฐานข้อมูล...",
+            showConfirmButton: false,
+          });
           const submissionPromise = submitFullDailyActivityReportAction({
             attendanceLogId: attendanceLog.id,
             userId: reportUserId,
@@ -1087,11 +1360,56 @@ export default function DailyReportPage() {
 
           Swal.close();
           if (res?.success) {
+            // เก็บ URL ที่อัปโหลดแล้วไว้ในฟอร์ม เพื่อแก้ไขเฉพาะหัวข้อแล้วส่งซ้ำได้
+            const urlByActivity = new Map(
+              uploadedActivityPhotos.map((p) => [p.type, p.url]),
+            );
+            const urlByBarcode = new Map(
+              uploadedProducts.map((p) => [p.barcode, p]),
+            );
+            setActivityPhotos((prev) =>
+              prev.map((p) =>
+                p.base64 && urlByActivity.has(p.type)
+                  ? { ...p, base64: urlByActivity.get(p.type)! }
+                  : p,
+              ),
+            );
+            setProductsForm((prev) =>
+              prev.map((p) => {
+                const up = urlByBarcode.get(p.barcode);
+                return up
+                  ? {
+                      ...p,
+                      img_product_base64: up.img_product_url,
+                      img_shelf_base64: up.img_shelf_url,
+                      img_stock_scanner_base64: up.img_stock_scanner_url,
+                    }
+                  : p;
+              }),
+            );
+            setCompetitorPhotos((prev) =>
+              Object.fromEntries(
+                Object.entries(prev).map(([barcode, photos]) => {
+                  const up = urlByBarcode.get(barcode);
+                  return [
+                    barcode,
+                    up
+                      ? {
+                          img_product_base64: up.img_product_url,
+                          img_shelf_base64: up.img_shelf_url,
+                          img_stock_scanner_base64: up.img_stock_scanner_url,
+                        }
+                      : photos,
+                  ];
+                }),
+              ),
+            );
             Swal.fire({
               icon: "success",
               title: "บันทึกรายงานกิจกรรมสำเร็จ",
+              text: "ข้อมูลยังคงอยู่ในหน้านี้ แก้ไขเฉพาะหัวข้อที่เปลี่ยนแล้วกดส่งอีกครั้งได้",
               confirmButtonColor: "#10b981",
-            }).then(() => router.push("/"));
+            });
           } else {
             Swal.fire(
               "ส่งข้อมูลล้มเหลว",

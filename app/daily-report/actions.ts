@@ -656,6 +656,46 @@ export async function submitFullDailyActivityReportAction(
 }
 
 // 📌 5. ดึงข้อมูลรายงานประจำวันพร้อมรายการสินค้าแบบ Dynamic สำหรับแสดงผลตาราง
+export async function getLatestSavedReportAction(
+  userId: number,
+  storeCode: string,
+) {
+  await requireUserOrAdminSession(userId);
+  const supabase = getClientInstance();
+  try {
+    const { data: report, error } = await supabase
+      .from("pg_daily_activity_reports")
+      .select("*, pg_daily_report_products (*)")
+      .eq("user_id", userId)
+      .eq("store_code", storeCode)
+      .order("report_date", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (!report) return { success: true, report: null };
+
+    const barcodes = (report.pg_daily_report_products || [])
+      .map((row: any) => String(row.barcode))
+      .filter(Boolean);
+    const { data: productInfo } = barcodes.length
+      ? await supabase
+          .from("products")
+          .select("barcode, sku_code, imageurl, img_front, segment")
+          .in("barcode", barcodes)
+      : { data: [] };
+
+    return {
+      success: true,
+      report,
+      productInfo: productInfo || [],
+    };
+  } catch (error: any) {
+    console.error("getLatestSavedReportAction error:", error);
+    return { success: false, report: null, message: error.message };
+  }
+}
+
 export async function getDailyReportWithProductsAction(
   startDate?: string,
   endDate?: string,
