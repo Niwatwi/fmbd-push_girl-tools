@@ -127,6 +127,9 @@ export default function AdminUserSkuSalesPage() {
     () =>
       filteredData.map((item) => {
         const expense = salaryByUser.get(String(item.userId));
+        const dailyExpenseByDate = new Map(
+          (expense?.dailyBreakdown || []).map((day: any) => [day.date, day]),
+        );
         const baseWage = Number(expense?.totalDailyWage || 0);
         const commission = Number(expense?.totalCommission || 0);
         const totalExpense = baseWage + commission;
@@ -147,6 +150,20 @@ export default function AdminUserSkuSalesPage() {
             hasExpense && revenue > 0 && netProfit !== null
               ? (netProfit / revenue) * 100
               : null,
+          dailySales: (item.dailySalesByDate || []).map((day: any) => {
+            const commissionDetail = dailyExpenseByDate.get(day.date) as any;
+            return {
+              ...day,
+              targetQty: commissionDetail?.targetQty ?? null,
+              creditedSales: commissionDetail?.creditedSales ?? null,
+              achievementPercent: commissionDetail?.achievementPercent ?? null,
+              targetPeriod: commissionDetail?.targetPeriod ?? null,
+              commission:
+                hasExpense && commissionDetail
+                  ? commissionDetail.commission
+                  : null,
+            };
+          }),
           productLines: products
             .map((product) => {
               const sales = item.salesBySku?.[getProductKey(product)];
@@ -347,6 +364,53 @@ export default function AdminUserSkuSalesPage() {
             : `ค่าใช้จ่ายขาด ${usersMissingExpense} User`,
       });
 
+      const dailySheet = workbook.addWorksheet("รายวัน User-Target");
+      dailySheet.columns = [
+        { header: "วันที่", key: "date", width: 14 },
+        { header: "รหัสพนักงาน", key: "empId", width: 18 },
+        { header: "ชื่อพนักงาน", key: "displayName", width: 28 },
+        { header: "สาขา", key: "storeName", width: 28 },
+        { header: "จำนวนขาย", key: "salesQty", width: 14 },
+        { header: "ยอดขาย (บาท)", key: "salesAmount", width: 18 },
+        { header: "Target (ชิ้น)", key: "targetQty", width: 15 },
+        { header: "ยอดนับ Target", key: "creditedSales", width: 16 },
+        { header: "ทำได้ (%)", key: "achievementPercent", width: 14 },
+        { header: "คอมมิชชั่น (บาท)", key: "commission", width: 18 },
+        { header: "รอบ Target", key: "targetPeriod", width: 16 },
+        { header: "สถานะ", key: "status", width: 32 },
+      ];
+      userSummaries.forEach((item) => {
+        item.dailySales.forEach((day: any) => {
+          dailySheet.addRow({
+            date: day.date,
+            empId: item.empId || "-",
+            displayName: item.displayName || "-",
+            storeName: day.storeName || item.storeName || "-",
+            salesQty: day.salesQty,
+            salesAmount: day.salesAmount,
+            targetQty: day.targetQty,
+            creditedSales: day.creditedSales,
+            achievementPercent: day.achievementPercent,
+            commission: day.commission,
+            targetPeriod:
+              day.targetPeriod === "MONTHLY"
+                ? "รายเดือน"
+                : day.targetPeriod === "DAILY"
+                  ? "รายวัน"
+                  : "-",
+            status: !item.expenseAvailable
+              ? "ไม่พบข้อมูลลงเวลา/คอมมิชชั่น"
+              : day.commission === null
+                ? "ไม่มีข้อมูลคอมมิชชั่นสำหรับวันนี้"
+                : day.targetQty === null
+                  ? "ไม่มีข้อมูล Target สำหรับวันนี้"
+                  : day.achievementPercent >= 100
+                    ? "ถึง Target"
+                    : "ยังไม่ถึง Target",
+          });
+        });
+      });
+
       const detail = workbook.addWorksheet("รายละเอียด User-SKU");
       detail.columns = [
         { header: "รหัสพนักงาน", key: "empId", width: 18 },
@@ -373,7 +437,7 @@ export default function AdminUserSkuSalesPage() {
         });
       });
 
-      [pivot, userSummary, detail].forEach((sheet) => {
+      [pivot, userSummary, dailySheet, detail].forEach((sheet) => {
         const headerRow = sheet === pivot ? 2 : 1;
         sheet.views = [{ state: "frozen", ySplit: headerRow }];
         const header = sheet.getRow(headerRow);
@@ -421,6 +485,9 @@ export default function AdminUserSkuSalesPage() {
       pivot.getColumn(15).numFmt = '0.00"%"';
       userSummary.getColumn(9).numFmt = '0.00"%"';
       userSummary.getColumn(11).numFmt = '0.00"%"';
+      dailySheet.getColumn(6).numFmt = "#,##0.00;[Red]-#,##0.00;0";
+      dailySheet.getColumn(9).numFmt = '0.00"%"';
+      dailySheet.getColumn(10).numFmt = "#,##0.00;[Red]-#,##0.00;0";
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
@@ -633,6 +700,117 @@ export default function AdminUserSkuSalesPage() {
           defaultMetric="salesQty"
           defaultSeries="skuCode"
         />
+
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-4">
+            <h2 className="text-sm font-black">
+              ยอดขายรายวัน / User เทียบ Target และคอมมิชชั่น
+            </h2>
+            <span className="text-xs text-slate-500">
+              คอมมิชชั่นรอบรายเดือนแสดงในวันที่ปิดยอดของรอบ
+            </span>
+          </div>
+          <div className="max-h-[55vh] overflow-auto">
+            <table className="w-full min-w-[1100px] border-collapse text-xs">
+              <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700">
+                <tr>
+                  {[
+                    "วันที่",
+                    "พนักงาน",
+                    "สาขา",
+                    "จำนวนขาย",
+                    "ยอดขาย (บาท)",
+                    "Target",
+                    "ยอดนับ Target",
+                    "ทำได้ (%)",
+                    "คอมมิชชั่น (บาท)",
+                    "รอบ Target / สถานะ",
+                  ].map((label) => (
+                    <th
+                      key={label}
+                      className="border-b border-r border-slate-200 p-2 text-left last:border-r-0"
+                    >
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {userSummaries.flatMap((item) =>
+                  item.dailySales.map((day: any) => (
+                    <tr
+                      key={`${item.userId}-${day.date}`}
+                      className="odd:bg-white even:bg-slate-50"
+                    >
+                      <td className="border-b border-r border-slate-100 px-2 py-1.5 font-mono">
+                        {day.date}
+                      </td>
+                      <td className="border-b border-r border-slate-100 px-2 py-1.5">
+                        <span className="font-bold">{item.displayName}</span>
+                        <span className="ml-1 text-[10px] text-slate-500">
+                          {item.empId}
+                        </span>
+                      </td>
+                      <td className="border-b border-r border-slate-100 px-2 py-1.5">
+                        {day.storeName || item.storeName || "-"}
+                      </td>
+                      <td className="border-b border-r border-slate-100 px-2 py-1.5 text-right font-mono">
+                        {Number(day.salesQty || 0).toLocaleString()}
+                      </td>
+                      <td className="border-b border-r border-slate-100 bg-emerald-50/40 px-2 py-1.5 text-right font-mono">
+                        {Number(day.salesAmount || 0).toLocaleString()}
+                      </td>
+                      <td className="border-b border-r border-slate-100 px-2 py-1.5 text-right font-mono">
+                        {day.targetQty === null
+                          ? "-"
+                          : Number(day.targetQty).toLocaleString()}
+                      </td>
+                      <td className="border-b border-r border-slate-100 px-2 py-1.5 text-right font-mono">
+                        {day.creditedSales === null
+                          ? "-"
+                          : Number(day.creditedSales).toLocaleString()}
+                      </td>
+                      <td
+                        className={`border-b border-r border-slate-100 px-2 py-1.5 text-right font-mono ${day.achievementPercent === null ? "text-slate-400" : day.achievementPercent >= 100 ? "font-bold text-emerald-700" : "text-amber-700"}`}
+                      >
+                        {day.achievementPercent === null
+                          ? "-"
+                          : `${day.achievementPercent.toFixed(2)}%`}
+                      </td>
+                      <td className="border-b border-r border-slate-100 px-2 py-1.5 text-right font-mono">
+                        {day.commission === null
+                          ? "-"
+                          : Number(day.commission).toLocaleString()}
+                      </td>
+                      <td className="border-b border-slate-100 px-2 py-1.5">
+                        {!item.expenseAvailable
+                          ? "ไม่พบข้อมูลลงเวลา/คอมมิชชั่น"
+                          : day.commission === null
+                            ? "ไม่มีข้อมูลคอมมิชชั่นสำหรับวันนี้"
+                            : day.targetQty === null
+                              ? "ไม่มีข้อมูล Target"
+                              : `${day.targetPeriod === "MONTHLY" ? "รายเดือน · ปิดรอบ" : "รายวัน"} · ${day.achievementPercent >= 100 ? "ถึง Target" : "ยังไม่ถึง Target"}`}
+                      </td>
+                    </tr>
+                  )),
+                )}
+                {!loading &&
+                  userSummaries.every(
+                    (item) => item.dailySales.length === 0,
+                  ) && (
+                    <tr>
+                      <td
+                        colSpan={10}
+                        className="p-8 text-center font-medium text-slate-500"
+                      >
+                        ไม่พบยอดขายรายวันตามเงื่อนไขที่เลือก
+                      </td>
+                    </tr>
+                  )}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-4">

@@ -1228,6 +1228,10 @@ export async function getAdminSalarySummaryReportAction(params?: {
           workDaysByAccountMonth: new Map<string, number>(),
           dailySalesByDate: new Map<string, number>(),
           promotionCommissionByDate: new Map<string, number>(),
+          dailyTargetByDate: new Map<
+            string,
+            { targetQty: number; creditedSales: number }
+          >(),
           monthlyCampaignDates: new Set<string>(),
           monthlyPromotionPerformance: new Map<string, any>(),
         });
@@ -1353,6 +1357,15 @@ export async function getAdminSalarySummaryReportAction(params?: {
           },
           0,
         );
+        if (calculationPeriod !== "MONTHLY") {
+          const currentTarget = userGroup.dailyTargetByDate.get(dateKey) || {
+            targetQty: 0,
+            creditedSales: 0,
+          };
+          currentTarget.targetQty += targetQty;
+          currentTarget.creditedSales += creditedSales;
+          userGroup.dailyTargetByDate.set(dateKey, currentTarget);
+        }
         if (calculationPeriod === "MONTHLY" && promotion?.id) {
           const monthKey = dateKey.slice(0, 7);
           const targetScopeType =
@@ -1401,8 +1414,12 @@ export async function getAdminSalarySummaryReportAction(params?: {
             creditedSales: 0,
             targetQty: proratedTargetQty,
             rules: proratedRules,
+            lastDateKey: dateKey,
           };
           currentPerformance.creditedSales += creditedSales;
+          if (dateKey > currentPerformance.lastDateKey) {
+            currentPerformance.lastDateKey = dateKey;
+          }
           userGroup.monthlyPromotionPerformance.set(
             performanceKey,
             currentPerformance,
@@ -1445,17 +1462,75 @@ export async function getAdminSalarySummaryReportAction(params?: {
         );
         const monthlyCommissionResults = Array.from(
           item.monthlyPromotionPerformance.values(),
-        ).map((performance: any) =>
-          calculatePromotionCommission(
+        ).map((performance: any) => ({
+          ...calculatePromotionCommission(
             performance.creditedSales,
             performance.targetQty,
             performance.rules,
           ),
-        );
+          ...performance,
+        }));
         const totalCommission = [
           ...dailyCommissionResults,
           ...monthlyCommissionResults,
         ].reduce((sum, result) => sum + result.incentiveAmount, 0);
+
+        const dailyBreakdown = new Map<string, any>();
+        for (const [dateKey, salesQty] of item.dailySalesByDate.entries()) {
+          const target = item.dailyTargetByDate.get(dateKey);
+          const hasMonthlyCampaign = item.monthlyCampaignDates.has(dateKey);
+          const configuredPayout = item.promotionCommissionByDate.get(dateKey);
+          const commission =
+            configuredPayout !== undefined
+              ? configuredPayout
+              : hasMonthlyCampaign
+                ? 0
+                : (await calculateBigCCommission(salesQty)).incentiveAmount;
+          const targetQty =
+            target?.targetQty ?? (hasMonthlyCampaign ? null : 40);
+          const creditedSales =
+            target?.creditedSales ?? (hasMonthlyCampaign ? 0 : salesQty);
+          dailyBreakdown.set(dateKey, {
+            date: dateKey,
+            salesQty,
+            targetQty,
+            creditedSales,
+            achievementPercent:
+              targetQty && targetQty > 0
+                ? Number(((creditedSales / targetQty) * 100).toFixed(2))
+                : targetQty === 0
+                  ? 0
+                  : null,
+            commission,
+            targetPeriod: target
+              ? "DAILY"
+              : hasMonthlyCampaign
+                ? "MONTHLY"
+                : "DAILY",
+          });
+        }
+        for (const performance of monthlyCommissionResults) {
+          const detail = dailyBreakdown.get(performance.lastDateKey) || {
+            date: performance.lastDateKey,
+            salesQty: 0,
+            targetQty: null,
+            creditedSales: 0,
+            achievementPercent: null,
+            commission: 0,
+            targetPeriod: "MONTHLY",
+          };
+          detail.targetQty = (detail.targetQty || 0) + performance.targetQty;
+          detail.creditedSales += performance.creditedSales;
+          detail.achievementPercent =
+            detail.targetQty > 0
+              ? Number(
+                  ((detail.creditedSales / detail.targetQty) * 100).toFixed(2),
+                )
+              : null;
+          detail.commission += performance.incentiveAmount;
+          detail.targetPeriod = "MONTHLY";
+          dailyBreakdown.set(performance.lastDateKey, detail);
+        }
 
         return {
           userId: item.userId,
@@ -1473,6 +1548,9 @@ export async function getAdminSalarySummaryReportAction(params?: {
           totalSets: item.allSkuSalesQty,
           totalPacks: item.allSkuSalesQty,
           totalCommission,
+          dailyBreakdown: Array.from(dailyBreakdown.values()).sort((a, b) =>
+            a.date.localeCompare(b.date),
+          ),
           totalKpiAmount: 0,
           tierStatus: [...dailyCommissionResults, ...monthlyCommissionResults]
             .filter((result) => result.tierStatus)
@@ -1538,6 +1616,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
           totalSets: 0,
           totalPacks: 0,
           totalCommission: 0,
+          dailyBreakdown: [],
           totalKpiAmount: amount,
           tierStatus: "",
           totalNetSalary: amount,
@@ -1647,6 +1726,7 @@ export async function getAdminUserSkuSalesReportAction(params?: {
       priceValue: unknown,
       productName?: string,
       skuCodeValue?: unknown,
+      dailySales?: any,
     ) => {
       const barcode = String(barcodeValue ?? "").trim();
       const quantity = Number(quantityValue ?? 0);
@@ -1679,11 +1759,16 @@ export async function getAdminUserSkuSalesReportAction(params?: {
         quantity: 0,
         amount: 0,
       };
+      const amount = Number.isFinite(price) ? quantity * price : 0;
       current.quantity += quantity;
-      current.amount += Number.isFinite(price) ? quantity * price : 0;
+      current.amount += amount;
       user.salesBySku[productKey] = current;
       user.totalSalesQty += quantity;
-      user.totalSalesAmount += Number.isFinite(price) ? quantity * price : 0;
+      user.totalSalesAmount += amount;
+      if (dailySales) {
+        dailySales.salesQty += quantity;
+        dailySales.salesAmount += amount;
+      }
     };
 
     const legacySkuFields = [
@@ -1722,6 +1807,7 @@ export async function getAdminUserSkuSalesReportAction(params?: {
             (userId ? `PG-${userId}` : "ไม่ระบุพนักงาน"),
           stores: new Set<string>(),
           salesBySku: {},
+          dailySalesByDate: new Map<string, any>(),
           totalSalesQty: 0,
           totalSalesAmount: 0,
         });
@@ -1732,6 +1818,14 @@ export async function getAdminUserSkuSalesReportAction(params?: {
       const storeName =
         report.store_name || storeLookup.get(storeCode) || storeCode;
       if (storeName) user.stores.add(storeName);
+      const reportDate = String(report.report_date || "").split("T")[0];
+      const dailySales = user.dailySalesByDate.get(reportDate) || {
+        date: reportDate,
+        storeName,
+        salesQty: 0,
+        salesAmount: 0,
+      };
+      user.dailySalesByDate.set(reportDate, dailySales);
 
       const productRows = Array.isArray(report.pg_daily_report_products)
         ? report.pg_daily_report_products
@@ -1753,6 +1847,7 @@ export async function getAdminUserSkuSalesReportAction(params?: {
             product.price_our ?? product.priceOur,
             product.descriptions || product.name,
             product.sku_code,
+            dailySales,
           );
         }
       } else {
@@ -1763,6 +1858,8 @@ export async function getAdminUserSkuSalesReportAction(params?: {
             report[product.quantity],
             report[product.price],
             product.name,
+            undefined,
+            dailySales,
           );
         }
       }
@@ -1775,6 +1872,9 @@ export async function getAdminUserSkuSalesReportAction(params?: {
       .map((user) => ({
         ...user,
         storeName: Array.from(user.stores).join(", "),
+        dailySalesByDate: Array.from(user.dailySalesByDate.values()).sort(
+          (a: any, b: any) => a.date.localeCompare(b.date),
+        ),
       }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
 
