@@ -1299,16 +1299,11 @@ export default function CustomerReportPortal() {
 
     // 🏷️ กรองตามรอบโปรโมชั่น
     if (selectedPromotion !== "ALL") {
-      const promoObj = promotions.find(
-        (p) => String(p.id) === String(selectedPromotion),
+      result = result.filter(
+        (item) =>
+          String(item.promotion_id ?? item.promotionId ?? "") ===
+          String(selectedPromotion),
       );
-      if (promoObj && promoObj.start_date && promoObj.end_date) {
-        result = result.filter(
-          (item) =>
-            item.reportDate >= promoObj.start_date &&
-            item.reportDate <= promoObj.end_date,
-        );
-      }
     }
 
     if (startDate) {
@@ -2374,10 +2369,9 @@ export default function CustomerReportPortal() {
   };
 
   const handleExportExcel = async () => {
-    const dataToExport: any[] =
-      filteredData && filteredData.length > 0 ? filteredData : reportData;
+    const dataToExport = filteredData;
 
-    if (!dataToExport || dataToExport.length === 0) {
+    if (dataToExport.length === 0) {
       Swal.fire("เตือน", "ไม่มีข้อมูลสำหรับ Export", "warning");
       return;
     }
@@ -2863,13 +2857,16 @@ export default function CustomerReportPortal() {
                 <select
                   value={selectedPromotion}
                   onChange={(e) => setSelectedPromotion(e.target.value)}
-                  className="px-2.5 py-1.5 border border-amber-300 rounded-xl font-bold bg-amber-50 focus:bg-white text-xs cursor-pointer text-slate-800 max-w-[180px] truncate"
+                  className="px-2.5 py-1.5 border border-amber-300 rounded-xl font-bold bg-amber-50 focus:bg-white text-xs cursor-pointer text-slate-800 max-w-[min(60vw,320px)] truncate"
                 >
                   <option value="ALL">-- ทุกรอบโปรโมชั่น --</option>
                   {promotions.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.title || p.name || `รอบโปรโมชั่น #${p.id}`} (
-                      {p.start_date} ~ {p.end_date})
+                      {p.campaign_title ||
+                        p.title ||
+                        p.name ||
+                        `รอบโปรโมชั่น #${p.id}`}{" "}
+                      ({p.start_date} ~ {p.end_date})
                     </option>
                   ))}
                 </select>
@@ -4220,7 +4217,10 @@ export default function CustomerReportPortal() {
                     <option value="">-- ไม่ระบุ / ตามวัน --</option>
                     {promotions.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.title || p.name || `รอบ #${p.id}`}
+                        {p.campaign_title ||
+                          p.title ||
+                          p.name ||
+                          `รอบ #${p.id}`}
                       </option>
                     ))}
                   </select>
