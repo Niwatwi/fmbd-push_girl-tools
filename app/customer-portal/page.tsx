@@ -1326,17 +1326,44 @@ export default function CustomerReportPortal() {
     promotions,
   ]);
 
+  const selectedCampaign = promotions.find(
+    (promotion) => String(promotion.id) === selectedPromotion,
+  );
+  const campaignStartDate = String(selectedCampaign?.start_date || "").slice(
+    0,
+    10,
+  );
+  const campaignEndDate = String(selectedCampaign?.end_date || "").slice(0, 10);
+
+  const campaignReports = useMemo(
+    () =>
+      selectedPromotion === "ALL"
+        ? reportData
+        : reportData.filter(
+            (item) =>
+              String(item.promotion_id ?? item.promotionId ?? "") ===
+              selectedPromotion,
+          ),
+    [reportData, selectedPromotion],
+  );
+
   const accountOptions = useMemo(() => {
+    if (
+      selectedCampaign?.target_type === "COMPANY_TAG" &&
+      selectedCampaign.target_value
+    ) {
+      return [getAccountName("", "", String(selectedCampaign.target_value))];
+    }
     return Array.from(
       new Set(
-        reportData.map((item) =>
+        campaignReports.map((item) =>
           getAccountName(item.storeName, item.storeCode, item.account),
         ),
       ),
     );
-  }, [reportData]);
+  }, [campaignReports, selectedCampaign]);
 
-  const storeOptions = useMemo(() => {
+  const allStoreOptions = useMemo(() => {
     return Array.from(
       new Map(
         reportData.map((item) => [item.storeCode, item.storeName]),
@@ -1344,11 +1371,46 @@ export default function CustomerReportPortal() {
     );
   }, [reportData]);
 
-  const userOptions = useMemo(() => {
+  const allUserOptions = useMemo(() => {
     return Array.from(
       new Map(reportData.map((item) => [item.userId, item.userName])).entries(),
     );
   }, [reportData]);
+
+  const accountReports = useMemo(
+    () =>
+      campaignReports.filter(
+        (item) =>
+          selectedAccount === "ALL" ||
+          getAccountName(item.storeName, item.storeCode, item.account) ===
+            selectedAccount,
+      ),
+    [campaignReports, selectedAccount],
+  );
+  const storeOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          accountReports.map((item) => [item.storeCode, item.storeName]),
+        ).entries(),
+      ),
+    [accountReports],
+  );
+  const userOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          accountReports
+            .filter(
+              (item) =>
+                selectedStore === "ALL" ||
+                String(item.storeCode) === selectedStore,
+            )
+            .map((item) => [item.userId, item.userName]),
+        ).entries(),
+      ),
+    [accountReports, selectedStore],
+  );
 
   // 📊 ประมวลผลข้อมูลสำหรับ กราฟที่ 1 (ยอดขายครบทุก 10 SKU) และ กราฟที่ 2 (Funnel)
   const chart1And2Data = useMemo(() => {
@@ -2071,8 +2133,8 @@ export default function CustomerReportPortal() {
     setEditForm({
       id: null,
       reportDate: new Date().toISOString().split("T")[0],
-      userId: userOptions[0]?.[0] || "",
-      storeCode: storeOptions[0]?.[0] || "",
+      userId: allUserOptions[0]?.[0] || "",
+      storeCode: allStoreOptions[0]?.[0] || "",
       promotionId: promotions[0]?.id || "",
       promotionGiftGiven: {},
       promotionGiftReceivedQuantities: {},
@@ -2856,7 +2918,20 @@ export default function CustomerReportPortal() {
                 <span className="font-bold text-slate-500">รอบโปรโมชั่น:</span>
                 <select
                   value={selectedPromotion}
-                  onChange={(e) => setSelectedPromotion(e.target.value)}
+                  onChange={(e) => {
+                    const promotionId = e.target.value;
+                    const promotion = promotions.find(
+                      (item) => String(item.id) === promotionId,
+                    );
+                    setSelectedPromotion(promotionId);
+                    setSelectedAccount("ALL");
+                    setSelectedStore("ALL");
+                    setSelectedUser("ALL");
+                    setStartDate(
+                      String(promotion?.start_date || "").slice(0, 10),
+                    );
+                    setEndDate(String(promotion?.end_date || "").slice(0, 10));
+                  }}
                   className="px-2.5 py-1.5 border border-amber-300 rounded-xl font-bold bg-amber-50 focus:bg-white text-xs cursor-pointer text-slate-800 max-w-[min(60vw,320px)] truncate"
                 >
                   <option value="ALL">-- ทุกรอบโปรโมชั่น --</option>
@@ -2877,7 +2952,11 @@ export default function CustomerReportPortal() {
                 <span className="font-bold text-slate-500">Account:</span>
                 <select
                   value={selectedAccount}
-                  onChange={(e) => setSelectedAccount(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedAccount(e.target.value);
+                    setSelectedStore("ALL");
+                    setSelectedUser("ALL");
+                  }}
                   className="px-2.5 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs cursor-pointer text-slate-700"
                 >
                   <option value="ALL">-- ทุก Account --</option>
@@ -2893,7 +2972,10 @@ export default function CustomerReportPortal() {
                 <span className="font-bold text-slate-500">สาขา:</span>
                 <select
                   value={selectedStore}
-                  onChange={(e) => setSelectedStore(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedStore(e.target.value);
+                    setSelectedUser("ALL");
+                  }}
                   className="px-2.5 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs cursor-pointer text-slate-700 max-w-[160px] sm:max-w-[200px] truncate"
                 >
                   <option value="ALL">-- ทุกสาขา --</option>
@@ -2927,14 +3009,38 @@ export default function CustomerReportPortal() {
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  min={campaignStartDate || undefined}
+                  max={endDate || campaignEndDate || undefined}
+                  onChange={(e) => {
+                    const value = e.target.value || campaignStartDate;
+                    const latestDate = endDate || campaignEndDate;
+                    setStartDate(
+                      value && campaignStartDate && value < campaignStartDate
+                        ? campaignStartDate
+                        : value && latestDate && value > latestDate
+                          ? latestDate
+                          : value,
+                    );
+                  }}
                   className="px-2 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs text-slate-700"
                 />
                 <span className="text-slate-400">ถึง</span>
                 <input
                   type="date"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  min={startDate || campaignStartDate || undefined}
+                  max={campaignEndDate || undefined}
+                  onChange={(e) => {
+                    const value = e.target.value || campaignEndDate;
+                    const earliestDate = startDate || campaignStartDate;
+                    setEndDate(
+                      value && campaignEndDate && value > campaignEndDate
+                        ? campaignEndDate
+                        : value && earliestDate && value < earliestDate
+                          ? earliestDate
+                          : value,
+                    );
+                  }}
                   className="px-2 py-1.5 border rounded-xl font-bold bg-slate-50 focus:bg-white text-xs text-slate-700"
                 />
               </div>
@@ -4171,7 +4277,7 @@ export default function CustomerReportPortal() {
                     required
                   >
                     <option value="">-- เลือกพนักงาน --</option>
-                    {userOptions.map(([id, name]) => (
+                    {allUserOptions.map(([id, name]) => (
                       <option key={id} value={id}>
                         {name}
                       </option>
@@ -4191,7 +4297,7 @@ export default function CustomerReportPortal() {
                     required
                   >
                     <option value="">-- เลือกสาขา --</option>
-                    {storeOptions.map(([code, name]) => (
+                    {allStoreOptions.map(([code, name]) => (
                       <option key={code} value={code}>
                         {name} ({code})
                       </option>
