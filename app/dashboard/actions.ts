@@ -1222,6 +1222,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
           workDaysCount: 0,
           baseSalaryRate: log.baseSalaryRate,
           totalDailyWage: 0,
+          dailyWageByDate: new Map<string, number>(),
           allSkuSalesQty: 0,
           workDaysByMonth: new Map<string, number>(),
           workDaysByStoreMonth: new Map<string, number>(),
@@ -1242,6 +1243,11 @@ export async function getAdminSalarySummaryReportAction(params?: {
       userGroup.totalDailyWage += log.dailyWage;
 
       if (log.checkInAt) {
+        const dateKey = getIctDateStr(log.checkInAt);
+        userGroup.dailyWageByDate.set(
+          dateKey,
+          (userGroup.dailyWageByDate.get(dateKey) || 0) + log.dailyWage,
+        );
         const monthKey = new Intl.DateTimeFormat("en-CA", {
           timeZone: "Asia/Bangkok",
           year: "numeric",
@@ -1493,6 +1499,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
           dailyBreakdown.set(dateKey, {
             date: dateKey,
             salesQty,
+            baseWage: item.dailyWageByDate.get(dateKey) || 0,
             targetQty,
             creditedSales,
             achievementPercent:
@@ -1727,6 +1734,7 @@ export async function getAdminUserSkuSalesReportAction(params?: {
       productName?: string,
       skuCodeValue?: unknown,
       dailySales?: any,
+      storeSales?: any,
     ) => {
       const barcode = String(barcodeValue ?? "").trim();
       const quantity = Number(quantityValue ?? 0);
@@ -1768,6 +1776,15 @@ export async function getAdminUserSkuSalesReportAction(params?: {
       if (dailySales) {
         dailySales.salesQty += quantity;
         dailySales.salesAmount += amount;
+      }
+      if (storeSales) {
+        const storeProduct = storeSales[productKey] || {
+          quantity: 0,
+          amount: 0,
+        };
+        storeProduct.quantity += quantity;
+        storeProduct.amount += amount;
+        storeSales[productKey] = storeProduct;
       }
     };
 
@@ -1824,7 +1841,15 @@ export async function getAdminUserSkuSalesReportAction(params?: {
         storeName,
         salesQty: 0,
         salesAmount: 0,
+        stores: new Map<string, any>(),
       };
+      const storeKey = storeCode || storeName || "ไม่ระบุสาขา";
+      const storeSales = dailySales.stores.get(storeKey) || {
+        storeCode,
+        storeName: storeName || "ไม่ระบุสาขา",
+        salesBySku: {},
+      };
+      dailySales.stores.set(storeKey, storeSales);
       user.dailySalesByDate.set(reportDate, dailySales);
 
       const productRows = Array.isArray(report.pg_daily_report_products)
@@ -1848,6 +1873,7 @@ export async function getAdminUserSkuSalesReportAction(params?: {
             product.descriptions || product.name,
             product.sku_code,
             dailySales,
+            storeSales.salesBySku,
           );
         }
       } else {
@@ -1860,6 +1886,7 @@ export async function getAdminUserSkuSalesReportAction(params?: {
             product.name,
             undefined,
             dailySales,
+            storeSales.salesBySku,
           );
         }
       }
@@ -1872,9 +1899,12 @@ export async function getAdminUserSkuSalesReportAction(params?: {
       .map((user) => ({
         ...user,
         storeName: Array.from(user.stores).join(", "),
-        dailySalesByDate: Array.from(user.dailySalesByDate.values()).sort(
-          (a: any, b: any) => a.date.localeCompare(b.date),
-        ),
+        dailySalesByDate: Array.from(user.dailySalesByDate.values())
+          .map((day: any) => ({
+            ...day,
+            stores: Array.from(day.stores.values()),
+          }))
+          .sort((a: any, b: any) => a.date.localeCompare(b.date)),
       }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
 

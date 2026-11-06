@@ -152,15 +152,51 @@ export default function AdminUserSkuSalesPage() {
               : null,
           dailySales: (item.dailySalesByDate || []).map((day: any) => {
             const commissionDetail = dailyExpenseByDate.get(day.date) as any;
+            const dailyBaseWage = hasExpense
+              ? Number(commissionDetail?.baseWage || 0)
+              : null;
+            const dailyCommission =
+              hasExpense && commissionDetail
+                ? Number(commissionDetail.commission || 0)
+                : null;
+            const dailyTotalExpense =
+              dailyBaseWage !== null && dailyCommission !== null
+                ? dailyBaseWage + dailyCommission
+                : null;
+            const dailyNetProfit =
+              dailyTotalExpense === null
+                ? null
+                : Number(day.salesAmount || 0) - dailyTotalExpense;
             return {
               ...day,
+              stores: (day.stores || []).map((store: any) => ({
+                ...store,
+                productLines: products
+                  .map((product) => {
+                    const sales = store.salesBySku?.[getProductKey(product)];
+                    return {
+                      product,
+                      quantity: Number(sales?.quantity || 0),
+                      amount: Number(sales?.amount || 0),
+                    };
+                  })
+                  .filter((line) => line.quantity !== 0 || line.amount !== 0),
+              })),
               targetQty: commissionDetail?.targetQty ?? null,
               creditedSales: commissionDetail?.creditedSales ?? null,
               achievementPercent: commissionDetail?.achievementPercent ?? null,
               targetPeriod: commissionDetail?.targetPeriod ?? null,
-              commission:
-                hasExpense && commissionDetail
-                  ? commissionDetail.commission
+              baseWage: dailyBaseWage,
+              commission: dailyCommission,
+              totalExpense: dailyTotalExpense,
+              netProfit: dailyNetProfit,
+              expensePercent:
+                dailyTotalExpense !== null && Number(day.salesAmount || 0) > 0
+                  ? (dailyTotalExpense / Number(day.salesAmount)) * 100
+                  : null,
+              profitMargin:
+                dailyNetProfit !== null && Number(day.salesAmount || 0) > 0
+                  ? (dailyNetProfit / Number(day.salesAmount)) * 100
                   : null,
             };
           }),
@@ -178,6 +214,64 @@ export default function AdminUserSkuSalesPage() {
       }),
     [filteredData, products, salaryByUser],
   );
+
+  const dailyPivotGroups = useMemo(() => {
+    const groups = new Map<string, any>();
+    userSummaries.forEach((item) => {
+      item.dailySales.forEach((day: any) => {
+        const group = groups.get(day.date) || {
+          date: day.date,
+          users: [],
+          salesQty: 0,
+          salesAmount: 0,
+          targetQty: 0,
+          creditedSales: 0,
+          hasTarget: false,
+          baseWage: 0,
+          commission: 0,
+          expensesAvailable: true,
+        };
+        group.users.push({ item, day });
+        group.salesQty += Number(day.salesQty || 0);
+        group.salesAmount += Number(day.salesAmount || 0);
+        if (day.targetQty !== null) {
+          group.targetQty += Number(day.targetQty || 0);
+          group.hasTarget = true;
+        }
+        group.creditedSales += Number(day.creditedSales || 0);
+        group.baseWage += Number(day.baseWage || 0);
+        group.commission += Number(day.commission || 0);
+        group.expensesAvailable &&= day.totalExpense !== null;
+        groups.set(day.date, group);
+      });
+    });
+    return Array.from(groups.values())
+      .map((group) => {
+        group.totalExpense = group.expensesAvailable
+          ? group.baseWage + group.commission
+          : null;
+        group.netProfit =
+          group.totalExpense === null
+            ? null
+            : group.salesAmount - group.totalExpense;
+        group.expensePercent =
+          group.totalExpense !== null && group.salesAmount > 0
+            ? (group.totalExpense / group.salesAmount) * 100
+            : null;
+        group.profitMargin =
+          group.netProfit !== null && group.salesAmount > 0
+            ? (group.netProfit / group.salesAmount) * 100
+            : null;
+        group.achievementPercent =
+          group.hasTarget && group.targetQty > 0
+            ? (group.creditedSales / group.targetQty) * 100
+            : group.hasTarget
+              ? 0
+              : null;
+        return group;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [userSummaries]);
 
   const totalBaseWage = userSummaries.reduce(
     (sum, item) => sum + (item.expenseAvailable ? item.baseWage : 0),
@@ -234,22 +328,21 @@ export default function AdminUserSkuSalesPage() {
 
       const pivot = workbook.addWorksheet("Pivot User-SKU");
       const pivotColumnDefinitions: any[] = [
-        { header: "ประเภทแถว", key: "rowType", width: 16 },
-        { header: "รหัสพนักงาน", key: "empId", width: 18 },
-        { header: "ชื่อพนักงาน", key: "displayName", width: 28 },
+        { header: "วันที่", key: "date", width: 18 },
+        { header: "User", key: "displayName", width: 32 },
         { header: "สาขา", key: "storeName", width: 28 },
         { header: "สินค้า", key: "productName", width: 38 },
         { header: "SKU บริษัท", key: "skuCode", width: 20 },
-        { header: "Barcode", key: "barcode", width: 18 },
         { header: "จำนวนขาย", key: "quantity", width: 14 },
         { header: "ยอดขาย (บาท)", key: "salesAmount", width: 18 },
+        { header: "Target (ชิ้น)", key: "targetQty", width: 15 },
+        { header: "ทำได้ (%)", key: "achievementPercent", width: 14 },
         { header: "ค่าแรง (บาท)", key: "baseWage", width: 16 },
         { header: "คอมมิชชั่น (บาท)", key: "commission", width: 18 },
         { header: "ค่าใช้จ่ายรวม (บาท)", key: "totalExpense", width: 20 },
         { header: "รายจ่าย/ยอดขาย (%)", key: "expensePercent", width: 20 },
         { header: "กำไร/ขาดทุน (บาท)", key: "netProfit", width: 21 },
         { header: "กำไร/ขาดทุน (%)", key: "profitMargin", width: 20 },
-        { header: "สถานะค่าใช้จ่าย", key: "expenseStatus", width: 32 },
       ];
       pivot.columns = pivotColumnDefinitions.map(({ key, width }) => ({
         key,
@@ -262,28 +355,61 @@ export default function AdminUserSkuSalesPage() {
       pivot.getRow(1).font = { bold: true, size: 12 };
       pivot.addRow(pivotColumnDefinitions.map((column) => column.header));
 
-      userSummaries.forEach((item) => {
-        const identity = {
-          empId: item.empId || "-",
-          displayName: item.displayName || "-",
-          storeName: item.storeName || "-",
-        };
-        pivot.addRow({ rowType: "พนักงาน", ...identity });
-        item.productLines.forEach(({ product, quantity, amount }: any) => {
+      dailyPivotGroups.forEach((group) => {
+        pivot.addRow({ date: `วันที่ ${group.date}` });
+        group.users.forEach(({ item, day }: any) => {
           pivot.addRow({
-            rowType: "รายสินค้า",
-            ...identity,
-            productName: product.name,
-            skuCode: getProductKey(product),
-            barcode: product.barcode,
-            quantity,
-            salesAmount: amount,
+            displayName: `${item.displayName || "ไม่ระบุพนักงาน"} (${item.empId || "-"})`,
+          });
+          day.stores.forEach((store: any) => {
+            pivot.addRow({ storeName: store.storeName || "ไม่ระบุสาขา" });
+            store.productLines.forEach(({ product, quantity, amount }: any) => {
+              pivot.addRow({
+                storeName: store.storeName || "ไม่ระบุสาขา",
+                productName: product.name,
+                skuCode: getProductKey(product),
+                quantity,
+                salesAmount: amount,
+              });
+            });
+          });
+          pivot.addRow({
+            displayName: "รวม User (รายวัน)",
+            productName: "รวมทุกสาขา/สินค้า",
+            quantity: day.salesQty,
+            salesAmount: day.salesAmount,
+            targetQty: day.targetQty,
+            achievementPercent: day.achievementPercent,
+            baseWage: day.baseWage,
+            commission: day.commission,
+            totalExpense: day.totalExpense,
+            expensePercent: day.expensePercent,
+            netProfit: day.netProfit,
+            profitMargin: day.profitMargin,
           });
         });
         pivot.addRow({
-          rowType: "รวมพนักงาน",
-          ...identity,
-          productName: "รวมยอดขายและค่าใช้จ่าย",
+          displayName: "รวมรายวัน",
+          productName: "รวมทุก User",
+          quantity: group.salesQty,
+          salesAmount: group.salesAmount,
+          targetQty: group.hasTarget ? group.targetQty : null,
+          achievementPercent: group.achievementPercent,
+          baseWage: group.expensesAvailable ? group.baseWage : null,
+          commission: group.expensesAvailable ? group.commission : null,
+          totalExpense: group.totalExpense,
+          expensePercent: group.expensePercent,
+          netProfit: group.netProfit,
+          profitMargin: group.profitMargin,
+        });
+      });
+
+      userSummaries.forEach((item) => {
+        pivot.addRow({
+          date: `${startDate} ถึง ${endDate}`,
+          displayName: `รวม User (ช่วงวันที่): ${item.displayName || "ไม่ระบุพนักงาน"}`,
+          storeName: item.storeName || "ไม่ระบุสาขา",
+          productName: "รวมทุกสินค้า",
           quantity: item.totalSalesQty || 0,
           salesAmount: item.totalSalesAmount || 0,
           baseWage: item.expenseAvailable ? item.baseWage : null,
@@ -292,15 +418,11 @@ export default function AdminUserSkuSalesPage() {
           expensePercent: item.expensePercent,
           netProfit: item.netProfit,
           profitMargin: item.profitMargin,
-          expenseStatus: item.expenseAvailable
-            ? "ครบ"
-            : "ไม่พบข้อมูลลงเวลาในช่วงนี้",
         });
       });
 
       pivot.addRow({
-        rowType: "รวมทั้งหมด",
-        productName: "Grand Total",
+        date: "Grand Total",
         quantity: totalSalesQty,
         salesAmount: totalSalesAmount,
         baseWage: usersMissingExpense === 0 ? totalBaseWage : null,
@@ -309,10 +431,6 @@ export default function AdminUserSkuSalesPage() {
         expensePercent: usersMissingExpense === 0 ? totalExpensePercent : null,
         netProfit: totalProfit,
         profitMargin: totalProfitMargin,
-        expenseStatus:
-          usersMissingExpense === 0
-            ? "ครบทุก User"
-            : `ค่าใช้จ่ายขาด ${usersMissingExpense} User`,
       });
 
       const userSummary = workbook.addWorksheet("สรุปค่าใช้จ่าย User");
@@ -461,8 +579,8 @@ export default function AdminUserSkuSalesPage() {
           if (rowNumber <= headerRow) return;
           row.alignment = { vertical: "middle", wrapText: rowNumber < 3 };
           if (
-            row.getCell(1).value === "รวมพนักงาน" ||
-            row.getCell(1).value === "รวมทั้งหมด"
+            String(row.getCell(2).value || "").startsWith("รวม") ||
+            row.getCell(1).value === "Grand Total"
           ) {
             row.font = { bold: true };
             row.fill = {
@@ -475,12 +593,18 @@ export default function AdminUserSkuSalesPage() {
       });
 
       [pivot, userSummary].forEach((sheet) => {
-        [9, 10, 11, 12, 13, 14, 15].forEach((column) => {
+        (sheet === pivot
+          ? [7, 10, 11, 12, 14]
+          : [9, 10, 11, 12, 13, 14, 15]
+        ).forEach((column) => {
           if (column <= sheet.columnCount) {
             sheet.getColumn(column).numFmt = "#,##0.00;[Red]-#,##0.00;0";
           }
         });
       });
+      pivot.getColumn(6).numFmt = "#,##0.##;[Red]-#,##0.##;0";
+      pivot.getColumn(8).numFmt = "#,##0.##;[Red]-#,##0.##;0";
+      pivot.getColumn(9).numFmt = '0.00"%"';
       pivot.getColumn(13).numFmt = '0.00"%"';
       pivot.getColumn(15).numFmt = '0.00"%"';
       userSummary.getColumn(9).numFmt = '0.00"%"';
@@ -824,11 +948,17 @@ export default function AdminUserSkuSalesPage() {
             </span>
           </div>
           <div className="max-h-[70vh] overflow-auto">
-            <table className="w-full min-w-[1500px] border-collapse text-xs">
+            <table className="w-full min-w-[1950px] border-collapse text-xs">
               <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700">
                 <tr>
                   <th className="border-b border-r border-slate-200 p-2 text-left">
-                    พนักงาน
+                    วันที่
+                  </th>
+                  <th className="border-b border-r border-slate-200 p-2 text-left">
+                    User
+                  </th>
+                  <th className="border-b border-r border-slate-200 p-2 text-left">
+                    สาขา
                   </th>
                   <th className="border-b border-r border-slate-200 p-2 text-left">
                     สินค้า
@@ -841,6 +971,12 @@ export default function AdminUserSkuSalesPage() {
                   </th>
                   <th className="border-b border-r border-slate-200 bg-emerald-50 p-2 text-right">
                     ยอดขาย (บาท)
+                  </th>
+                  <th className="border-b border-r border-slate-200 p-2 text-right">
+                    Target (ชิ้น)
+                  </th>
+                  <th className="border-b border-r border-slate-200 p-2 text-right">
+                    ทำได้ (%)
                   </th>
                   <th className="border-b border-r border-slate-200 p-2 text-right">
                     ค่าแรง (บาท)
@@ -863,102 +999,272 @@ export default function AdminUserSkuSalesPage() {
                 </tr>
               </thead>
               <tbody>
-                {userSummaries.map((item) => (
-                  <React.Fragment key={item.userId || item.empId}>
-                    <tr className="bg-slate-100 font-black text-slate-800">
+                {dailyPivotGroups.map((group) => (
+                  <React.Fragment key={group.date}>
+                    <tr className="bg-slate-200 font-black text-slate-800">
                       <td
-                        colSpan={11}
-                        className="border-b border-slate-200 p-2.5"
+                        colSpan={15}
+                        className="border-b border-slate-300 p-2.5"
                       >
-                        {item.displayName}{" "}
-                        <span className="font-mono text-[10px] text-slate-500">
-                          {item.empId} · {item.storeName || "ไม่ระบุสาขา"}
-                        </span>
+                        วันที่ {group.date}
                       </td>
                     </tr>
-                    {item.productLines.map(
-                      ({ product, quantity, amount }: any) => (
-                        <tr
-                          key={`${item.userId}-${getProductKey(product)}`}
-                          className="odd:bg-white even:bg-slate-50"
-                        >
-                          <td className="border-b border-r border-slate-100 px-2 py-1.5"></td>
-                          <td className="border-b border-r border-slate-100 px-2 py-1.5">
-                            {product.name}
-                          </td>
-                          <td className="border-b border-r border-slate-100 px-2 py-1.5 font-mono text-[10px]">
-                            {getProductKey(product)}
-                          </td>
-                          <td className="border-b border-r border-slate-100 px-2 py-1.5 text-right font-mono">
-                            {quantity.toLocaleString()}
-                          </td>
-                          <td className="border-b border-r border-slate-100 bg-emerald-50/40 px-2 py-1.5 text-right font-mono">
-                            {amount.toLocaleString()}
-                          </td>
+                    {group.users.map(({ item, day }: any) => (
+                      <React.Fragment
+                        key={`${group.date}-${item.userId || item.empId}`}
+                      >
+                        <tr className="bg-slate-100 font-bold text-slate-800">
+                          <td className="border-b border-r border-slate-200 p-2"></td>
                           <td
-                            colSpan={6}
-                            className="border-b border-slate-100 px-2 py-1.5 text-center text-slate-300"
+                            colSpan={14}
+                            className="border-b border-slate-200 p-2"
                           >
-                            -
+                            {item.displayName}{" "}
+                            <span className="font-mono text-[10px] text-slate-500">
+                              {item.empId}
+                            </span>
                           </td>
                         </tr>
-                      ),
-                    )}
-                    <tr className="bg-cyan-50 font-black">
+                        {day.stores.map((store: any) => (
+                          <React.Fragment
+                            key={`${group.date}-${item.userId}-${store.storeCode || store.storeName}`}
+                          >
+                            <tr className="bg-sky-50 font-semibold text-slate-700">
+                              <td className="border-b border-r border-slate-100 p-2"></td>
+                              <td className="border-b border-r border-slate-100 p-2"></td>
+                              <td
+                                colSpan={12}
+                                className="border-b border-slate-100 p-2"
+                              >
+                                {store.storeName || "ไม่ระบุสาขา"}
+                              </td>
+                            </tr>
+                            {store.productLines.map(
+                              ({ product, quantity, amount }: any) => (
+                                <tr
+                                  key={`${group.date}-${item.userId}-${store.storeCode}-${getProductKey(product)}`}
+                                  className="odd:bg-white even:bg-slate-50"
+                                >
+                                  <td className="border-b border-r border-slate-100 px-2 py-1.5"></td>
+                                  <td className="border-b border-r border-slate-100 px-2 py-1.5"></td>
+                                  <td className="border-b border-r border-slate-100 px-2 py-1.5">
+                                    {store.storeName}
+                                  </td>
+                                  <td className="border-b border-r border-slate-100 px-2 py-1.5">
+                                    {product.name}
+                                  </td>
+                                  <td className="border-b border-r border-slate-100 px-2 py-1.5 font-mono text-[10px]">
+                                    {getProductKey(product)}
+                                  </td>
+                                  <td className="border-b border-r border-slate-100 px-2 py-1.5 text-right font-mono">
+                                    {quantity.toLocaleString()}
+                                  </td>
+                                  <td className="border-b border-r border-slate-100 bg-emerald-50/40 px-2 py-1.5 text-right font-mono">
+                                    {amount.toLocaleString()}
+                                  </td>
+                                  <td
+                                    colSpan={8}
+                                    className="border-b border-slate-100 px-2 py-1.5 text-center text-slate-300"
+                                  >
+                                    -
+                                  </td>
+                                </tr>
+                              ),
+                            )}
+                          </React.Fragment>
+                        ))}
+                        <tr className="bg-cyan-50 font-black">
+                          <td className="border-b border-r border-slate-200 p-2"></td>
+                          <td className="border-b border-r border-slate-200 p-2">
+                            รวม User (รายวัน)
+                          </td>
+                          <td className="border-b border-r border-slate-200 p-2"></td>
+                          <td className="border-b border-r border-slate-200 p-2">
+                            รวมทุกสาขา/สินค้า
+                          </td>
+                          <td className="border-b border-r border-slate-200 p-2"></td>
+                          <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                            {Number(day.salesQty || 0).toLocaleString()}
+                          </td>
+                          <td className="border-b border-r border-slate-200 bg-emerald-100 p-2 text-right font-mono">
+                            {Number(day.salesAmount || 0).toLocaleString()}
+                          </td>
+                          <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                            {day.targetQty === null
+                              ? "-"
+                              : Number(day.targetQty).toLocaleString()}
+                          </td>
+                          <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                            {day.achievementPercent === null
+                              ? "-"
+                              : `${Number(day.achievementPercent).toFixed(2)}%`}
+                          </td>
+                          <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                            {day.baseWage === null
+                              ? "-"
+                              : day.baseWage.toLocaleString()}
+                          </td>
+                          <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                            {day.commission === null
+                              ? "-"
+                              : day.commission.toLocaleString()}
+                          </td>
+                          <td className="border-b border-r border-slate-200 bg-amber-100 p-2 text-right font-mono">
+                            {day.totalExpense === null
+                              ? "-"
+                              : day.totalExpense.toLocaleString()}
+                          </td>
+                          <td className="border-b border-r border-slate-200 bg-amber-50 p-2 text-right font-mono">
+                            {day.expensePercent === null
+                              ? "-"
+                              : `${day.expensePercent.toFixed(2)}%`}
+                          </td>
+                          <td
+                            className={`border-b border-r border-slate-200 p-2 text-right font-mono ${day.netProfit === null ? "text-slate-400" : day.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}
+                          >
+                            {day.netProfit === null
+                              ? "-"
+                              : `${day.netProfit >= 0 ? "+" : ""}${day.netProfit.toLocaleString()}`}
+                          </td>
+                          <td className="border-b border-slate-200 p-2 text-right font-mono">
+                            {day.profitMargin === null
+                              ? "-"
+                              : `${day.profitMargin.toFixed(2)}%`}
+                          </td>
+                        </tr>
+                      </React.Fragment>
+                    ))}
+                    <tr className="bg-cyan-100 font-black">
+                      <td className="border-b border-r border-slate-200 p-2"></td>
                       <td className="border-b border-r border-slate-200 p-2">
-                        รวม User
+                        รวมรายวัน
                       </td>
+                      <td className="border-b border-r border-slate-200 p-2"></td>
                       <td className="border-b border-r border-slate-200 p-2">
-                        รวมสินค้า
+                        รวมทุก User
                       </td>
                       <td className="border-b border-r border-slate-200 p-2"></td>
                       <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
-                        {Number(item.totalSalesQty || 0).toLocaleString()}
+                        {group.salesQty.toLocaleString()}
                       </td>
                       <td className="border-b border-r border-slate-200 bg-emerald-100 p-2 text-right font-mono">
-                        {Number(item.totalSalesAmount || 0).toLocaleString()}
+                        {group.salesAmount.toLocaleString()}
                       </td>
                       <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
-                        {item.expenseAvailable
-                          ? item.baseWage.toLocaleString()
+                        {group.hasTarget
+                          ? group.targetQty.toLocaleString()
                           : "-"}
                       </td>
                       <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
-                        {item.expenseAvailable
-                          ? item.commission.toLocaleString()
+                        {group.achievementPercent === null
+                          ? "-"
+                          : `${group.achievementPercent.toFixed(2)}%`}
+                      </td>
+                      <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                        {group.expensesAvailable
+                          ? group.baseWage.toLocaleString()
+                          : "-"}
+                      </td>
+                      <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                        {group.expensesAvailable
+                          ? group.commission.toLocaleString()
                           : "-"}
                       </td>
                       <td className="border-b border-r border-slate-200 bg-amber-100 p-2 text-right font-mono">
-                        {item.expenseAvailable
-                          ? item.totalExpense.toLocaleString()
-                          : "-"}
-                      </td>
-                      <td className="border-b border-r border-slate-200 bg-amber-100 p-2 text-right font-mono">
-                        {item.expensePercent === null
+                        {group.totalExpense === null
                           ? "-"
-                          : `${item.expensePercent.toFixed(2)}%`}
+                          : group.totalExpense.toLocaleString()}
                       </td>
-                      <td
-                        className={`border-b border-r border-slate-200 p-2 text-right font-mono ${item.netProfit === null ? "text-slate-400" : item.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}
-                      >
-                        {item.netProfit === null
+                      <td className="border-b border-r border-slate-200 bg-amber-50 p-2 text-right font-mono">
+                        {group.expensePercent === null
                           ? "-"
-                          : `${item.netProfit >= 0 ? "+" : ""}${item.netProfit.toLocaleString()}`}
+                          : `${group.expensePercent.toFixed(2)}%`}
                       </td>
                       <td
-                        className={`border-b border-slate-200 p-2 text-right font-mono ${item.profitMargin === null ? "text-slate-400" : item.profitMargin >= 0 ? "text-emerald-700" : "text-rose-700"}`}
+                        className={`border-b border-r border-slate-200 p-2 text-right font-mono ${group.netProfit === null ? "text-slate-400" : group.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}
                       >
-                        {item.profitMargin === null
+                        {group.netProfit === null
                           ? "-"
-                          : `${item.profitMargin.toFixed(2)}%`}
+                          : `${group.netProfit >= 0 ? "+" : ""}${group.netProfit.toLocaleString()}`}
+                      </td>
+                      <td className="border-b border-slate-200 p-2 text-right font-mono">
+                        {group.profitMargin === null
+                          ? "-"
+                          : `${group.profitMargin.toFixed(2)}%`}
                       </td>
                     </tr>
                   </React.Fragment>
                 ))}
+                {userSummaries.map((item) => (
+                  <tr
+                    key={`period-${item.userId || item.empId}`}
+                    className="bg-amber-50 font-black"
+                  >
+                    <td className="border-b border-r border-slate-200 p-2">
+                      {startDate} ถึง {endDate}
+                    </td>
+                    <td className="border-b border-r border-slate-200 p-2">
+                      รวม User (ช่วงวันที่): {item.displayName}
+                    </td>
+                    <td className="border-b border-r border-slate-200 p-2">
+                      {item.storeName || "ไม่ระบุสาขา"}
+                    </td>
+                    <td className="border-b border-r border-slate-200 p-2">
+                      รวมทุกสินค้า
+                    </td>
+                    <td className="border-b border-r border-slate-200 p-2"></td>
+                    <td className="border-b border-r border-slate-200 p-2 text-right">
+                      -
+                    </td>
+                    <td className="border-b border-r border-slate-200 p-2 text-right">
+                      -
+                    </td>
+                    <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                      {Number(item.totalSalesQty || 0).toLocaleString()}
+                    </td>
+                    <td className="border-b border-r border-slate-200 bg-emerald-100 p-2 text-right font-mono">
+                      {Number(item.totalSalesAmount || 0).toLocaleString()}
+                    </td>
+                    <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                      {item.expenseAvailable
+                        ? item.baseWage.toLocaleString()
+                        : "-"}
+                    </td>
+                    <td className="border-b border-r border-slate-200 p-2 text-right font-mono">
+                      {item.expenseAvailable
+                        ? item.commission.toLocaleString()
+                        : "-"}
+                    </td>
+                    <td className="border-b border-r border-slate-200 bg-amber-100 p-2 text-right font-mono">
+                      {item.expenseAvailable
+                        ? item.totalExpense.toLocaleString()
+                        : "-"}
+                    </td>
+                    <td className="border-b border-r border-slate-200 bg-amber-100 p-2 text-right font-mono">
+                      {item.expensePercent === null
+                        ? "-"
+                        : `${item.expensePercent.toFixed(2)}%`}
+                    </td>
+                    <td
+                      className={`border-b border-r border-slate-200 p-2 text-right font-mono ${item.netProfit === null ? "text-slate-400" : item.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}
+                    >
+                      {item.netProfit === null
+                        ? "-"
+                        : `${item.netProfit >= 0 ? "+" : ""}${item.netProfit.toLocaleString()}`}
+                    </td>
+                    <td
+                      className={`border-b border-slate-200 p-2 text-right font-mono ${item.profitMargin === null ? "text-slate-400" : item.profitMargin >= 0 ? "text-emerald-700" : "text-rose-700"}`}
+                    >
+                      {item.profitMargin === null
+                        ? "-"
+                        : `${item.profitMargin.toFixed(2)}%`}
+                    </td>
+                  </tr>
+                ))}
                 {!loading && userSummaries.length === 0 && (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={15}
                       className="p-8 text-center font-medium text-slate-500"
                     >
                       ไม่พบยอดขายตามเงื่อนไขที่เลือก
@@ -972,6 +1278,10 @@ export default function AdminUserSkuSalesPage() {
                     <td className="border-t border-r border-slate-300 p-2">
                       Grand Total
                     </td>
+                    <td className="border-t border-r border-slate-300 p-2"></td>
+                    <td className="border-t border-r border-slate-300 p-2"></td>
+                    <td className="border-t border-r border-slate-300 p-2"></td>
+                    <td className="border-t border-r border-slate-300 p-2"></td>
                     <td className="border-t border-r border-slate-300 p-2"></td>
                     <td className="border-t border-r border-slate-300 p-2"></td>
                     <td className="border-t border-r border-slate-300 p-2 text-right font-mono">
@@ -1018,8 +1328,8 @@ export default function AdminUserSkuSalesPage() {
             </table>
           </div>
           <p className="border-t border-slate-100 px-4 py-2 text-[10px] text-slate-500">
-            รายจ่ายรวมคำนวณจากค่าแรงและคอมมิชชั่นตามรายงานเงินเดือน;
-            ค่าใช้จ่ายแสดงเฉพาะแถวรวม User เพื่อไม่ให้นับซ้ำในแต่ละ SKU
+            ค่าแรงและคอมมิชชั่นแสดงในแถวสรุปรายวันและสรุป User เท่านั้น
+            ไม่แสดงซ้ำในรายละเอียดสินค้า
           </p>
         </section>
       </div>
