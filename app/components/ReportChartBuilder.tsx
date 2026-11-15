@@ -19,11 +19,57 @@ interface AggregatedChart {
   series: Array<{ label: string; dataKey: string; color: string }>;
 }
 
+interface PrismBarShapeProps {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  fill?: string;
+}
+
+export function PrismBarShape({
+  x = 0,
+  y = 0,
+  width = 0,
+  height = 0,
+  fill = "#2563eb",
+}: PrismBarShapeProps) {
+  if (width <= 0 || height <= 0) return null;
+
+  const depth = Math.min(7, height / 3);
+  const frontHeight = height - depth;
+
+  return (
+    <g>
+      <polygon
+        points={`${x},${y + depth} ${x + depth},${y} ${x + width + depth},${y} ${x + width},${y + depth}`}
+        fill={fill}
+        fillOpacity={0.62}
+      />
+      <polygon
+        points={`${x + width},${y + depth} ${x + width + depth},${y} ${x + width + depth},${y + frontHeight} ${x + width},${y + height}`}
+        fill={fill}
+        fillOpacity={0.78}
+      />
+      <rect
+        x={x}
+        y={y + depth}
+        width={width}
+        height={frontHeight}
+        rx={1}
+        fill={fill}
+      />
+    </g>
+  );
+}
+
 function buildAggregatedChart(
   rows: ReportChartRow[],
   metric: ReportChartMetric | undefined,
   dimension: ReportChartDimension | undefined,
   seriesDimension: ReportChartDimension | undefined,
+  seriesLimit = 8,
+  categoryLimit = 24,
 ): AggregatedChart {
   if (!metric || !dimension) return { data: [], series: [] };
 
@@ -73,7 +119,7 @@ function buildAggregatedChart(
   );
   const visibleSeries = Array.from(seriesLabels.keys())
     .sort((a, b) => (totalsBySeries.get(b) || 0) - (totalsBySeries.get(a) || 0))
-    .slice(0, 8)
+    .slice(0, seriesLimit)
     .map((label, index) => {
       const firstRow = seriesDimension?.colorKey
         ? rows.find(
@@ -102,8 +148,10 @@ function buildAggregatedChart(
     dimension.key === "date"
       ? categoryTotals
           .sort((a, b) => a.category.localeCompare(b.category))
-          .slice(-24)
-      : categoryTotals.sort((a, b) => b.total - a.total).slice(0, 24);
+          .slice(-categoryLimit)
+      : categoryTotals
+          .sort((a, b) => b.total - a.total)
+          .slice(0, categoryLimit);
 
   const data = visibleCategories.map(({ category }) => {
     const point: Record<string, string | number> = { category };
@@ -146,6 +194,7 @@ interface ReportChartBuilderProps {
   defaultMetric: string;
   defaultSeries?: string;
   pairedComparison?: boolean;
+  topRankLimit?: number;
 }
 
 const SERIES_COLORS = [
@@ -168,6 +217,7 @@ export default function ReportChartBuilder({
   defaultDimension,
   defaultMetric,
   defaultSeries = "",
+  topRankLimit,
 }: ReportChartBuilderProps) {
   const [dimensionKey, setDimensionKey] = useState(defaultDimension);
   const [metricKey, setMetricKey] = useState(defaultMetric);
@@ -216,8 +266,21 @@ export default function ReportChartBuilder({
         activeMetric,
         activeDimension,
         activeSeriesDimension,
+        topRankLimit,
       ),
-    [activeDimension, activeMetric, activeSeriesDimension, rows],
+    [activeDimension, activeMetric, activeSeriesDimension, rows, topRankLimit],
+  );
+  const barChart = useMemo(
+    () =>
+      buildAggregatedChart(
+        rows,
+        activeMetric,
+        activeDimension,
+        activeSeriesDimension,
+        topRankLimit,
+        topRankLimit,
+      ),
+    [activeDimension, activeMetric, activeSeriesDimension, rows, topRankLimit],
   );
   const pairedCharts = useMemo(() => {
     const salesMetric = metrics.find((metric) => metric.key === "salesQty");
@@ -228,15 +291,18 @@ export default function ReportChartBuilder({
         salesMetric,
         activeDimension,
         activeSeriesDimension,
+        topRankLimit,
+        topRankLimit,
       ),
       prices: buildAggregatedChart(
         rows,
         priceMetric,
         activeDimension,
         activeSeriesDimension,
+        topRankLimit,
       ),
     };
-  }, [activeDimension, activeSeriesDimension, metrics, rows]);
+  }, [activeDimension, activeSeriesDimension, metrics, rows, topRankLimit]);
 
   const selectorClass =
     "w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-bold text-slate-700";
@@ -337,8 +403,9 @@ export default function ReportChartBuilder({
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={pairedCharts.sales.data}
-                    margin={{ top: 8, right: 8, left: -18, bottom: 4 }}
-                    barCategoryGap="18%"
+                    layout="vertical"
+                    margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
+                    barCategoryGap="24%"
                   >
                     <defs>
                       {pairedCharts.sales.series.map((series) => (
@@ -363,13 +430,14 @@ export default function ReportChartBuilder({
                         </linearGradient>
                       ))}
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
-                    <XAxis
+                    <CartesianGrid horizontal={false} stroke="#e2e8f0" />
+                    <XAxis type="number" tick={{ fontSize: 9 }} />
+                    <YAxis
+                      type="category"
                       dataKey="category"
-                      tick={{ fontSize: 9, fontWeight: 700 }}
-                      interval="preserveStartEnd"
+                      width={100}
+                      tick={{ fontSize: 9 }}
                     />
-                    <YAxis tick={{ fontSize: 9 }} />
                     <Tooltip
                       formatter={(value, name) => [`${value} ชิ้น`, name]}
                     />
@@ -384,7 +452,8 @@ export default function ReportChartBuilder({
                         fill={`url(#paired-sales-${series.dataKey})`}
                         stroke={series.color}
                         strokeOpacity={0.6}
-                        radius={[4, 4, 0, 0]}
+                        stackId="sales-comparison"
+                        shape={PrismBarShape}
                         maxBarSize={34}
                       />
                     ))}
@@ -423,28 +492,18 @@ export default function ReportChartBuilder({
                     <Legend
                       wrapperStyle={{ fontSize: "9px", lineHeight: "16px" }}
                     />
-                    {pairedCharts.prices.series.map((series) => (
-                      <React.Fragment key={series.dataKey}>
-                        <Line
-                          type="monotone"
-                          dataKey={series.dataKey}
-                          stroke={series.color}
-                          strokeWidth={6}
-                          strokeOpacity={0.14}
-                          dot={false}
-                          legendType="none"
-                          tooltipType="none"
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey={series.dataKey}
-                          name={series.label}
-                          stroke={series.color}
-                          strokeWidth={2.5}
-                          dot={{ r: 2, strokeWidth: 1 }}
-                          activeDot={{ r: 4 }}
-                        />
-                      </React.Fragment>
+                    {pairedCharts.prices.series.map((series, index) => (
+                      <Line
+                        key={series.dataKey}
+                        type="monotone"
+                        dataKey={series.dataKey}
+                        name={series.label}
+                        stroke={series.color}
+                        strokeWidth={Math.max(1.5, 2.8 - index * 0.25)}
+                        strokeOpacity={Math.max(0.45, 1 - index * 0.12)}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                      />
                     ))}
                   </LineChart>
                 </ResponsiveContainer>
@@ -462,27 +521,30 @@ export default function ReportChartBuilder({
             <ResponsiveContainer width="100%" height="100%">
               {chartType === "bar" ? (
                 <BarChart
-                  data={chart.data}
-                  margin={{ top: 8, right: 12, left: -18, bottom: 4 }}
+                  data={barChart.data}
+                  layout="vertical"
+                  margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis
+                  <CartesianGrid horizontal={false} stroke="#e2e8f0" />
+                  <XAxis type="number" tick={{ fontSize: 10 }} />
+                  <YAxis
+                    type="category"
                     dataKey="category"
+                    width={112}
                     tick={{ fontSize: 10 }}
-                    interval="preserveStartEnd"
                   />
-                  <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip />
-                  {chart.series.length > 1 && (
+                  {barChart.series.length > 1 && (
                     <Legend wrapperStyle={{ fontSize: "10px" }} />
                   )}
-                  {chart.series.map((series) => (
+                  {barChart.series.map((series) => (
                     <Bar
                       key={series.dataKey}
                       dataKey={series.dataKey}
                       name={series.label}
                       fill={series.color}
-                      radius={[3, 3, 0, 0]}
+                      stackId="chart-series"
+                      shape={PrismBarShape}
                     />
                   ))}
                 </BarChart>
@@ -502,14 +564,15 @@ export default function ReportChartBuilder({
                   {chart.series.length > 1 && (
                     <Legend wrapperStyle={{ fontSize: "10px" }} />
                   )}
-                  {chart.series.map((series) => (
+                  {chart.series.map((series, index) => (
                     <Line
                       key={series.dataKey}
                       type="monotone"
                       dataKey={series.dataKey}
                       name={series.label}
                       stroke={series.color}
-                      strokeWidth={2}
+                      strokeWidth={Math.max(1.5, 2.8 - index * 0.25)}
+                      strokeOpacity={Math.max(0.45, 1 - index * 0.12)}
                       dot={false}
                     />
                   ))}

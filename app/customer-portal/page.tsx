@@ -57,6 +57,7 @@ import { saveAs } from "file-saver";
 import Swal from "sweetalert2";
 import { handleLogout } from "../login/actions";
 import ReportChartBuilder, {
+  PrismBarShape,
   type ReportChartDimension,
   type ReportChartMetric,
 } from "../components/ReportChartBuilder";
@@ -928,19 +929,7 @@ export default function CustomerReportPortal() {
         return Number.isFinite(price) && price > 0;
       }),
     );
-    const ownSeries = availableSeries.filter((series) => series.type === "our");
-    const competitorSeries = availableSeries.filter(
-      (series) => series.type !== "our",
-    );
-    const selectedSeries = [
-      ...ownSeries.slice(0, 4),
-      ...competitorSeries.slice(0, 4),
-    ];
-    return [
-      ...selectedSeries,
-      ...ownSeries.slice(4),
-      ...competitorSeries.slice(4),
-    ].slice(0, 8);
+    return availableSeries;
   }, [activeReportProducts, activeCampaignCompetitors, filteredData]);
 
   const flexibleChartRows = useMemo(() => {
@@ -1490,6 +1479,37 @@ export default function CustomerReportPortal() {
     }
   }, [filteredData, selectedStore, activeReportProducts]);
 
+  const chart1TopProducts = useMemo(
+    () =>
+      activeReportProducts
+        .map((product) => {
+          let total = 0;
+          let observations = 0;
+          filteredData.forEach((row) => {
+            const accountName = getAccountName(
+              row.storeName,
+              row.storeCode,
+              row.account,
+            );
+            const quantity = Number(
+              getProductInfo(row, product.barcode, accountName === "Big C")
+                .salesQty,
+            );
+            if (Number.isFinite(quantity)) {
+              total += quantity;
+              observations += 1;
+            }
+          });
+          return {
+            ...product,
+            average: observations ? total / observations : 0,
+          };
+        })
+        .sort((a, b) => b.average - a.average)
+        .slice(0, 5),
+    [activeReportProducts, filteredData],
+  );
+
   // 📊 ประมวลผลราคาของสินค้าและคู่แข่งแยกเป็นรายวันและราย SKU
   const chart3Data = useMemo(() => {
     if (!filteredData || filteredData.length === 0) return [];
@@ -1544,6 +1564,25 @@ export default function CustomerReportPortal() {
       })
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredData, activePriceChartSeries]);
+
+  const topPriceChartSeries = useMemo(
+    () =>
+      activePriceChartSeries
+        .map((series) => {
+          const values = chart3Data
+            .map((day) => Number(day[series.dataKey]))
+            .filter((value) => Number.isFinite(value) && value > 0);
+          return {
+            ...series,
+            average: values.length
+              ? values.reduce((sum, value) => sum + value, 0) / values.length
+              : 0,
+          };
+        })
+        .sort((a, b) => b.average - a.average)
+        .slice(0, 5),
+    [activePriceChartSeries, chart3Data],
+  );
 
   const chart2Data = useMemo(() => {
     const totals = chart1And2Data.reduce(
@@ -1608,6 +1647,21 @@ export default function CustomerReportPortal() {
       a.date.localeCompare(b.date),
     );
   }, [filteredData, activeReportProducts]);
+
+  const topTrendProducts = useMemo(
+    () =>
+      activeReportProducts
+        .map((product) => ({
+          ...product,
+          total: chart4Data.reduce(
+            (sum, day) => sum + Number(day[`sales_${product.barcode}`] || 0),
+            0,
+          ),
+        }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 5),
+    [activeReportProducts, chart4Data],
+  );
 
   const salesAlertSummary = useMemo(() => {
     const productTotals = new Map<
@@ -3488,6 +3542,7 @@ export default function CustomerReportPortal() {
             defaultDimension="category"
             defaultMetric="salesQty"
             defaultSeries="itemType"
+            topRankLimit={5}
             pairedComparison
           />
 
@@ -3500,54 +3555,39 @@ export default function CustomerReportPortal() {
                   1. ยอดขายรวมแยกรายสินค้า
                 </h3>
                 <span className="text-[9px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md">
-                  {selectedStore === "ALL" ? "แยก Account" : "แยกรายวัน"}
+                  ค่าเฉลี่ย · Top 5
                 </span>
               </div>
-              <div className="h-60 w-full sm:h-64">
+              <div className="h-52 w-full sm:h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={chart1And2Data}
-                    margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
+                    data={chart1TopProducts}
+                    layout="vertical"
+                    margin={{ top: 8, right: 18, left: 4, bottom: 4 }}
                   >
-                    <defs>
-                      {activeReportProducts.map((prod) => (
-                        <linearGradient
-                          key={`grad_${prod.barcode}`}
-                          id={`c1-grad-${prod.barcode}`}
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop offset="0%" stopColor={prod.gradStart} />
-                          <stop offset="100%" stopColor={prod.gradEnd} />
-                        </linearGradient>
+                    <CartesianGrid horizontal={false} stroke="#f1f5f9" />
+                    <XAxis type="number" tick={{ fontSize: 9 }} />
+                    <YAxis
+                      type="category"
+                      dataKey="shortLabel"
+                      width={124}
+                      tick={{ fontSize: 9 }}
+                    />
+                    <Tooltip
+                      formatter={(value) => [
+                        `${Number(value).toLocaleString()} ชิ้น/รายงาน`,
+                        "ค่าเฉลี่ย",
+                      ]}
+                    />
+                    <Bar
+                      dataKey="average"
+                      name="ค่าเฉลี่ย"
+                      shape={PrismBarShape}
+                    >
+                      {chart1TopProducts.map((product) => (
+                        <Cell key={product.barcode} fill={product.color} />
                       ))}
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis
-                      dataKey="displayName"
-                      tick={{ fontSize: 10, fontWeight: "bold" }}
-                    />
-                    <YAxis tick={{ fontSize: 9, fontWeight: "bold" }} />
-                    <Tooltip content={<CustomSalesTooltip />} />
-                    <Legend
-                      wrapperStyle={{
-                        fontSize: "9px",
-                        fontWeight: "bold",
-                        maxHeight: 38,
-                        overflowY: "auto",
-                      }}
-                    />
-                    {activeReportProducts.map((prod) => (
-                      <Bar
-                        key={prod.barcode}
-                        dataKey={`sales_${prod.barcode}`}
-                        name={prod.shortLabel}
-                        fill={`url(#c1-grad-${prod.barcode})`}
-                        radius={[4, 4, 0, 0]}
-                      />
-                    ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -3623,7 +3663,7 @@ export default function CustomerReportPortal() {
                   3. เปรียบเทียบราคาหน้าร้านทุก SKU vs คู่แข่ง (บาท)
                 </h3>
                 <span className="text-[9px] bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded-md">
-                  {chart3Data.length} วัน · {activePriceChartSeries.length} เส้น
+                  {chart3Data.length} วัน · {topPriceChartSeries.length} เส้น
                 </span>
               </div>
               <div className="relative h-64 w-full sm:h-72">
@@ -3657,28 +3697,18 @@ export default function CustomerReportPortal() {
                           lineHeight: "18px",
                         }}
                       />
-                      {activePriceChartSeries.map((series) => (
-                        <React.Fragment key={series.dataKey}>
-                          <Line
-                            type="monotone"
-                            dataKey={series.dataKey}
-                            stroke={series.color}
-                            strokeWidth={6}
-                            strokeOpacity={0.12}
-                            dot={false}
-                            legendType="none"
-                            tooltipType="none"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey={series.dataKey}
-                            name={series.name}
-                            stroke={series.color}
-                            strokeWidth={2.5}
-                            dot={{ r: 2 }}
-                            activeDot={{ r: 4 }}
-                          />
-                        </React.Fragment>
+                      {topPriceChartSeries.map((series, index) => (
+                        <Line
+                          key={series.dataKey}
+                          type="monotone"
+                          dataKey={series.dataKey}
+                          name={series.name}
+                          stroke={series.color}
+                          strokeWidth={Math.max(1.5, 2.8 - index * 0.25)}
+                          strokeOpacity={Math.max(0.45, 1 - index * 0.12)}
+                          dot={false}
+                          activeDot={{ r: 4 }}
+                        />
                       ))}
                     </LineChart>
                   </ResponsiveContainer>
@@ -3694,7 +3724,7 @@ export default function CustomerReportPortal() {
                   4. แนวโน้มยอดขาย SKU ตามวัน
                 </h3>
                 <span className="text-[9px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-md">
-                  {chart4Data.length} วัน
+                  {chart4Data.length} วัน · {topTrendProducts.length} SKU
                 </span>
               </div>
               <div className="h-60 w-full sm:h-64">
@@ -3723,28 +3753,18 @@ export default function CustomerReportPortal() {
                           overflowY: "auto",
                         }}
                       />
-                      {activeReportProducts.map((prod, index) => (
-                        <React.Fragment key={prod.barcode}>
-                          <Line
-                            type="monotone"
-                            dataKey={`sales_${prod.barcode}`}
-                            stroke={prod.color}
-                            strokeWidth={5}
-                            strokeOpacity={0.12}
-                            dot={false}
-                            legendType="none"
-                            tooltipType="none"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey={`sales_${prod.barcode}`}
-                            name={prod.shortLabel}
-                            stroke={prod.color}
-                            strokeWidth={index === 0 ? 2.5 : 2}
-                            dot={{ r: 2 }}
-                            activeDot={{ r: 4 }}
-                          />
-                        </React.Fragment>
+                      {topTrendProducts.map((prod, index) => (
+                        <Line
+                          key={prod.barcode}
+                          type="monotone"
+                          dataKey={`sales_${prod.barcode}`}
+                          name={prod.shortLabel}
+                          stroke={prod.color}
+                          strokeWidth={Math.max(1.5, 2.8 - index * 0.25)}
+                          strokeOpacity={Math.max(0.45, 1 - index * 0.12)}
+                          dot={false}
+                          activeDot={{ r: 4 }}
+                        />
                       ))}
                     </LineChart>
                   </ResponsiveContainer>
