@@ -1,17 +1,18 @@
 "use server";
 
 import React, { Suspense } from "react";
-import DashboardClient from "./DashboardClient";
+import DashboardClient from "./PerformanceDashboard";
+import LegacyDashboardClient from "./DashboardClient";
 
 // 🌟 ตัวจัดการฝั่ง Server: รองรับการอ่าน Query Parameters จาก URL หลังบ้าน
 interface PageProps {
-  searchParams: Promise<{ userId?: string }>;
+  searchParams: Promise<{ userId?: string; view?: string }>;
 }
 
 // ฟังก์ชันแปลงเวลา ISO UTC เป็นเวลาไทย (Asia/Bangkok)
 const formatThaiDateTime = (dateString: string | null | undefined) => {
   if (!dateString) return "-";
-  
+
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return "-";
 
@@ -25,7 +26,9 @@ const formatThaiDateTime = (dateString: string | null | undefined) => {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).format(date).replace(",", "");
+  })
+    .format(date)
+    .replace(",", "");
 };
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -47,7 +50,11 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </div>
       }
     >
-      <DashboardClient userId={userId} />
+      {resolvedParams.view === "legacy" ? (
+        <LegacyDashboardClient userId={userId} />
+      ) : (
+        <DashboardClient userId={userId} />
+      )}
     </Suspense>
   );
 }

@@ -566,8 +566,8 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
         .from("pg_daily_activity_reports")
         .select("*, pg_daily_report_products (*)")
         .eq("user_id", userId)
-        .order("id", { ascending: false })
-        .limit(5),
+        .eq("report_date", yearMonthDay)
+        .order("id", { ascending: false }),
       supabase
         .from("pg_daily_activity_reports")
         .select("*, pg_daily_report_products (*)")
@@ -585,13 +585,7 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
 
     const activeStoreCode = attendance?.store_code || profile?.area || "";
 
-    let todayReport =
-      (recentReports || []).find((r: any) => {
-        const rDate = r.report_date ? r.report_date.split("T")[0] : "";
-        return rDate === yearMonthDay;
-      }) ||
-      recentReports?.[0] ||
-      null;
+    const todayReport = recentReports?.[0] || null;
 
     const giftPromotionIds = Array.from(
       new Set(
@@ -757,6 +751,94 @@ export async function getUserDashboardDataAction(userIdInput: number | string) {
   } catch (error: any) {
     console.error("GetUserDashboardDataAction Error:", error);
     return { success: false, message: error.message };
+  }
+}
+
+export async function getUserDashboardHistoryAction(
+  userIdInput: number | string,
+) {
+  const userId = Number(userIdInput);
+  await requireUserOrAdminSession(userId);
+  const supabase = await getClientInstance();
+
+  try {
+    const reports: any[] = [];
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabase
+        .from("pg_daily_activity_reports")
+        .select(
+          "id, report_date, store_code, promotion_id, promotion_gift_given, pg_daily_report_products(barcode, descriptions, item_scope, sales_qty, price_our, credit_factor, promotion_target_qty)",
+        )
+        .eq("user_id", userId)
+        .order("id", { ascending: false })
+        .range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      reports.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+
+    const promotionIds = Array.from(
+      new Set(
+        reports
+          .map((report) => String(report.promotion_id || ""))
+          .filter(Boolean),
+      ),
+    );
+    const storeCodes = Array.from(
+      new Set(
+        reports
+          .map((report) => String(report.store_code || ""))
+          .filter(Boolean),
+      ),
+    );
+    const promotions: any[] = [];
+    const stores: any[] = [];
+    const storeTargets: any[] = [];
+    for (let offset = 0; offset < promotionIds.length; offset += 100) {
+      const { data, error } = await supabase
+        .from("promotions")
+        .select(
+          "id, campaign_title, start_date, end_date, calculation_period, track_gift_inventory, gift_items",
+        )
+        .in("id", promotionIds.slice(offset, offset + 100));
+      if (error) throw error;
+      promotions.push(...(data || []));
+    }
+    for (let offset = 0; offset < storeCodes.length; offset += 100) {
+      const { data, error } = await supabase
+        .from("pg_stores")
+        .select("store_code, store_name, account, company_tag")
+        .in("store_code", storeCodes.slice(offset, offset + 100));
+      if (error) throw error;
+      stores.push(...(data || []));
+      const targetResult = await supabase
+        .from("store_targets")
+        .select("*")
+        .in("store_code", storeCodes.slice(offset, offset + 100));
+      if (targetResult.error) throw targetResult.error;
+      storeTargets.push(
+        ...(targetResult.data || []).map((item: any) => ({
+          store_code: item.store_code,
+          promotion_id: item.promotion_id,
+          calculation_period: item.calculation_period,
+          target_packs: getStoreTargetPacks(item),
+        })),
+      );
+    }
+    return {
+      success: true as const,
+      reports,
+      promotions,
+      stores,
+      storeTargets,
+    };
+  } catch (error: any) {
+    console.error("GetUserDashboardHistoryAction Error:", error);
+    return {
+      success: false as const,
+      message: error.message || "ไม่สามารถโหลดประวัติผลงานได้",
+    };
   }
 }
 
