@@ -27,6 +27,8 @@ import {
   Clock,
   Package,
   Video,
+  Users,
+  MessageCircle,
 } from "lucide-react";
 
 interface UserSession {
@@ -36,6 +38,7 @@ interface UserSession {
   company_tag: string;
   area: string;
   image_url: string;
+  role?: "admin" | "staff" | "koe";
 }
 
 interface StoreItem {
@@ -570,6 +573,29 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
         </div>
 
         <div className="space-y-3">
+          {(user.role === "staff" || user.role === "koe") && (
+            <button
+              onClick={() => router.push("/koe/chat")}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <MessageCircle className="text-blue-600" /> ข้อความประสานงานกับ
+                KOE
+              </span>
+              <ChevronRight size={16} />
+            </button>
+          )}
+          {user.role === "koe" && (
+            <button
+              onClick={() => router.push("/koe")}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <Users className="text-blue-600" /> ทีมและผลงาน KOE
+              </span>
+              <ChevronRight size={16} />
+            </button>
+          )}
           <button
             onClick={() => router.push(`/daily-report?userId=${user?.id}`)}
             className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"

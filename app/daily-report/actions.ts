@@ -2,18 +2,22 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { normalizeCompetitorPrices } from "@/utils/competitor-prices";
-import { getUserSession, requireUserOrAdminSession } from "@/utils/auth";
+import {
+  getUserSession,
+  requireAdminSession,
+  requireUserOrAdminSession,
+} from "@/utils/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // 🔑 ฟังก์ชันดึง Supabase Client แบบปลอดภัย
 function getClientInstance() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (serviceKey) {
-    return createClient(supabaseUrl, serviceKey);
-  }
-  return createClient(supabaseUrl, supabaseAnonKey);
+  if (!serviceKey)
+    throw new Error("ระบบยังไม่ได้ตั้งค่าฐานข้อมูลฝั่งเซิร์ฟเวอร์");
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
 
 export interface ActivityPhotoPayload {
@@ -260,8 +264,19 @@ export async function getTodayActiveAttendance() {
   }
 }
 
+async function requireCurrentStore(storeCode: string) {
+  const session = await getUserSession();
+  if (!session) throw new Error("กรุณาเข้าสู่ระบบ");
+  if (session.role === "admin") return;
+  const attendance = await getTodayActiveAttendance();
+  if (!attendance.success || attendance.log?.store_code !== storeCode) {
+    throw new Error("ไม่มีสิทธิ์เข้าดูข้อมูลร้านนี้");
+  }
+}
+
 // 3. 🎁 ดึงยอดยกมาของแถมเริ่มต้นของสาขา
 export async function getStoreInitialGiftsAction(storeCode: string) {
+  await requireCurrentStore(storeCode);
   const supabase = getClientInstance();
   try {
     const { data, error } = await supabase
@@ -318,6 +333,7 @@ export async function getPromotionGiftInventoryAction(
   userId: number,
 ) {
   await requireUserOrAdminSession(userId);
+  await requireCurrentStore(storeCode);
   const supabase = getClientInstance();
   const [receiptsResult, reportsResult] = await Promise.all([
     supabase
@@ -374,6 +390,7 @@ export async function receivePromotionGiftStockAction(input: {
   userId: number;
 }) {
   await requireUserOrAdminSession(input.userId);
+  await requireCurrentStore(input.storeCode);
   const quantity = Number(input.quantity);
   if (!Number.isInteger(quantity) || quantity <= 0) {
     return {
@@ -419,6 +436,16 @@ export async function submitFullDailyActivityReportAction(
   const supabase = getClientInstance();
   try {
     const userId = payload.userId;
+    const { data: attendance, error: attendanceError } = await supabase
+      .from("pg_attendance_logs")
+      .select("id")
+      .eq("id", payload.attendanceLogId)
+      .eq("user_id", userId)
+      .eq("store_code", payload.storeCode)
+      .maybeSingle();
+    if (attendanceError || !attendance) {
+      throw new Error("ไม่พบรายการลงเวลาของพนักงานในร้านนี้");
+    }
     const storageUrlPrefix = `${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/public/pg-attendance-photos/`;
     const requirePhotoUrl = (url: string | undefined) => {
       if (!url) return "";
@@ -701,6 +728,7 @@ export async function getDailyReportWithProductsAction(
   endDate?: string,
   storeCode?: string,
 ) {
+  await requireAdminSession();
   const supabase = getClientInstance();
   try {
     let query = supabase

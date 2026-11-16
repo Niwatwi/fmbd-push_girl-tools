@@ -3,16 +3,28 @@
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { createUserSessionToken } from "@/utils/session-token";
-import { userSessionCookie, userSessionMaxAge } from "@/utils/auth";
+import {
+  credentialStamp,
+  hashPassword,
+  verifyPassword,
+} from "@/utils/password";
+import {
+  requireUserOrAdminSession,
+  userSessionCookie,
+  userSessionMaxAge,
+  getUserSession,
+} from "@/utils/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error("กรุณาตั้งค่า Supabase Environment Variables ใน .env.local");
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
 const ADMIN_IDENTIFIERS = new Set(["FMBD03", "ADMIN", "ADMIN_NIWAT"]);
 
 // --- 1. ฟังก์ชันจัดเก็บรูปถ่ายเข้า Bucket และดึง Public URL มาตรฐาน ---
@@ -56,6 +68,7 @@ async function uploadPhoto(
 
 // --- 2. ฟังก์ชันตรวจสอบว่าวันนี้เคยลงเวลาไปแล้วหรือยัง ---
 export async function checkTodayAttendance(userId: number) {
+  await requireUserOrAdminSession(userId);
   try {
     const now = new Date();
     const ictDate = new Intl.DateTimeFormat("en-US", {
@@ -106,7 +119,18 @@ export async function saveCheckInAction({
   longitude: number;
   base64Image: string;
 }) {
+  const session = await requireUserOrAdminSession(userId);
   try {
+    let verifiedStoreName = storeName;
+    if (session.role !== "admin") {
+      const assigned = await getStoresByUsername(session.username || "");
+      const store = assigned.stores.find(
+        (item) => item.store_code === storeCode,
+      );
+      if (!assigned.success || !store)
+        throw new Error("ไม่มีสิทธิ์ลงเวลาในร้านที่เลือก");
+      verifiedStoreName = store.store_name || storeCode;
+    }
     const today = await checkTodayAttendance(userId);
     if (!today.success) throw new Error("ตรวจสอบสถานะการลงเวลาไม่สำเร็จ");
     const todayLogs = today.logs || [];
@@ -127,7 +151,7 @@ export async function saveCheckInAction({
       .insert({
         user_id: userId,
         store_code: storeCode,
-        store_name: storeName,
+        store_name: verifiedStoreName,
         check_in_latitude: latitude,
         check_in_longitude: longitude,
         check_in_image_url: imageUrl,
@@ -161,6 +185,7 @@ export async function saveCheckOutAction({
   longitude: number;
   base64Image: string;
 }) {
+  await requireUserOrAdminSession(userId);
   try {
     const { data: existingLog, error: logError } = await supabase
       .from("pg_attendance_logs")
@@ -205,6 +230,8 @@ export async function saveCheckOutAction({
         check_out_image_url: imageUrl,
       })
       .eq("id", logId)
+      .eq("user_id", userId)
+      .is("check_out_at", null)
       .select()
       .single();
 
@@ -265,24 +292,64 @@ export async function handleLogin(
       };
     }
 
-    // ตรวจสอบรหัสผ่านตรง ๆ (เพิ่มความทนทานเรื่องช่องว่างด้วย .trim())
-    if (user.password_text?.toString().trim() !== cleanPassword) {
+    const storedPassword = String(user.password_text || "");
+    const verification = await verifyPassword(cleanPassword, storedPassword);
+    if (!verification.valid) {
       return {
         success: false,
         message: "รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง",
       };
     }
 
-    const role = [user.username, user.employee_id, user.company_tag].some(
+    let activePassword = storedPassword;
+    if (
+      verification.needsUpgrade &&
+      process.env.PASSWORD_HASH_UPGRADE_ENABLED === "true"
+    ) {
+      activePassword = await hashPassword(cleanPassword);
+      const { data: updated, error: upgradeError } = await supabase
+        .from("user_profiles")
+        .update({ password_text: activePassword })
+        .eq("id", user.id)
+        .eq("password_text", storedPassword)
+        .select("id")
+        .maybeSingle();
+      if (upgradeError || !updated) {
+        throw new Error(
+          "ไม่สามารถปรับปรุงความปลอดภัยของบัญชี กรุณาลองเข้าสู่ระบบใหม่",
+        );
+      }
+    }
+
+    const isAdmin = [user.username, user.employee_id, user.company_tag].some(
       (identifier) =>
         ADMIN_IDENTIFIERS.has(
           String(identifier || "")
             .trim()
             .toUpperCase(),
         ),
-    )
-      ? "admin"
-      : "staff";
+    );
+    let role: "admin" | "staff" | "koe" = isAdmin ? "admin" : "staff";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!isAdmin && serviceKey) {
+      const privilegedClient = createClient(supabaseUrl, serviceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { data: koeAccount, error: koeError } = await privilegedClient
+        .from("koe_accounts")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (
+        koeError &&
+        koeError.code !== "42P01" &&
+        koeError.code !== "PGRST205"
+      ) {
+        throw koeError;
+      }
+      if (koeAccount) role = "koe";
+    }
     const sessionToken = await createUserSessionToken({
       id: user.id,
       display_name: user.display_name || "",
@@ -291,6 +358,7 @@ export async function handleLogin(
       area: user.area || "",
       image_url: user.image_url || "",
       role,
+      credential_stamp: credentialStamp(user.id, activePassword),
     });
 
     const cookieStore = await cookies();
@@ -333,6 +401,10 @@ export async function handleLogout() {
 
 // ดึงร้านค้าที่ผูกกับ username ของพนักงานผ่าน mer_code
 export async function getStoresByUsername(username: string) {
+  const session = await getUserSession();
+  if (!session || (session.role !== "admin" && session.username !== username)) {
+    throw new Error("กรุณาเข้าสู่ระบบด้วยบัญชีที่ได้รับอนุญาต");
+  }
   const cleanUsername = username.trim();
   if (!cleanUsername) return { success: true, stores: [] };
 
@@ -407,6 +479,7 @@ export async function calculateWeeklyPayrollAction({
   startDate,
   endDate,
 }: WeeklyCalculationParam) {
+  await requireUserOrAdminSession(userId);
   try {
     // 1. นับจำนวนวันที่ลงเวลางานสมบูรณ์ในสัปดาห์นั้น (เพื่อคิดค่าจ้างรายวัน วันละ 700)
     const { count: daysWorked, error: attendError } = await supabase

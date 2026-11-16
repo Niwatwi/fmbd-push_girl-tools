@@ -5,7 +5,8 @@ export interface UserSession {
   company_tag: string;
   area: string;
   image_url: string;
-  role: "admin" | "staff";
+  role: "admin" | "staff" | "koe";
+  credential_stamp: string;
   expires_at: number;
 }
 
@@ -86,7 +87,10 @@ export async function verifyUserSessionToken(
     ) as UserSession;
     if (
       !Number.isInteger(session.id) ||
-      (session.role !== "admin" && session.role !== "staff") ||
+      (session.role !== "admin" &&
+        session.role !== "staff" &&
+        session.role !== "koe") ||
+      typeof session.credential_stamp !== "string" ||
       !Number.isInteger(session.expires_at) ||
       session.expires_at <= Math.floor(Date.now() / 1000)
     ) {

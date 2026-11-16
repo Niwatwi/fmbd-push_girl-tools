@@ -1,7 +1,6 @@
 "use server";
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/utils/supabase/server";
 import { normalizeCompetitorPrices } from "@/utils/competitor-prices";
 import {
   getUserSession,
@@ -10,37 +9,37 @@ import {
 } from "@/utils/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+function getServerDatabase() {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey)
+    throw new Error("ระบบยังไม่ได้ตั้งค่าฐานข้อมูลฝั่งเซิร์ฟเวอร์");
+  return createSupabaseClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
 async function getClientInstance() {
-  return await createClient();
+  if (!(await getUserSession())) throw new Error("กรุณาเข้าสู่ระบบ");
+  return getServerDatabase();
 }
 
 async function getAdminClientInstance() {
   await requireAdminSession();
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (serviceKey) {
-    return createSupabaseClient(supabaseUrl, serviceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-  }
-
-  return await createClient();
+  return getServerDatabase();
 }
 
 async function getCustomerPortalClientInstance() {
   const session = await getUserSession();
   if (!session) throw new Error("กรุณาเข้าสู่ระบบก่อนดูรายงาน");
-
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (serviceKey) {
-    return createSupabaseClient(supabaseUrl, serviceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+  if (
+    session.role !== "admin" &&
+    String(session.company_tag || "")
+      .trim()
+      .toUpperCase() !== "CUSTOMER"
+  ) {
+    throw new Error("บัญชีนี้ไม่มีสิทธิ์เข้าดูรายงานลูกค้า");
   }
-
-  return await createClient();
+  return getServerDatabase();
 }
 
 export async function getCustomerPortalAdminAccess() {
@@ -1671,7 +1670,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
       const { data: kpiEntries, error: kpiError } = await supabase
         .from("ba_kpi_entries")
         .select("employee_id, employee_name, store_name, amount")
-        .eq("period_month", periodMonth);
+        .eq("period_month", periodMonth)
+        .eq("status", "approved");
       if (kpiError) throw kpiError;
 
       const summaryByEmployeeId = new Map(
@@ -1712,6 +1712,70 @@ export async function getAdminSalarySummaryReportAction(params?: {
         };
         summaryList.push(kpiOnlyItem);
         summaryByEmployeeId.set(key, kpiOnlyItem);
+      }
+
+      const { data: approvedEvaluations, error: evaluationError } =
+        await supabase
+          .from("koe_kpi_evaluations")
+          .select("target_user_id, amount")
+          .eq("period_month", periodMonth)
+          .eq("status", "approved");
+      if (evaluationError) throw evaluationError;
+      const evaluatedUserIds = Array.from(
+        new Set(
+          (approvedEvaluations || []).map((item: any) => item.target_user_id),
+        ),
+      );
+      if (evaluatedUserIds.length) {
+        const { data: evaluatedProfiles, error: evaluatedProfileError } =
+          await supabase
+            .from("user_profiles")
+            .select("id, employee_id, username, display_name")
+            .in("id", evaluatedUserIds);
+        if (evaluatedProfileError) throw evaluatedProfileError;
+        const profileById = new Map(
+          (evaluatedProfiles || []).map((profile: any) => [
+            String(profile.id),
+            profile,
+          ]),
+        );
+        for (const evaluation of approvedEvaluations || []) {
+          const profile: any = profileById.get(
+            String(evaluation.target_user_id),
+          );
+          if (!profile) continue;
+          const key = String(profile.employee_id || profile.username || "")
+            .trim()
+            .toLowerCase();
+          if (!key) continue;
+          const amount = Number(evaluation.amount || 0);
+          const matched = summaryByEmployeeId.get(key);
+          if (matched) {
+            matched.totalKpiAmount = (matched.totalKpiAmount || 0) + amount;
+            matched.totalNetSalary += amount;
+          } else {
+            const item = {
+              userId: `koe-kpi:${key}`,
+              empId: profile.employee_id || profile.username,
+              displayName: profile.display_name || profile.username,
+              storeCode: "",
+              storeName: "-",
+              account: "",
+              workDaysCount: 0,
+              baseSalaryRate: 0,
+              totalDailyWage: 0,
+              totalSets: 0,
+              totalPacks: 0,
+              totalCommission: 0,
+              dailyBreakdown: [],
+              totalKpiAmount: amount,
+              tierStatus: "",
+              totalNetSalary: amount,
+            };
+            summaryList.push(item);
+            summaryByEmployeeId.set(key, item);
+          }
+        }
       }
     }
 

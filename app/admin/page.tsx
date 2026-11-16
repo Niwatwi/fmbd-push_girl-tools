@@ -16,10 +16,44 @@ import {
   Film,
   PackagePlus,
   BadgeDollarSign,
+  Users,
 } from "lucide-react";
 
 export default function AdminHubPage() {
   const adminModules = [
+    {
+      title: "อนุมัติ KPI ทีม KOE",
+      subtitle: "KOE Monthly KPI Approval",
+      description: "ตรวจคะแนน KPI รายเดือน อนุมัติก่อนส่งยอดเข้าสรุปค่าใช้จ่าย",
+      href: "/admin/koe-kpi",
+      icon: BadgeDollarSign,
+      badge: "รออนุมัติ",
+      badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      iconBg: "bg-emerald-700 text-white",
+      hoverBorder: "hover:border-emerald-400 hover:shadow-md",
+    },
+    {
+      title: "จัดการบัญชีผู้ใช้",
+      subtitle: "User Accounts",
+      description: "เพิ่มผู้ใช้ เปลี่ยนรหัสผ่าน และจัดการสถานะบัญชี",
+      href: "/admin/users",
+      icon: Users,
+      badge: "ผู้ใช้งาน",
+      badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
+      iconBg: "bg-blue-900 text-white",
+      hoverBorder: "hover:border-blue-400 hover:shadow-md",
+    },
+    {
+      title: "จัดการสิทธิ์ KOE",
+      subtitle: "KOE & Area Access",
+      description: "กำหนดผู้ใช้งาน KOE และ Area ที่รับผิดชอบ",
+      href: "/admin/koe",
+      icon: Users,
+      badge: "สิทธิ์ผู้ใช้งาน",
+      badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
+      iconBg: "bg-blue-900 text-white",
+      hoverBorder: "hover:border-blue-400 hover:shadow-md",
+    },
     {
       title: "รายงานการลงเวลาและค่าใช้จ่าย",
       subtitle: "Attendance & Expense Report",

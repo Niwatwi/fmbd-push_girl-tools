@@ -1,9 +1,12 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
-import { requireAdminSession, requireUserOrAdminSession } from "@/utils/auth";
-import { cookies } from "next/headers";
-import { verifyUserSessionToken } from "@/utils/session-token";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import {
+  getUserSession,
+  requireAdminSession,
+  requireUserOrAdminSession,
+} from "@/utils/auth";
 
 // ----------------------------------------------------------------
 // Interfaces & Types
@@ -174,8 +177,54 @@ export async function getPromotionByStoreAction(
   userId?: number,
   includeUpcoming = false,
 ) {
-  if (userId) await requireUserOrAdminSession(userId);
-  const supabase = await createClient();
+  const session = await getUserSession();
+  if (!session) throw new Error("กรุณาเข้าสู่ระบบ");
+  const isAdmin = session.role === "admin";
+  if (!isAdmin && (!userId || session.id !== Number(userId))) {
+    throw new Error("ไม่มีสิทธิ์เข้าดูโปรโมชั่นนี้");
+  }
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey)
+    throw new Error("ระบบยังไม่ได้ตั้งค่าฐานข้อมูลฝั่งเซิร์ฟเวอร์");
+  const supabase = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceKey,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+  let authorizedStoreCode = String(storeCode || "").trim();
+  let authorizedCompanyTags = Array.isArray(companyTag)
+    ? companyTag
+    : [companyTag];
+  if (!isAdmin) {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const { data: attendance, error: attendanceError } = await supabase
+      .from("pg_attendance_logs")
+      .select("store_code")
+      .eq("user_id", session.id)
+      .eq("store_code", authorizedStoreCode)
+      .gte("check_in_at", `${today}T00:00:00+07:00`)
+      .lt(
+        "check_in_at",
+        `${new Date(Date.parse(`${today}T00:00:00Z`) + 86400000).toISOString().slice(0, 10)}T00:00:00+07:00`,
+      )
+      .limit(1)
+      .maybeSingle();
+    if (attendanceError || !attendance)
+      throw new Error("ไม่มีสิทธิ์ดูโปรโมชั่นของร้านนี้");
+    const { data: store, error: storeError } = await supabase
+      .from("pg_stores")
+      .select("account")
+      .eq("store_code", authorizedStoreCode)
+      .limit(1)
+      .maybeSingle();
+    if (storeError) throw storeError;
+    authorizedCompanyTags = store?.account ? [store.account] : [];
+  }
 
   const { data, error } = await supabase
     .from("promotions")
@@ -199,7 +248,7 @@ export async function getPromotionByStoreAction(
   }).format(new Date());
 
   const companyTags = new Set(
-    (Array.isArray(companyTag) ? companyTag : [companyTag])
+    authorizedCompanyTags
       .map((tag) =>
         String(tag || "")
           .trim()
@@ -266,13 +315,25 @@ export async function getPromotionByStoreAction(
 }
 
 export async function getCurrentUserPromotionBriefAction() {
-  const token = (await cookies()).get("user_session")?.value;
-  const session = await verifyUserSessionToken(token);
+  const session = await getUserSession();
   if (!session) {
     return { success: false, message: "กรุณาเข้าสู่ระบบ", promotions: [] };
   }
 
-  const supabase = await createClient();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey)
+    return {
+      success: false,
+      message: "ระบบยังไม่ได้ตั้งค่าฐานข้อมูลฝั่งเซิร์ฟเวอร์",
+      promotions: [],
+    };
+  const supabase = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceKey,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+    },
+  );
   const dateInBangkok = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Bangkok",
     year: "numeric",

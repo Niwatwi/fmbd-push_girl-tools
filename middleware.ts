@@ -36,6 +36,9 @@ export async function middleware(request: NextRequest) {
   await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
+  if (pathname === "/admin-users.html") {
+    return NextResponse.redirect(new URL("/admin/users", request.url));
+  }
   if (
     pathname.startsWith("/admin") ||
     pathname.startsWith("/customer-portal")
@@ -51,6 +54,15 @@ export async function middleware(request: NextRequest) {
     }
 
     if (pathname.startsWith("/admin") && session.role !== "admin") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    if (
+      pathname.startsWith("/customer-portal") &&
+      session.role !== "admin" &&
+      String(session.company_tag || "")
+        .trim()
+        .toUpperCase() !== "CUSTOMER"
+    ) {
       return NextResponse.redirect(new URL("/", request.url));
     }
   }
