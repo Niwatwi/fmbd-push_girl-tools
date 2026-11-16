@@ -389,6 +389,17 @@ export async function getCurrentUserPromotionBriefAction() {
   ).trim();
   if (checkedInAccount) companyTags.add(checkedInAccount);
 
+  if (!storeCode && session.role !== "admin") {
+    return {
+      success: true,
+      promotions: [],
+      promotion: null,
+      storeCode: "",
+      storeCompanyTag: "",
+      companyTags: [...companyTags],
+    };
+  }
+
   const result = await getPromotionByStoreAction(
     storeCode,
     [...companyTags],

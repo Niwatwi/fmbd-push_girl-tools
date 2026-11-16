@@ -216,7 +216,13 @@ function Sparkline({
   );
 }
 
-export default function PerformanceDashboard({ userId }: { userId: number }) {
+export default function PerformanceDashboard({
+  userId,
+  initialStoreCode = "",
+}: {
+  userId: number;
+  initialStoreCode?: string;
+}) {
   const router = useRouter();
   const [history, setHistory] = useState<History>({
     reports: [],
@@ -231,7 +237,7 @@ export default function PerformanceDashboard({ userId }: { userId: number }) {
   const [error, setError] = useState("");
   const [date, setDate] = useState(thaiToday);
   const [account, setAccount] = useState("");
-  const [storeCode, setStoreCode] = useState("");
+  const [storeCode, setStoreCode] = useState(initialStoreCode);
   const [promotionId, setPromotionId] = useState("");
   const [chartType, setChartType] = useState<"bar" | "line">("bar");
   const [chartMetric, setChartMetric] = useState<"products" | "target">(
@@ -270,7 +276,7 @@ export default function PerformanceDashboard({ userId }: { userId: number }) {
               String(item.store_code) === String(latest.store_code),
           );
           setAccount(String(latestStore?.account || ""));
-          setStoreCode(String(latest.store_code || ""));
+          setStoreCode(initialStoreCode || String(latest.store_code || ""));
           setPromotionId(String(latest.promotion_id || ""));
         }
       } catch (caught) {
@@ -284,7 +290,7 @@ export default function PerformanceDashboard({ userId }: { userId: number }) {
         setRefreshing(false);
       }
     },
-    [userId],
+    [initialStoreCode, userId],
   );
 
   useEffect(() => {

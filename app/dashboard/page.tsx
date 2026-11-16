@@ -1,12 +1,14 @@
 "use server";
 
 import React, { Suspense } from "react";
+import { redirect } from "next/navigation";
 import DashboardClient from "./PerformanceDashboard";
 import LegacyDashboardClient from "./DashboardClient";
+import { getUserSession } from "@/utils/auth";
 
 // 🌟 ตัวจัดการฝั่ง Server: รองรับการอ่าน Query Parameters จาก URL หลังบ้าน
 interface PageProps {
-  searchParams: Promise<{ userId?: string; view?: string }>;
+  searchParams: Promise<{ userId?: string; view?: string; store?: string }>;
 }
 
 // ฟังก์ชันแปลงเวลา ISO UTC เป็นเวลาไทย (Asia/Bangkok)
@@ -33,9 +35,16 @@ const formatThaiDateTime = (dateString: string | null | undefined) => {
 
 export default async function DashboardPage({ searchParams }: PageProps) {
   const resolvedParams = await searchParams;
-  const userId = resolvedParams.userId
-    ? parseInt(resolvedParams.userId, 10)
-    : 96; // ค่าเริ่มต้นเป็น 96 ถ้าไม่พบตัวแปร
+  const session = await getUserSession();
+  if (!session) redirect("/login");
+  if (session.role === "koe" && !resolvedParams.userId) redirect("/koe");
+  const requestedUserId = resolvedParams.userId
+    ? Number(resolvedParams.userId)
+    : session.id;
+  const userId =
+    Number.isSafeInteger(requestedUserId) && requestedUserId > 0
+      ? requestedUserId
+      : session.id;
 
   return (
     <Suspense
@@ -53,7 +62,10 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       {resolvedParams.view === "legacy" ? (
         <LegacyDashboardClient userId={userId} />
       ) : (
-        <DashboardClient userId={userId} />
+        <DashboardClient
+          userId={userId}
+          initialStoreCode={resolvedParams.store || ""}
+        />
       )}
     </Suspense>
   );

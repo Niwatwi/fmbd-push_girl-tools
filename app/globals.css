@@ -177,3 +177,19 @@ html.dark .staff-theme textarea::placeholder {
 html.dark .staff-theme .ring-gray-300 {
   --tw-ring-color: #334866;
 }
+
+html.dark .staff-theme.koe-dashboard .koe-filter-panel,
+html.dark .staff-theme.koe-dashboard .koe-stat-card,
+html.dark .staff-theme.koe-dashboard .koe-member-card {
+  background-color: #111c2e;
+  background-image: none;
+  border-color: #334866;
+  color: #f1f5f9;
+}
+
+html.dark .staff-theme.koe-dashboard .koe-action-link {
+  background-color: #111c2e;
+  background-image: none;
+  border-color: #334866;
+  color: #e2e8f0;
+}

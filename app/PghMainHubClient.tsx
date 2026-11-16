@@ -112,10 +112,12 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
       const [storeRes, attendRes, promotionRes] = await Promise.all([
         getStoresByUsername(user.username || ""),
         checkTodayAttendance(user.id),
-        getCurrentUserPromotionBriefAction().catch((error) => {
-          console.error("Load home campaign products failed", error);
-          return null;
-        }),
+        user.role === "koe"
+          ? Promise.resolve(null)
+          : getCurrentUserPromotionBriefAction().catch((error) => {
+              console.error("Load home campaign products failed", error);
+              return null;
+            }),
       ]);
       const stores = storeRes.success ? storeRes.stores : [];
       setStoresList(stores);
@@ -546,34 +548,8 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
           </details>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => startAttendanceFlow("checkin")}
-            className="p-4 bg-emerald-600 text-white rounded-xl font-bold text-xs h-24 shadow-sm active:scale-95 transition flex flex-col items-center justify-center gap-1.5"
-          >
-            <span>บันทึก Check-in</span>
-            {checkInTime && (
-              <span className="text-[10px] font-mono font-normal bg-emerald-800/30 px-2 py-0.5 rounded-md animate-fade-in">
-                เวลา: {checkInTime} น.
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => startAttendanceFlow("checkout")}
-            className="p-4 bg-rose-600 text-white rounded-xl font-bold text-xs h-24 shadow-sm active:scale-95 transition flex flex-col items-center justify-center gap-1.5"
-          >
-            <span>บันทึก Check-out</span>
-            {checkOutTime && (
-              <span className="text-[10px] font-mono font-normal bg-rose-800/30 px-2 py-0.5 rounded-md">
-                เวลา: {checkOutTime} น.
-              </span>
-            )}
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {(user.role === "staff" || user.role === "koe") && (
+        {user.role === "koe" ? (
+          <div className="space-y-3">
             <button
               onClick={() => router.push("/koe/chat")}
               className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
@@ -584,8 +560,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
               </span>
               <ChevronRight size={16} />
             </button>
-          )}
-          {user.role === "koe" && (
+
             <button
               onClick={() => router.push("/koe")}
               className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
@@ -595,49 +570,78 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
               </span>
               <ChevronRight size={16} />
             </button>
-          )}
-          <button
-            onClick={() => router.push(`/daily-report?userId=${user?.id}`)}
-            className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
-          >
-            <span className="font-black text-slate-800 flex items-center gap-3">
-              <FileSpreadsheet className="text-blue-600" /> ส่งรายงาน Daily
-              Report
-            </span>
-            <ChevronRight size={16} />
-          </button>
 
-          <button
-            onClick={() => router.push("/sales-videos/upload")}
-            className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
-          >
-            <span className="font-black text-slate-800 flex items-center gap-3">
-              <Video className="text-rose-600" /> อัปโหลดคลิปวิดีโอการเชียร์ขาย
-            </span>
-            <ChevronRight size={16} />
-          </button>
+            <button
+              onClick={() => router.push(`/daily-report?userId=${user?.id}`)}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <FileSpreadsheet className="text-blue-600" /> ส่งรายงาน Daily
+                Report
+              </span>
+              <ChevronRight size={16} />
+            </button>
 
-          <button
-            onClick={() => router.push("/promotions")}
-            className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
-          >
-            <span className="font-black text-slate-800 flex items-center gap-3">
-              <Newspaper className="text-amber-600" /> ข้อมูลข่าวสาร & Promotion
-            </span>
-            <ChevronRight size={16} />
-          </button>
+            <button
+              onClick={() => router.push("/sales-videos/upload")}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <Video className="text-rose-600" />{" "}
+                อัปโหลดคลิปวิดีโอการเชียร์ขาย
+              </span>
+              <ChevronRight size={16} />
+            </button>
 
-          {/* 🎯 แก้ไขปุ่มนำทางไปหน้าแดชบอร์ดให้พ่วงค่าพารามิเตอร์ของพนักงานไปด้วยเรียบร้อยครับ */}
-          <button
-            onClick={() => router.push(`/dashboard?userId=${user?.id}`)}
-            className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
-          >
-            <span className="font-black text-slate-800 flex items-center gap-3">
-              <BarChart3 className="text-indigo-600" /> Dashboard วิเคราะห์ผลงาน
-            </span>
-            <ChevronRight size={16} />
-          </button>
-        </div>
+            <button
+              onClick={() => router.push("/promotions")}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <Newspaper className="text-amber-600" /> ข้อมูลข่าวสาร &
+                Promotion
+              </span>
+              <ChevronRight size={16} />
+            </button>
+
+            <button
+              onClick={() => router.push(`/dashboard?userId=${user?.id}`)}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <BarChart3 className="text-indigo-600" /> Dashboard
+                วิเคราะห์ผลงาน
+              </span>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => startAttendanceFlow("checkin")}
+              className="p-4 bg-emerald-600 text-white rounded-xl font-bold text-xs h-24 shadow-sm active:scale-95 transition flex flex-col items-center justify-center gap-1.5"
+            >
+              <span>บันทึก Check-in</span>
+              {checkInTime && (
+                <span className="text-[10px] font-mono font-normal bg-emerald-800/30 px-2 py-0.5 rounded-md animate-fade-in">
+                  เวลา: {checkInTime} น.
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => startAttendanceFlow("checkout")}
+              className="p-4 bg-rose-600 text-white rounded-xl font-bold text-xs h-24 shadow-sm active:scale-95 transition flex flex-col items-center justify-center gap-1.5"
+            >
+              <span>บันทึก Check-out</span>
+              {checkOutTime && (
+                <span className="text-[10px] font-mono font-normal bg-rose-800/30 px-2 py-0.5 rounded-md">
+                  เวลา: {checkOutTime} น.
+                </span>
+              )}
+            </button>
+          </div>
+        )}
       </main>
 
       <footer className="max-w-md mx-auto mt-12 text-center text-[9px] text-slate-400 font-bold">

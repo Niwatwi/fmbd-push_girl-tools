@@ -7,6 +7,7 @@ import {
   requireAdminSession,
   requireUserOrAdminSession,
 } from "@/utils/auth";
+import { requireKoeAccess } from "@/utils/koe-access";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 function getServerDatabase() {
@@ -21,6 +22,35 @@ function getServerDatabase() {
 async function getClientInstance() {
   if (!(await getUserSession())) throw new Error("กรุณาเข้าสู่ระบบ");
   return getServerDatabase();
+}
+
+async function requireDashboardUserAccess(userId: number) {
+  if (!Number.isSafeInteger(userId) || userId <= 0)
+    throw new Error("ไม่พบข้อมูลพนักงานที่ต้องการดู");
+  const session = await getUserSession();
+  if (!session) throw new Error("กรุณาเข้าสู่ระบบ");
+  if (session.role === "admin" || session.id === userId) return;
+  if (session.role !== "koe")
+    throw new Error("กรุณาเข้าสู่ระบบด้วยบัญชีที่ได้รับอนุญาต");
+
+  const { database, areas } = await requireKoeAccess();
+  const { data: target, error } = await database
+    .from("user_profiles")
+    .select("id, area, company_tag, is_active")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw new Error("ตรวจสอบสิทธิ์ดูผลงานไม่สำเร็จ");
+  const companyTag = String(target?.company_tag || "")
+    .trim()
+    .toUpperCase();
+  if (
+    !target ||
+    target.is_active !== true ||
+    !areas.includes(String(target.area || "").trim()) ||
+    !["BA", "BA_CHEER", "SURVEYOR"].includes(companyTag)
+  ) {
+    throw new Error("ไม่มีสิทธิ์ดูผลงานพนักงาน Area นี้");
+  }
 }
 
 async function getAdminClientInstance() {
@@ -515,7 +545,7 @@ export async function getAvailableStores() {
 
 // 6. 🏆 ดึงโปรไฟล์พนักงาน + สถานที่ Check-in + ยอดขายจริงวันนี้ + ยอดสะสมประจำเดือน
 export async function getUserDashboardDataAction(userIdInput: number | string) {
-  await requireUserOrAdminSession(Number(userIdInput));
+  await requireDashboardUserAccess(Number(userIdInput));
   const supabase = await getClientInstance();
   const userId = Number(userIdInput);
 
@@ -757,7 +787,7 @@ export async function getUserDashboardHistoryAction(
   userIdInput: number | string,
 ) {
   const userId = Number(userIdInput);
-  await requireUserOrAdminSession(userId);
+  await requireDashboardUserAccess(userId);
   const supabase = await getClientInstance();
 
   try {
