@@ -771,6 +771,64 @@ export async function getKoeChatContactsAction() {
   }
 }
 
+export async function getKoeUnreadMessageCountAction() {
+  try {
+    const session = await getUserSession();
+    if (!session) throw new Error("กรุณาเข้าสู่ระบบ");
+    const database = getKoeServerDatabase();
+    const actor = await getChatParticipant(database, session.id);
+    const actorTag = String(actor.company_tag || "")
+      .trim()
+      .toUpperCase();
+    let areas: string[];
+
+    if (session.role === "koe") {
+      areas = (await requireKoeAccess()).areas;
+    } else if (
+      session.role === "staff" &&
+      ["BA", "BA_CHEER", "SURVEYOR"].includes(actorTag)
+    ) {
+      areas = [String(actor.area || "").trim()].filter(Boolean);
+    } else {
+      throw new Error("บัญชีนี้ไม่มีสิทธิ์ใช้แชตทีม");
+    }
+
+    if (!areas.length) return { success: true as const, unreadCount: 0 };
+
+    let query: any = database
+      .from("koe_chat_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", session.id)
+      .in("area", areas)
+      .is("read_at", null);
+
+    if (session.role === "staff") {
+      const { data: assignments, error: assignmentError } = await database
+        .from("koe_areas")
+        .select("koe_user_id")
+        .in("area", areas);
+      if (assignmentError) throw assignmentError;
+      const koeIds = Array.from(
+        new Set(
+          (assignments || []).map((item: any) => Number(item.koe_user_id)),
+        ),
+      );
+      if (!koeIds.length) return { success: true as const, unreadCount: 0 };
+      query = query.in("sender_id", koeIds);
+    }
+
+    const { count, error } = await query;
+    if (error) throw error;
+    return { success: true as const, unreadCount: count || 0 };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      unreadCount: 0,
+      message: error.message || "โหลดจำนวนข้อความที่ยังไม่อ่านไม่สำเร็จ",
+    };
+  }
+}
+
 export async function getKoeChatMessagesAction(peerId: number, afterId = 0) {
   try {
     const session = await getUserSession();

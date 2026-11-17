@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
 import ThemeToggle from "./components/ThemeToggle";
 import { getCurrentUserPromotionBriefAction } from "@/app/admin/promotions/actions";
+import { getKoeUnreadMessageCountAction } from "@/app/koe/actions";
 import {
   handleLogout,
   checkTodayAttendance,
@@ -63,6 +64,7 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
     "not_checked_in" | "checked_in" | "checked_out"
   >("not_checked_in");
   const [currentTime, setCurrentTime] = useState("");
+  const [unreadKoeMessages, setUnreadKoeMessages] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
@@ -214,6 +216,24 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
     const timer = setInterval(updateDateTime, 1000);
     return () => clearInterval(timer);
   }, [user]);
+
+  useEffect(() => {
+    if (user.role !== "staff" && user.role !== "koe") {
+      setUnreadKoeMessages(0);
+      return;
+    }
+    let active = true;
+    const refreshUnreadCount = async () => {
+      const result = await getKoeUnreadMessageCountAction();
+      if (active && result.success) setUnreadKoeMessages(result.unreadCount);
+    };
+    void refreshUnreadCount();
+    const interval = window.setInterval(() => void refreshUnreadCount(), 10000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [user.role, user.id]);
 
   const startAttendanceFlow = async (type: "checkin" | "checkout") => {
     if (type === "checkin" && attendanceStatus === "checked_in") {
@@ -558,6 +578,14 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
                 <MessageCircle className="text-blue-600" /> ข้อความประสานงานกับ
                 KOE
               </span>
+              {unreadKoeMessages > 0 && (
+                <span
+                  aria-label={`${unreadKoeMessages} ข้อความยังไม่อ่าน`}
+                  className="min-w-6 rounded-full bg-rose-600 px-2 py-1 text-center text-xs font-black text-white"
+                >
+                  {unreadKoeMessages > 99 ? "99+" : unreadKoeMessages}
+                </span>
+              )}
               <ChevronRight size={16} />
             </button>
 
@@ -639,6 +667,71 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
                   เวลา: {checkOutTime} น.
                 </span>
               )}
+            </button>
+          </div>
+        )}
+
+        {user.role !== "koe" && (
+          <div className="space-y-3">
+            {user.role === "staff" && (
+              <button
+                onClick={() => router.push("/koe/chat")}
+                className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+              >
+                <span className="font-black text-slate-800 flex items-center gap-3">
+                  <MessageCircle className="text-blue-600" />
+                  ข้อความประสานงานกับ KOE
+                </span>
+                {unreadKoeMessages > 0 && (
+                  <span
+                    aria-label={`${unreadKoeMessages} ข้อความยังไม่อ่าน`}
+                    className="min-w-6 rounded-full bg-rose-600 px-2 py-1 text-center text-xs font-black text-white"
+                  >
+                    {unreadKoeMessages > 99 ? "99+" : unreadKoeMessages}
+                  </span>
+                )}
+                <ChevronRight size={16} />
+              </button>
+            )}
+            <button
+              onClick={() => router.push(`/daily-report?userId=${user.id}`)}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <FileSpreadsheet className="text-blue-600" /> ส่งรายงาน Daily
+                Report
+              </span>
+              <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => router.push("/sales-videos/upload")}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <Video className="text-rose-600" />
+                อัปโหลดคลิปวิดีโอการเชียร์ขาย
+              </span>
+              <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => router.push("/promotions")}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <Newspaper className="text-amber-600" /> ข้อมูลข่าวสาร &
+                Promotion
+              </span>
+              <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => router.push(`/dashboard?userId=${user.id}`)}
+              className="w-full bg-white p-4 rounded-xl border flex items-center justify-between hover:border-blue-400 transition"
+            >
+              <span className="font-black text-slate-800 flex items-center gap-3">
+                <BarChart3 className="text-indigo-600" /> Dashboard
+                วิเคราะห์ผลงาน
+              </span>
+              <ChevronRight size={16} />
             </button>
           </div>
         )}

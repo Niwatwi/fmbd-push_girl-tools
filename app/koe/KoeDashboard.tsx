@@ -657,6 +657,16 @@ export default function KoeDashboard({ name }: { name: string }) {
 
               <div className="space-y-3">
                 <Link
+                  href="/koe/kpi"
+                  className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50 p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-500 hover:bg-blue-100"
+                >
+                  <span className="flex items-center gap-2">
+                    <ClipboardCheck size={18} />
+                    ประเมินคะแนน KPI / ส่งให้ Admin
+                  </span>
+                  <span className="text-lg">›</span>
+                </Link>
+                <Link
                   href={buildActionHref("/daily-report")}
                   className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
                 >
