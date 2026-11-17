@@ -26,7 +26,7 @@ export async function listManagedUsersAction() {
     const { data, error } = await database()
       .from("user_profiles")
       .select(
-        "id, username, employee_id, display_name, company_tag, area, email, phone, employment_type, is_active",
+        "id, username, employee_id, display_name, company_tag, area, email, phone, employment_type, image_url, is_active",
       )
       .order("display_name");
     if (error) throw error;
@@ -35,6 +35,48 @@ export async function listManagedUsersAction() {
     return {
       success: false as const,
       message: error.message || "โหลดรายชื่อผู้ใช้ไม่สำเร็จ",
+    };
+  }
+}
+
+export async function getManagedUserStoreGroupsAction() {
+  try {
+    await requireAdminSession();
+    const { data, error } = await database()
+      .from("pg_stores")
+      .select("area, account, company_tag")
+      .eq("is_active", true)
+      .order("area")
+      .limit(5000);
+    if (error) throw error;
+    const groups = new Map<
+      string,
+      { area: string; account: string; companyTag: string }
+    >();
+    for (const row of data || []) {
+      const area = String(row.area || "").trim();
+      const account = String(row.account || "").trim();
+      const companyTag = String(row.company_tag || "").trim();
+      if (!area) continue;
+      groups.set(`${area}\u0000${account}\u0000${companyTag}`, {
+        area,
+        account,
+        companyTag,
+      });
+    }
+    return {
+      success: true as const,
+      groups: Array.from(groups.values()).sort((left, right) =>
+        `${left.area} ${left.account}`.localeCompare(
+          `${right.area} ${right.account}`,
+          "th",
+        ),
+      ),
+    };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      message: error.message || "โหลดกลุ่มร้านค้าไม่สำเร็จ",
     };
   }
 }
@@ -49,6 +91,7 @@ export async function createManagedUserAction(input: {
   phone: string;
   employmentType: string;
   password: string;
+  avatarBase64?: string;
 }) {
   try {
     await requireAdminSession();
@@ -65,21 +108,52 @@ export async function createManagedUserAction(input: {
       password.length > 128
     )
       throw new Error("กรุณากรอกผู้ใช้ ชื่อ กลุ่ม และรหัสผ่าน 8–128 ตัวอักษร");
-    const { error } = await database()
-      .from("user_profiles")
-      .insert({
-        username,
-        employee_id: String(input.employeeId || "").trim() || null,
-        display_name: name,
-        company_tag: companyTag,
-        area: String(input.area || "").trim(),
-        email: String(input.email || "").trim(),
-        phone: String(input.phone || "").trim(),
-        employment_type: String(input.employmentType || "").trim(),
-        password_text: await hashPassword(password),
-        is_active: true,
-      });
-    if (error) throw error;
+    const supabase = database();
+    const avatar = String(input.avatarBase64 || "");
+    let imageUrl: string | null = null;
+    let uploadedPath: string | null = null;
+    if (avatar) {
+      const match = avatar.match(
+        /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/,
+      );
+      if (!match) throw new Error("รูปโปรไฟล์ต้องเป็น JPEG, PNG หรือ WebP");
+      const extension = match[1] === "jpeg" ? "jpg" : match[1];
+      const imageBuffer = Buffer.from(match[2], "base64");
+      if (!imageBuffer.length || imageBuffer.length > 3 * 1024 * 1024)
+        throw new Error("รูปโปรไฟล์ต้องมีขนาดไม่เกิน 3 MB");
+      uploadedPath = `profiles/${username.replace(/[^a-zA-Z0-9_-]/g, "_")}_${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from("pg-attendance-photos")
+        .upload(uploadedPath, imageBuffer, {
+          contentType: `image/${match[1]}`,
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+      imageUrl = supabase.storage
+        .from("pg-attendance-photos")
+        .getPublicUrl(uploadedPath).data.publicUrl;
+    }
+
+    const { error } = await supabase.from("user_profiles").insert({
+      username,
+      employee_id: String(input.employeeId || "").trim() || null,
+      display_name: name,
+      company_tag: companyTag,
+      area: String(input.area || "").trim(),
+      email: String(input.email || "").trim(),
+      phone: String(input.phone || "").trim(),
+      employment_type: String(input.employmentType || "").trim(),
+      image_url: imageUrl,
+      password_text: await hashPassword(password),
+      is_active: true,
+    });
+    if (error) {
+      if (uploadedPath)
+        await supabase.storage
+          .from("pg-attendance-photos")
+          .remove([uploadedPath]);
+      throw error;
+    }
     return { success: true as const };
   } catch (error: any) {
     return {

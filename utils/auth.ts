@@ -49,8 +49,29 @@ export async function getUserSession() {
       ),
     );
     if (session.role === "admin" && !isAdmin) return null;
+    let role: "admin" | "staff" | "koe" = isAdmin ? "admin" : "staff";
+    if (!isAdmin) {
+      const { data: koeAccount, error: koeError } = await database
+        .from("koe_accounts")
+        .select("user_id")
+        .eq("user_id", session.id)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (koeError && koeError.code !== "42P01" && koeError.code !== "PGRST205")
+        return null;
+      const companyTag = String(profile.company_tag || "")
+        .trim()
+        .toUpperCase();
+      role =
+        koeAccount ||
+        (koeError && session.role === "koe") ||
+        ["KOE", "KEY_ACCOUNT_OPERATION_EXECUTIVE"].includes(companyTag)
+          ? "koe"
+          : "staff";
+    }
     return {
       ...session,
+      role,
       username: profile.username || "",
       display_name: profile.display_name || "",
       company_tag: profile.company_tag || "",
