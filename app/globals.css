@@ -216,3 +216,44 @@ html.dark .staff-theme.koe-dashboard .koe-action-link {
   border-color: var(--app-border-dark);
   color: var(--app-ink-dark);
 }
+
+html.dark .portal-shell {
+  background:
+    radial-gradient(circle at top left, rgb(37 99 235 / 0.16), transparent 30%),
+    radial-gradient(
+      circle at top right,
+      rgb(14 165 233 / 0.1),
+      transparent 25%
+    ),
+    linear-gradient(180deg, #0b1220 0%, #111c2e 100%);
+  color: #e2e8f0;
+}
+
+html.dark .portal-shell .portal-panel,
+html.dark .portal-shell .portal-card,
+html.dark .portal-shell .portal-table-row,
+html.dark .portal-shell .photo-preview-shell {
+  background-color: var(--app-panel-dark);
+  background-image: none;
+  border-color: var(--app-border-dark);
+  color: #e2e8f0;
+  box-shadow: 0 8px 22px rgb(2 6 23 / 0.24);
+}
+
+html.dark .portal-shell .portal-table-row:nth-child(even) {
+  background-color: #1b2b42;
+}
+
+html.dark .portal-shell .portal-table-row:hover {
+  background: #223751;
+}
+
+html.dark .portal-shell .portal-button-soft {
+  background: #1b2b42;
+  border-color: var(--app-border-dark);
+  color: #e2e8f0;
+}
+
+html.dark .portal-shell .portal-button-soft:hover {
+  background: #263d5a;
+}

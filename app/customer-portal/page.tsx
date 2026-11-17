@@ -30,6 +30,7 @@ import {
   Video,
 } from "lucide-react";
 import Link from "next/link";
+import ThemeToggle from "@/app/components/ThemeToggle";
 import {
   BarChart,
   Bar,
@@ -2903,6 +2904,7 @@ export default function CustomerReportPortal() {
               </div>
 
               <div className="flex items-center gap-1 sm:gap-2">
+                <ThemeToggle className="border border-white/30 bg-white/10 text-white hover:bg-white/20" />
                 <Link
                   href="/customer-portal/videos"
                   className="portal-button-soft flex items-center gap-1 px-2.5 py-1.5 text-slate-800 font-bold text-[11px] sm:text-xs rounded-xl transition cursor-pointer whitespace-nowrap"
