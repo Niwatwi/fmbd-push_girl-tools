@@ -40,10 +40,43 @@ export default function LoginPage() {
           const requestedPath = new URLSearchParams(window.location.search).get(
             "next",
           );
+          const role = result.user?.role;
+          const companyTag = String(result.user?.company_tag || "")
+            .trim()
+            .toUpperCase();
+          const defaultPath =
+            role === "admin"
+              ? "/admin"
+              : companyTag === "CUSTOMER"
+                ? "/customer-portal"
+                : "/home";
+          const safeRequestedPath = Boolean(
+            requestedPath?.startsWith("/") &&
+            !requestedPath.startsWith("//") &&
+            requestedPath !== "/" &&
+            requestedPath !== "/login",
+          );
+          const requestedPathAllowed =
+            role === "admin" ||
+            (companyTag === "CUSTOMER" &&
+              requestedPath?.startsWith("/customer-portal")) ||
+            (role === "koe" &&
+              (requestedPath?.startsWith("/koe") ||
+                requestedPath?.startsWith("/dashboard") ||
+                requestedPath?.startsWith("/daily-report") ||
+                requestedPath?.startsWith("/promotions") ||
+                requestedPath?.startsWith("/sales-videos"))) ||
+            (role === "staff" &&
+              (requestedPath === "/home" ||
+                requestedPath?.startsWith("/dashboard") ||
+                requestedPath?.startsWith("/daily-report") ||
+                requestedPath?.startsWith("/promotions") ||
+                requestedPath?.startsWith("/sales-videos") ||
+                requestedPath === "/koe/chat"));
           const nextPath =
-            requestedPath?.startsWith("/") && !requestedPath.startsWith("//")
-              ? requestedPath
-              : "/";
+            safeRequestedPath && requestedPathAllowed
+              ? requestedPath!
+              : defaultPath;
           router.push(nextPath);
           router.refresh();
         });

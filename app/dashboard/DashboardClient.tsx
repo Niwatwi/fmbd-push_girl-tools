@@ -339,7 +339,7 @@ export default function DashboardClient({ userId }: DashboardClientProps) {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => router.push(`/?userId=${userId}`)}
+              onClick={() => router.push("/home")}
               className="p-1 hover:bg-blue-800 rounded-lg transition cursor-pointer"
             >
               <ArrowLeft size={20} />

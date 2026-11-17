@@ -505,7 +505,7 @@ export default function KoeDashboard({ name }: { name: string }) {
       <header className="sticky top-0 z-50 border-b border-blue-950/20 bg-[#1e3a8a] text-white shadow-md">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 p-4">
           <div className="flex min-w-0 items-center gap-3">
-            <Link href="/" aria-label="กลับ" title="กลับ">
+            <Link href="/home" aria-label="กลับ" title="กลับ">
               <ArrowLeft size={20} />
             </Link>
             <img

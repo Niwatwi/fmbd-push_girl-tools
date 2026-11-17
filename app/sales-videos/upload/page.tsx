@@ -45,7 +45,7 @@ export default function SalesVideoUploadPage() {
           text: res.message,
           icon: "warning",
           confirmButtonColor: "#1e3a8a",
-        }).then(() => router.push("/"));
+        }).then(() => router.push("/home"));
       }
       setLoading(false);
     });
@@ -121,7 +121,7 @@ export default function SalesVideoUploadPage() {
         <div className="max-w-md mx-auto flex items-center gap-2">
           <button
             type="button"
-            onClick={() => router.push("/")}
+            onClick={() => router.push("/home")}
             className="p-1 hover:bg-blue-800 rounded-lg cursor-pointer"
           >
             <ArrowLeft size={20} />

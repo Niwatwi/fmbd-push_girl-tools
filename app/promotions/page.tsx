@@ -179,7 +179,7 @@ export default function PromotionsBriefPage() {
         <div className="max-w-md mx-auto flex items-center gap-3">
           <button
             type="button"
-            onClick={() => router.push("/")}
+            onClick={() => router.push("/home")}
             className="p-2 hover:bg-blue-800 rounded-full transition"
           >
             <ChevronLeft size={20} />

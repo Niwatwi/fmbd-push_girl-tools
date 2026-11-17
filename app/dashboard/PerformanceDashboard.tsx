@@ -628,7 +628,7 @@ export default function PerformanceDashboard({
               type="button"
               title="กลับ"
               aria-label="กลับ"
-              onClick={() => router.push(`/?userId=${userId}`)}
+              onClick={() => router.push("/home")}
               className="p-2"
             >
               <ArrowLeft size={20} />
