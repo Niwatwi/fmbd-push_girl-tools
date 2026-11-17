@@ -7,7 +7,9 @@ import {
   ClipboardCheck,
   Clock,
   MessageCircle,
+  Pencil,
   RefreshCw,
+  Store,
   Users,
 } from "lucide-react";
 import ThemeToggle from "@/app/components/ThemeToggle";
@@ -128,9 +130,14 @@ function AttendanceEditor({
 
   return (
     <details className="mt-2 border-t border-slate-200 pt-2 text-xs">
-      <summary className="cursor-pointer font-bold text-blue-700">
-        {log.store_name || "ร้านค้า"} · เข้า {dateTime(log.check_in_at)} · ออก{" "}
-        {dateTime(log.check_out_at)}
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg bg-blue-50 px-3 py-2 font-bold text-blue-800 [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0 truncate">
+          {log.store_name || "ร้านค้า"} · เข้า {dateTime(log.check_in_at)} · ออก{" "}
+          {dateTime(log.check_out_at)}
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1 text-[10px]">
+          <Pencil size={12} /> แก้ไขเวลา
+        </span>
       </summary>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <label>
@@ -227,8 +234,13 @@ function ReportEditor({
 
   return (
     <details className="mt-2 border-t border-slate-200 pt-2 text-xs">
-      <summary className="cursor-pointer font-bold text-blue-700">
-        แก้รายงาน {report.report_date} · {report.store_code}
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg bg-blue-50 px-3 py-2 font-bold text-blue-800 [&::-webkit-details-marker]:hidden">
+        <span>
+          รายงาน {report.report_date} · {report.store_code}
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1 text-[10px]">
+          <Pencil size={12} /> แก้ไขรายงาน
+        </span>
       </summary>
       <div className="mt-3 space-y-3">
         {products.map((item) => (
@@ -474,6 +486,7 @@ export default function KoeDashboard({ name }: { name: string }) {
       return {
         member,
         reports: personalReports.length,
+        reportItems: personalReports,
         lastReport: personalReports[0] || null,
         logs,
         sales,
@@ -657,6 +670,15 @@ export default function KoeDashboard({ name }: { name: string }) {
 
               <div className="space-y-3">
                 <Link
+                  href="/koe/stores"
+                  className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
+                >
+                  <span className="flex items-center gap-2">
+                    <Store size={18} /> จัดการสาขา BA Cheer นอกเขต
+                  </span>
+                  <span className="text-lg">›</span>
+                </Link>
+                <Link
                   href="/koe/kpi"
                   className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50 p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-500 hover:bg-blue-100"
                 >
@@ -717,7 +739,14 @@ export default function KoeDashboard({ name }: { name: string }) {
                 </h2>
                 <div className="space-y-2">
                   {summary.rows.map(
-                    ({ member, reports, lastReport, logs, sales }) => (
+                    ({
+                      member,
+                      reports,
+                      reportItems,
+                      lastReport,
+                      logs,
+                      sales,
+                    }) => (
                       <article
                         key={member.id}
                         className="koe-member-card rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
@@ -742,6 +771,38 @@ export default function KoeDashboard({ name }: { name: string }) {
                             ? ` ร้านล่าสุด ${lastReport.store_code}`
                             : " ยังไม่มีรายงาน"}
                         </p>
+                        {(reportItems.length > 0 || logs.length > 0) && (
+                          <div className="mt-3 space-y-3 border-t border-slate-200 pt-2">
+                            {logs.length > 0 && (
+                              <div>
+                                <p className="mb-1 text-[11px] font-bold text-slate-600">
+                                  แก้ไขเวลาเข้า-ออกงาน
+                                </p>
+                                {logs.map((log) => (
+                                  <AttendanceEditor
+                                    key={log.id}
+                                    log={log}
+                                    onSaved={() => void load()}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                            {reportItems.length > 0 && (
+                              <div>
+                                <p className="mb-1 text-[11px] font-bold text-slate-600">
+                                  แก้ไขรายงานงาน
+                                </p>
+                                {reportItems.map((report) => (
+                                  <ReportEditor
+                                    key={report.id}
+                                    report={report}
+                                    onSaved={() => void load()}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </article>
                     ),
                   )}

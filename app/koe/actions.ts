@@ -940,3 +940,160 @@ export async function markKoeChatReadAction(
     };
   }
 }
+
+export async function getKoeStoreManagementAction() {
+  try {
+    const { database, areas } = await requireKoeAccess();
+    if (!areas.length)
+      return { success: true as const, team: [], assignments: [] };
+
+    const { data: team, error: teamError } = await database
+      .from("user_profiles")
+      .select("id,username,employee_id,display_name,area,company_tag")
+      .eq("is_active", true)
+      .in("area", areas)
+      .in("company_tag", ["BA", "BA_CHEER", "SURVEYOR"])
+      .order("display_name");
+    if (teamError) throw teamError;
+    const usernames = (team || [])
+      .map((member: any) => String(member.username || "").trim())
+      .filter(Boolean);
+    if (!usernames.length)
+      return { success: true as const, team: team || [], assignments: [] };
+
+    const assignments: any[] = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await database
+        .from("pg_stores")
+        .select(
+          "id,store_code,store_name,area,account,mer_code,is_active,company_tag",
+        )
+        .in("mer_code", usernames)
+        .order("store_name")
+        .range(offset, offset + 999);
+      if (error) throw error;
+      assignments.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    return { success: true as const, team: team || [], assignments };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      message: error.message || "โหลดข้อมูลจัดการสาขาไม่สำเร็จ",
+    };
+  }
+}
+
+export async function searchKoeMasterStoresAction(searchInput: string) {
+  try {
+    const { database } = await requireKoeAccess();
+    const search = String(searchInput || "")
+      .trim()
+      .replace(/[%_*(),]/g, "")
+      .slice(0, 80);
+    if (search.length < 2) return { success: true as const, stores: [] };
+
+    const fields =
+      "id,store_code,store_name,area,chanel,account,province,region,store_type,img_store";
+    const [codeResult, nameResult] = await Promise.all([
+      database
+        .from("stores")
+        .select(fields)
+        .eq("is_active", true)
+        .ilike("store_code", `%${search}%`)
+        .order("store_name")
+        .limit(30),
+      database
+        .from("stores")
+        .select(fields)
+        .eq("is_active", true)
+        .ilike("store_name", `%${search}%`)
+        .order("store_name")
+        .limit(30),
+    ]);
+    if (codeResult.error) throw codeResult.error;
+    if (nameResult.error) throw nameResult.error;
+    const stores = new Map<number, any>();
+    for (const store of [
+      ...(codeResult.data || []),
+      ...(nameResult.data || []),
+    ])
+      stores.set(Number(store.id), store);
+    return {
+      success: true as const,
+      stores: Array.from(stores.values()).sort((left, right) =>
+        String(left.store_name || "").localeCompare(
+          String(right.store_name || ""),
+          "th",
+        ),
+      ),
+    };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      message: error.message || "ค้นหาร้านค้าไม่สำเร็จ",
+    };
+  }
+}
+
+export async function addKoeStoreAssignmentAction(input: {
+  employeeId: number;
+  storeId: number;
+  reason: string;
+}) {
+  try {
+    const { session, database } = await requireKoeAccess();
+    if (
+      !Number.isSafeInteger(input.employeeId) ||
+      input.employeeId <= 0 ||
+      !Number.isSafeInteger(input.storeId) ||
+      input.storeId <= 0 ||
+      String(input.reason || "").trim().length < 3
+    )
+      throw new Error("กรุณาเลือกร้านค้าและระบุเหตุผลอย่างน้อย 3 ตัวอักษร");
+    const { data, error } = await database.rpc("koe_add_store_assignment", {
+      p_actor_id: session.id,
+      p_employee_id: input.employeeId,
+      p_store_id: input.storeId,
+      p_reason: String(input.reason).trim().slice(0, 500),
+    });
+    if (error) throw error;
+    return { success: true as const, assignmentId: Number(data) };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      message: error.message || "เพิ่มสาขาให้ BA ไม่สำเร็จ",
+    };
+  }
+}
+
+export async function disableKoeStoreAssignmentAction(input: {
+  employeeId: number;
+  assignmentId: number;
+  reason: string;
+}) {
+  try {
+    const { session, database } = await requireKoeAccess();
+    if (
+      !Number.isSafeInteger(input.employeeId) ||
+      input.employeeId <= 0 ||
+      !Number.isSafeInteger(input.assignmentId) ||
+      input.assignmentId <= 0 ||
+      String(input.reason || "").trim().length < 3
+    )
+      throw new Error("กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร");
+    const { error } = await database.rpc("koe_disable_store_assignment", {
+      p_actor_id: session.id,
+      p_employee_id: input.employeeId,
+      p_assignment_id: input.assignmentId,
+      p_reason: String(input.reason).trim().slice(0, 500),
+    });
+    if (error) throw error;
+    return { success: true as const };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      message: error.message || "ปิดใช้งานสาขาไม่สำเร็จ",
+    };
+  }
+}
