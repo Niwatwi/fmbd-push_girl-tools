@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import Swal from "sweetalert2";
 import {
   useEffect,
   useRef,
@@ -109,12 +110,19 @@ export default function ManagedUsersPage() {
     setBusy(false);
   }
   async function changeStatus(user: ManagedUser) {
-    if (
-      !window.confirm(
-        `${user.is_active ? "ระงับ" : "เปิดใช้งาน"}บัญชี ${user.display_name || user.username}?`,
-      )
-    )
-      return;
+    const action = user.is_active ? "ระงับ" : "เปิดใช้งาน";
+    const confirmation = await Swal.fire({
+      title: `${action}บัญชีผู้ใช้?`,
+      text: `${user.display_name || user.username}`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: `${action}บัญชี`,
+      cancelButtonText: "ยกเลิก",
+      confirmButtonColor: user.is_active ? "#dc2626" : "#2563eb",
+      cancelButtonColor: "#64748b",
+      reverseButtons: true,
+    });
+    if (!confirmation.isConfirmed) return;
     setBusy(true);
     setMessage("");
     const result = await setManagedUserActiveAction(user.id, !user.is_active);
