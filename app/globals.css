@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Executive management theme */
 :root {
   color-scheme: light;
   --app-canvas-light: #edf3f8;
@@ -10,12 +11,24 @@
   --app-ink-dark: #e2e8f0;
   --app-panel-dark: #132238;
   --app-border-dark: #30435c;
+
+  --executive-navy: #17324d;
+  --executive-navy-strong: #102a43;
+  --executive-blue: #315b80;
+  --executive-canvas: #f4f7fa;
+  --executive-line: #dfe7ef;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--app-canvas-light);
+  background:
+    radial-gradient(
+      circle at 100% 0%,
+      rgb(49 91 128 / 0.05),
+      transparent 28rem
+    ),
+    var(--executive-canvas);
   color: var(--app-ink-light);
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -25,9 +38,48 @@ body {
 }
 
 html:not(.dark) [class~="min-h-screen"] {
-  background-color: var(--app-canvas-light);
-  background-image: none;
-  color: var(--app-ink-light);
+  background:
+    radial-gradient(
+      circle at 100% 0%,
+      rgb(49 91 128 / 0.045),
+      transparent 30rem
+    ),
+    var(--executive-canvas) !important;
+  color: #172b3a;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="rounded-3xl"],
+html:not(.dark) [class~="min-h-screen"] [class~="rounded-2xl"] {
+  border-color: var(--executive-line);
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="shadow-sm"] {
+  box-shadow: 0 10px 30px rgb(15 42 67 / 0.055) !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="shadow-xs"] {
+  box-shadow: 0 4px 14px rgb(15 42 67 / 0.06) !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="bg-slate-900"] {
+  background-color: var(--executive-navy) !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="bg-blue-900"] {
+  background-color: var(--executive-navy) !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="border-slate-200"],
+html:not(.dark) [class~="min-h-screen"] [class~="border-slate-200/80"] {
+  border-color: var(--executive-line) !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="text-slate-800"] {
+  color: #1d3448 !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="text-slate-400"] {
+  color: #7b8c9c !important;
 }
 
 html.dark body,
