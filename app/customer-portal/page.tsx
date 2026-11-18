@@ -2821,6 +2821,48 @@ export default function CustomerReportPortal() {
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
         }
 
+        .dark .portal-table-wrap {
+          background: #e0f2fe !important;
+          border-color: #93c5fd !important;
+          color: #1e3a8a;
+        }
+
+        .dark .portal-table-wrap table {
+          background: #eff6ff !important;
+          color: #1e3a8a;
+        }
+
+        .dark .portal-table-wrap thead,
+        .dark .portal-table-wrap thead tr,
+        .dark .portal-table-wrap thead th {
+          background-color: #bfdbfe !important;
+          border-color: #93c5fd !important;
+          color: #1e3a8a !important;
+        }
+
+        .dark .portal-table-wrap tbody {
+          background-color: #eff6ff !important;
+        }
+
+        .dark .portal-table-wrap .portal-table-row {
+          background: #eff6ff !important;
+          color: #1e3a8a !important;
+        }
+
+        .dark .portal-table-wrap .portal-table-row:nth-child(even) {
+          background: #dbeafe !important;
+        }
+
+        .dark .portal-table-wrap .portal-table-row:hover {
+          background: #bfdbfe !important;
+        }
+
+        .dark .portal-table-wrap tbody td {
+          background-color: transparent !important;
+          border-color: #bfdbfe !important;
+          color: #1e3a8a !important;
+        }
+
         @media print {
           @page {
             size: A4 landscape;
@@ -2911,6 +2953,13 @@ export default function CustomerReportPortal() {
                 >
                   <Video size={14} />
                   <span>คลิปเชียร์ขาย</span>
+                </Link>
+                <Link
+                  href="/koe/chat"
+                  className="portal-button-soft flex items-center gap-1 px-2.5 py-1.5 text-slate-800 font-bold text-[11px] sm:text-xs rounded-xl transition cursor-pointer whitespace-nowrap"
+                >
+                  <MessageCircle size={14} />
+                  <span>แชต</span>
                 </Link>
                 <button
                   onClick={handleExportExcel}

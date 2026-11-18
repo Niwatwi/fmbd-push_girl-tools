@@ -2127,6 +2127,240 @@ export async function updateAdminAttendanceLogAction(payload: {
   }
 }
 
+export async function getAdminAttendanceEntryOptionsAction() {
+  try {
+    const supabase = await getAdminClientInstance();
+    const usersResult = await supabase
+      .from("user_profiles")
+      .select("id, display_name, employee_id, username")
+      .eq("is_active", true)
+      .order("display_name");
+    if (usersResult.error) throw usersResult.error;
+    return {
+      success: true as const,
+      users: usersResult.data || [],
+    };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      users: [],
+      message: error.message || "โหลดรายชื่อพนักงานและร้านค้าไม่สำเร็จ",
+    };
+  }
+}
+
+export async function getAdminAttendanceStoresForUserAction(
+  userId: number,
+  requestedSource: "assigned" | "master" = "assigned",
+) {
+  try {
+    const supabase = await getAdminClientInstance();
+    if (!Number.isSafeInteger(userId) || userId <= 0)
+      throw new Error("ไม่พบพนักงานที่เลือก");
+    const { data: user, error: userError } = await supabase
+      .from("user_profiles")
+      .select("id, username")
+      .eq("id", userId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) throw new Error("ไม่พบพนักงานที่เปิดใช้งาน");
+
+    const username = String(user.username || "").trim();
+    let hasAssignedStores = false;
+    if (username) {
+      const { data: assignedStores, error: assignedError } = await supabase
+        .from("pg_stores")
+        .select("store_code, store_name")
+        .eq("mer_code", username)
+        .eq("is_active", true)
+        .order("store_name");
+      if (assignedError) throw assignedError;
+      hasAssignedStores = Boolean(assignedStores?.length);
+      if (assignedStores?.length && requestedSource === "assigned")
+        return {
+          success: true as const,
+          stores: assignedStores,
+          source: "assigned" as const,
+          hasAssignedStores: true,
+        };
+    }
+
+    const masterStores: Array<{ store_code: string; store_name: string }> = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabase
+        .from("stores")
+        .select("store_code, store_name")
+        .eq("is_active", true)
+        .order("store_name")
+        .range(offset, offset + 999);
+      if (error) throw error;
+      masterStores.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    return {
+      success: true as const,
+      stores: masterStores,
+      source: "master" as const,
+      hasAssignedStores,
+    };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      stores: [],
+      source: "assigned" as const,
+      hasAssignedStores: false,
+      message: error.message || "โหลดรายชื่อสาขาไม่สำเร็จ",
+    };
+  }
+}
+
+export async function createAdminAttendanceLogAction(payload: {
+  userId: number;
+  storeCode: string;
+  storeName: string;
+  checkInAt: string;
+  checkOutAt?: string | null;
+  checkInImage?: string;
+  checkOutImage?: string;
+  note: string;
+}) {
+  try {
+    const actor = await requireAdminSession();
+    const supabase = getServerDatabase();
+    const userId = Number(payload.userId);
+    const storeCode = String(payload.storeCode || "").trim();
+    let storeName = String(payload.storeName || "").trim();
+    const note = String(payload.note || "").trim();
+    const checkInMs = Date.parse(payload.checkInAt);
+    const checkOutMs = payload.checkOutAt
+      ? Date.parse(payload.checkOutAt)
+      : null;
+    if (
+      !Number.isSafeInteger(userId) ||
+      userId <= 0 ||
+      !storeCode ||
+      storeCode.length > 100 ||
+      !storeName ||
+      storeName.length > 200 ||
+      note.length < 3 ||
+      note.length > 1000 ||
+      !Number.isFinite(checkInMs) ||
+      (payload.checkOutAt && !Number.isFinite(checkOutMs)) ||
+      (checkOutMs !== null && checkOutMs <= checkInMs)
+    ) {
+      throw new Error("กรุณาตรวจสอบพนักงาน ร้านค้า และช่วงเวลาที่ระบุ");
+    }
+
+    const { data: user, error: userError } = await supabase
+      .from("user_profiles")
+      .select("id, username")
+      .eq("id", userId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) throw new Error("ไม่พบพนักงานที่เปิดใช้งาน");
+
+    let selectedStore: { store_code: string; store_name: string } | null = null;
+    const username = String(user.username || "").trim();
+    if (username) {
+      const { data: assignedStore, error } = await supabase
+        .from("pg_stores")
+        .select("store_code, store_name")
+        .eq("mer_code", username)
+        .eq("is_active", true);
+      if (error) throw error;
+      selectedStore =
+        (assignedStore || []).find(
+          (store) => String(store.store_code) === storeCode,
+        ) || null;
+    }
+    if (!selectedStore) {
+      const { data, error } = await supabase
+        .from("stores")
+        .select("store_code, store_name")
+        .eq("store_code", storeCode)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (error) throw error;
+      selectedStore = data;
+    }
+    if (!selectedStore)
+      throw new Error("ไม่พบสาขานี้ในรายการพนักงานหรือ Master Stores");
+    storeName = String(selectedStore.store_name || storeName).trim();
+
+    const imageToUrl = async (
+      dataUrl: string | undefined,
+      kind: "checkin" | "checkout",
+    ) => {
+      if (!dataUrl) return null;
+      const match = dataUrl.match(
+        /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/,
+      );
+      if (!match) throw new Error("ไฟล์รูปต้องเป็น JPG, PNG หรือ WebP");
+      const buffer = Buffer.from(match[2], "base64");
+      if (!buffer.length || buffer.length > 750_000)
+        throw new Error("รูปหลังบีบอัดต้องมีขนาดไม่เกิน 750 KB");
+      const extension = match[1] === "jpeg" ? "jpg" : match[1];
+      const fileName = `${userId}_${kind}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
+      const { error } = await supabase.storage
+        .from("pg-attendance-photos")
+        .upload(fileName, buffer, {
+          contentType: `image/${match[1]}`,
+          upsert: false,
+        });
+      if (error) throw error;
+      return supabase.storage
+        .from("pg-attendance-photos")
+        .getPublicUrl(fileName).data.publicUrl;
+    };
+
+    const [checkInImageUrl, checkOutImageUrl] = await Promise.all([
+      imageToUrl(payload.checkInImage, "checkin"),
+      imageToUrl(payload.checkOutImage, "checkout"),
+    ]);
+    const attendanceData = {
+      user_id: userId,
+      store_code: storeCode,
+      store_name: storeName,
+      check_in_at: new Date(checkInMs).toISOString(),
+      check_out_at:
+        checkOutMs === null ? null : new Date(checkOutMs).toISOString(),
+      check_in_image_url: checkInImageUrl,
+      check_out_image_url: checkOutImageUrl,
+    };
+    const { data: createdLog, error: attendanceError } = await supabase
+      .from("pg_attendance_logs")
+      .insert(attendanceData)
+      .select("id")
+      .single();
+    if (attendanceError) throw attendanceError;
+
+    const { error: auditError } = await supabase.from("koe_edit_audit").insert({
+      actor_id: actor.id,
+      employee_id: userId,
+      record_type: "attendance",
+      record_id: createdLog.id,
+      before_data: {},
+      after_data: { ...attendanceData, note },
+      reason: note,
+    });
+    if (auditError) {
+      await supabase
+        .from("pg_attendance_logs")
+        .delete()
+        .eq("id", createdLog.id);
+      throw auditError;
+    }
+    return { success: true as const };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      message: error.message || "เพิ่มข้อมูลเวลาเข้างานย้อนหลังไม่สำเร็จ",
+    };
+  }
+}
+
 // 13. 🛠️ ฟังก์ชันสำหรับ Admin บันทึกรายงานย้อนหลัง พร้อมระบบแปลง Base64 และอัปโหลดรูปภาพ
 export async function adminSaveReportWithImagesAction(payload: any) {
   try {

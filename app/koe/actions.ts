@@ -659,12 +659,36 @@ export async function updateKoeReportAction(input: {
 async function getChatParticipant(database: any, id: number) {
   const { data, error } = await database
     .from("user_profiles")
-    .select("id,display_name,username,company_tag,area,is_active")
+    .select("id,display_name,username,employee_id,company_tag,area,is_active")
     .eq("id", id)
     .maybeSingle();
   if (error || !data || data.is_active !== true)
     throw new Error("ไม่พบผู้ร่วมสนทนาที่เปิดใช้งาน");
   return data;
+}
+
+const chatTeamTags = ["BA", "BA_CHEER", "SURVEYOR"];
+const chatKoeTags = ["KOE", "KEY_ACCOUNT_OPERATION_EXECUTIVE"];
+const adminIdentifiers = new Set(["ADMIN", "ADMIN_NIWAT", "FMBD03"]);
+
+function isAdminChatProfile(profile: any) {
+  return [profile.username, profile.employee_id, profile.company_tag].some(
+    (value) =>
+      adminIdentifiers.has(
+        String(value || "")
+          .trim()
+          .toUpperCase(),
+      ),
+  );
+}
+
+async function getAdminChatContacts(database: any) {
+  const { data, error } = await database
+    .from("user_profiles")
+    .select("id,display_name,username,employee_id,area,company_tag")
+    .eq("is_active", true);
+  if (error) throw error;
+  return (data || []).filter(isAdminChatProfile);
 }
 
 async function authorizeKoeConversation(
@@ -681,20 +705,46 @@ async function authorizeKoeConversation(
   ]);
   const actorTag = String(actor.company_tag || "").toUpperCase();
   const peerTag = String(peer.company_tag || "").toUpperCase();
+  if (session.role === "admin") {
+    if (
+      peerTag.trim() !== "CUSTOMER" &&
+      !chatTeamTags.includes(peerTag.trim()) &&
+      !chatKoeTags.includes(peerTag.trim())
+    )
+      throw new Error("ไม่มีสิทธิ์สนทนากับผู้ใช้รายนี้");
+    return {
+      area: String(peer.area || actor.area || "GENERAL").trim() || "GENERAL",
+      peer,
+    };
+  }
+  if (actorTag === "CUSTOMER") {
+    if (!isAdminChatProfile(peer))
+      throw new Error("ลูกค้าสามารถสนทนากับผู้ดูแลระบบได้เท่านั้น");
+    return {
+      area: String(actor.area || peer.area || "GENERAL").trim() || "GENERAL",
+      peer,
+    };
+  }
+  if (
+    isAdminChatProfile(peer) &&
+    (session.role === "koe" || chatTeamTags.includes(actorTag))
+  ) {
+    return {
+      area: String(actor.area || peer.area || "GENERAL").trim() || "GENERAL",
+      peer,
+    };
+  }
   const actorIsKoe = session.role === "koe";
   if (actorIsKoe) {
     const { areas } = await requireKoeAccess();
     if (
       !areas.includes(String(peer.area || "").trim()) ||
-      !["BA", "BA_CHEER", "SURVEYOR"].includes(peerTag)
+      !chatTeamTags.includes(peerTag)
     )
       throw new Error("ไม่มีสิทธิ์สนทนากับผู้ใช้รายนี้");
     return { area: String(peer.area).trim(), peer };
   }
-  if (
-    session.role !== "staff" ||
-    !["BA", "BA_CHEER", "SURVEYOR"].includes(actorTag)
-  )
+  if (session.role !== "staff" || !chatTeamTags.includes(actorTag))
     throw new Error("เฉพาะ BA Cheer และ KOE ที่ส่งข้อความหากันได้");
   const { data, error } = await database
     .from("koe_areas")
@@ -708,7 +758,7 @@ async function authorizeKoeConversation(
     )
   )
     throw new Error("ไม่มีสิทธิ์สนทนากับผู้ใช้รายนี้");
-  if (!["KOE", "KEY_ACCOUNT_OPERATION_EXECUTIVE"].includes(peerTag))
+  if (!chatKoeTags.includes(peerTag))
     throw new Error("ไม่มีสิทธิ์สนทนากับผู้ใช้รายนี้");
   return { area: String(actor.area).trim(), peer };
 }
@@ -720,23 +770,37 @@ export async function getKoeChatContactsAction() {
     const database = getKoeServerDatabase();
     const actor = await getChatParticipant(database, session.id);
     const tag = String(actor.company_tag || "").toUpperCase();
+    if (session.role === "admin") {
+      const { data, error } = await database
+        .from("user_profiles")
+        .select("id,display_name,username,area,company_tag")
+        .eq("is_active", true)
+        .in("company_tag", [...chatTeamTags, ...chatKoeTags, "CUSTOMER"])
+        .order("display_name");
+      if (error) throw error;
+      return { success: true as const, contacts: data || [] };
+    }
+    if (tag === "CUSTOMER") {
+      return {
+        success: true as const,
+        contacts: await getAdminChatContacts(database),
+      };
+    }
     if (session.role === "koe") {
       const { areas } = await requireKoeAccess();
-      if (!areas.length) return { success: true as const, contacts: [] };
+      const admins = await getAdminChatContacts(database);
+      if (!areas.length) return { success: true as const, contacts: admins };
       const { data, error } = await database
         .from("user_profiles")
         .select("id,display_name,username,area,company_tag")
         .eq("is_active", true)
         .in("area", areas)
-        .in("company_tag", ["BA", "BA_CHEER", "SURVEYOR"])
+        .in("company_tag", chatTeamTags)
         .order("display_name");
       if (error) throw error;
-      return { success: true as const, contacts: data || [] };
+      return { success: true as const, contacts: [...(data || []), ...admins] };
     }
-    if (
-      session.role !== "staff" ||
-      !["BA", "BA_CHEER", "SURVEYOR"].includes(tag)
-    )
+    if (session.role !== "staff" || !chatTeamTags.includes(tag))
       throw new Error("บัญชีนี้ไม่มีสิทธิ์ใช้แชตทีม");
     const { data: areas, error: areasError } = await database
       .from("koe_areas")
@@ -755,13 +819,16 @@ export async function getKoeChatContactsAction() {
     if (error) throw error;
     return {
       success: true as const,
-      contacts: (data || []).filter((item: any) =>
-        ["KOE", "KEY_ACCOUNT_OPERATION_EXECUTIVE"].includes(
-          String(item.company_tag || "")
-            .trim()
-            .toUpperCase(),
+      contacts: [
+        ...(data || []).filter((item: any) =>
+          ["KOE", "KEY_ACCOUNT_OPERATION_EXECUTIVE"].includes(
+            String(item.company_tag || "")
+              .trim()
+              .toUpperCase(),
+          ),
         ),
-      ),
+        ...(await getAdminChatContacts(database)),
+      ],
     };
   } catch (error: any) {
     return {
@@ -780,29 +847,52 @@ export async function getKoeUnreadMessageCountAction() {
     const actorTag = String(actor.company_tag || "")
       .trim()
       .toUpperCase();
-    let areas: string[];
-
-    if (session.role === "koe") {
-      areas = (await requireKoeAccess()).areas;
-    } else if (
-      session.role === "staff" &&
-      ["BA", "BA_CHEER", "SURVEYOR"].includes(actorTag)
-    ) {
-      areas = [String(actor.area || "").trim()].filter(Boolean);
-    } else {
-      throw new Error("บัญชีนี้ไม่มีสิทธิ์ใช้แชตทีม");
-    }
-
-    if (!areas.length) return { success: true as const, unreadCount: 0 };
-
     let query: any = database
       .from("koe_chat_messages")
       .select("id", { count: "exact", head: true })
       .eq("recipient_id", session.id)
-      .in("area", areas)
       .is("read_at", null);
 
-    if (session.role === "staff") {
+    let adminUnreadCount = 0;
+    if (session.role === "admin") {
+      // Admin inbox includes messages from customers and the KOE team.
+    } else if (actorTag === "CUSTOMER") {
+      const adminIds = (await getAdminChatContacts(database)).map((item: any) =>
+        Number(item.id),
+      );
+      if (!adminIds.length) return { success: true as const, unreadCount: 0 };
+      query = query.in("sender_id", adminIds);
+    } else {
+      const adminIds = (await getAdminChatContacts(database)).map((item: any) =>
+        Number(item.id),
+      );
+      if (adminIds.length) {
+        const { count, error } = await database
+          .from("koe_chat_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("recipient_id", session.id)
+          .in("sender_id", adminIds)
+          .is("read_at", null);
+        if (error) throw error;
+        adminUnreadCount = count || 0;
+      }
+      let areas: string[];
+      if (session.role === "koe") {
+        areas = (await requireKoeAccess()).areas;
+      } else if (session.role === "staff" && chatTeamTags.includes(actorTag)) {
+        areas = [String(actor.area || "").trim()].filter(Boolean);
+      } else {
+        throw new Error("บัญชีนี้ไม่มีสิทธิ์ใช้แชตทีม");
+      }
+      if (!areas.length)
+        return { success: true as const, unreadCount: adminUnreadCount };
+      query = query.in("area", areas);
+      if (session.role === "koe" && adminIds.length)
+        query = query.not("sender_id", "in", `(${adminIds.join(",")})`);
+    }
+
+    if (session.role === "staff" && actorTag !== "CUSTOMER") {
+      const areas = [String(actor.area || "").trim()].filter(Boolean);
       const { data: assignments, error: assignmentError } = await database
         .from("koe_areas")
         .select("koe_user_id")
@@ -813,13 +903,20 @@ export async function getKoeUnreadMessageCountAction() {
           (assignments || []).map((item: any) => Number(item.koe_user_id)),
         ),
       );
-      if (!koeIds.length) return { success: true as const, unreadCount: 0 };
+      const adminIds = (await getAdminChatContacts(database)).map((item: any) =>
+        Number(item.id),
+      );
+      if (!koeIds.length)
+        return { success: true as const, unreadCount: adminUnreadCount };
       query = query.in("sender_id", koeIds);
     }
 
     const { count, error } = await query;
     if (error) throw error;
-    return { success: true as const, unreadCount: count || 0 };
+    return {
+      success: true as const,
+      unreadCount: (count || 0) + adminUnreadCount,
+    };
   } catch (error: any) {
     return {
       success: false as const,

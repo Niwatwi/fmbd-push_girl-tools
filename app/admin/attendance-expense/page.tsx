@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  type FormEvent,
+} from "react";
 import {
   Clock,
   Calendar,
@@ -12,12 +18,61 @@ import {
   ArrowLeft,
   DollarSign,
   Users,
+  Plus,
+  X,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import {
+  createAdminAttendanceLogAction,
+  getAdminAttendanceEntryOptionsAction,
+  getAdminAttendanceStoresForUserAction,
   getAdminAttendanceExpenseReportAction,
   updateAdminAttendanceLogAction,
 } from "@/app/dashboard/actions";
+
+type EntryOptions = {
+  users: Array<{
+    id: number;
+    display_name: string | null;
+    employee_id: string | null;
+    username: string | null;
+  }>;
+};
+
+async function compressTimestampImage(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("กรุณาเลือกไฟล์รูปภาพ");
+  if (file.size > 15 * 1024 * 1024)
+    throw new Error("ไฟล์ต้นฉบับต้องมีขนาดไม่เกิน 15 MB");
+  const image = await createImageBitmap(file);
+  const scale = Math.min(1, 1400 / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(image.width * scale);
+  canvas.height = Math.round(image.height * scale);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("ไม่สามารถประมวลผลรูปภาพได้");
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  image.close();
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (result) =>
+        result ? resolve(result) : reject(new Error("บีบอัดรูปภาพไม่สำเร็จ")),
+      "image/jpeg",
+      0.72,
+    );
+  });
+  if (blob.size > 750_000)
+    throw new Error("รูปมีขนาดใหญ่เกินไป กรุณาเลือกภาพที่มีความละเอียดต่ำลง");
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("อ่านไฟล์รูปไม่สำเร็จ"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function parseThaiDateTime(value: string) {
+  return value ? new Date(`${value}:00+07:00`).toISOString() : null;
+}
 
 export default function AdminAttendanceExpensePage() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -29,6 +84,25 @@ export default function AdminAttendanceExpensePage() {
   const [endDate, setEndDate] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedEmployeeKey, setSelectedEmployeeKey] = useState<string>("");
+  const [entryOptions, setEntryOptions] = useState<EntryOptions>({ users: [] });
+  const [entryStores, setEntryStores] = useState<
+    Array<{ store_code: string; store_name: string }>
+  >([]);
+  const [entryStoreSource, setEntryStoreSource] = useState<
+    "assigned" | "master" | ""
+  >("");
+  const [entryHasAssignedStores, setEntryHasAssignedStores] = useState(false);
+  const [loadingEntryStores, setLoadingEntryStores] = useState(false);
+  const entryStoreRequestRef = useRef(0);
+  const [showEntryForm, setShowEntryForm] = useState(false);
+  const [savingEntry, setSavingEntry] = useState(false);
+  const [entryUserId, setEntryUserId] = useState("");
+  const [entryStoreCode, setEntryStoreCode] = useState("");
+  const [entryCheckInAt, setEntryCheckInAt] = useState("");
+  const [entryCheckOutAt, setEntryCheckOutAt] = useState("");
+  const [entryNote, setEntryNote] = useState("");
+  const [entryCheckInFile, setEntryCheckInFile] = useState<File | null>(null);
+  const [entryCheckOutFile, setEntryCheckOutFile] = useState<File | null>(null);
 
   const employeeOptions = useMemo(() => {
     const employees = new Map<
@@ -92,6 +166,118 @@ export default function AdminAttendanceExpensePage() {
   useEffect(() => {
     loadAttendanceData();
   }, [startDate, endDate]);
+
+  useEffect(() => {
+    getAdminAttendanceEntryOptionsAction().then((result) => {
+      if (result.success) setEntryOptions({ users: result.users });
+      else Swal.fire("ข้อผิดพลาด", result.message, "error");
+    });
+  }, []);
+
+  const handleEntryUserChange = async (
+    userId: string,
+    requestedSource: "assigned" | "master" = "assigned",
+  ) => {
+    const requestId = ++entryStoreRequestRef.current;
+    setEntryUserId(userId);
+    setEntryStoreCode("");
+    setEntryStores([]);
+    setEntryStoreSource("");
+    setEntryHasAssignedStores(false);
+    if (!userId) {
+      setLoadingEntryStores(false);
+      return;
+    }
+    setLoadingEntryStores(true);
+    const result = await getAdminAttendanceStoresForUserAction(
+      Number(userId),
+      requestedSource,
+    );
+    if (requestId !== entryStoreRequestRef.current) return;
+    if (result.success) {
+      setEntryStores(result.stores);
+      setEntryStoreSource(result.source);
+      setEntryHasAssignedStores(result.hasAssignedStores);
+    } else {
+      Swal.fire("โหลดสาขาไม่สำเร็จ", result.message, "error");
+    }
+    setLoadingEntryStores(false);
+  };
+
+  const handleCreateHistoricalEntry = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!entryUserId || !entryStoreCode || !entryCheckInAt) {
+      Swal.fire(
+        "ข้อมูลไม่ครบ",
+        "กรุณาเลือกพนักงาน ร้าน และเวลา Check-in",
+        "warning",
+      );
+      return;
+    }
+    if (entryNote.trim().length < 3) {
+      Swal.fire(
+        "กรุณาระบุหมายเหตุ",
+        "กรอกเหตุผลยืนยันกับบัญชีอย่างน้อย 3 ตัวอักษร",
+        "warning",
+      );
+      return;
+    }
+    const selectedStore = entryStores.find(
+      (store) => String(store.store_code) === entryStoreCode,
+    );
+    if (!selectedStore) {
+      Swal.fire("ไม่พบร้านค้า", "กรุณาเลือกร้านค้าอีกครั้ง", "warning");
+      return;
+    }
+    if (
+      entryCheckOutAt &&
+      new Date(entryCheckOutAt).getTime() <= new Date(entryCheckInAt).getTime()
+    ) {
+      Swal.fire(
+        "เวลาไม่ถูกต้อง",
+        "เวลา Check-out ต้องอยู่หลัง Check-in",
+        "warning",
+      );
+      return;
+    }
+
+    setSavingEntry(true);
+    try {
+      const [checkInImage, checkOutImage] = await Promise.all([
+        entryCheckInFile ? compressTimestampImage(entryCheckInFile) : "",
+        entryCheckOutFile ? compressTimestampImage(entryCheckOutFile) : "",
+      ]);
+      const result = await createAdminAttendanceLogAction({
+        userId: Number(entryUserId),
+        storeCode: entryStoreCode,
+        storeName: selectedStore.store_name,
+        checkInAt: parseThaiDateTime(entryCheckInAt) || "",
+        checkOutAt: parseThaiDateTime(entryCheckOutAt),
+        checkInImage,
+        checkOutImage,
+        note: entryNote.trim(),
+      });
+      if (!result.success) throw new Error(result.message);
+      setShowEntryForm(false);
+      setEntryUserId("");
+      setEntryStoreCode("");
+      setEntryCheckInAt("");
+      setEntryCheckOutAt("");
+      setEntryNote("");
+      setEntryCheckInFile(null);
+      setEntryCheckOutFile(null);
+      Swal.fire("สำเร็จ", "เพิ่มข้อมูลลงเวลาย้อนหลังเรียบร้อยแล้ว", "success");
+      await loadAttendanceData();
+    } catch (error: any) {
+      Swal.fire(
+        "บันทึกไม่สำเร็จ",
+        error.message || "กรุณาลองอีกครั้ง",
+        "error",
+      );
+    } finally {
+      setSavingEntry(false);
+    }
+  };
 
   // Filter Logic Search
   useEffect(() => {
@@ -341,6 +527,13 @@ export default function AdminAttendanceExpensePage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowEntryForm(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+            >
+              <Plus size={14} /> เพิ่มข้อมูลย้อนหลัง
+            </button>
             <a
               href="/admin"
               className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-800 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition border border-blue-700"
@@ -366,6 +559,220 @@ export default function AdminAttendanceExpensePage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+        {showEntryForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 no-print">
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="historical-entry-title"
+              className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+            >
+              <header className="flex items-center justify-between bg-blue-900 px-5 py-4 text-white">
+                <div>
+                  <h2
+                    id="historical-entry-title"
+                    className="text-sm font-black"
+                  >
+                    เพิ่มข้อมูลลงเวลาย้อนหลัง
+                  </h2>
+                  <p className="mt-1 text-[11px] text-blue-200">
+                    แนบรูป Timestamp สำหรับเวลาเข้าและออกได้
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEntryForm(false)}
+                  aria-label="ปิดหน้าต่าง"
+                  className="rounded-lg p-2 hover:bg-white/10"
+                >
+                  <X size={18} />
+                </button>
+              </header>
+              <form
+                onSubmit={handleCreateHistoricalEntry}
+                className="space-y-4 p-5"
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-xs font-bold text-slate-600">
+                    พนักงาน
+                    <select
+                      required
+                      value={entryUserId}
+                      onChange={(event) =>
+                        void handleEntryUserChange(event.target.value)
+                      }
+                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-800"
+                    >
+                      <option value="">เลือกพนักงาน</option>
+                      {entryOptions.users.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.display_name ||
+                            user.username ||
+                            `PG-${user.id}`}
+                          {user.employee_id ? ` (${user.employee_id})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-600">
+                      สาขาปฏิบัติงาน
+                      <select
+                        required
+                        value={entryStoreCode}
+                        onChange={(event) =>
+                          setEntryStoreCode(event.target.value)
+                        }
+                        disabled={
+                          !entryUserId ||
+                          loadingEntryStores ||
+                          !entryStores.length
+                        }
+                        className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-800"
+                      >
+                        <option value="">
+                          {loadingEntryStores
+                            ? "กำลังโหลดสาขา..."
+                            : entryStoreSource === "master"
+                              ? entryHasAssignedStores
+                                ? "เลือกร้านอื่นจาก Master Stores"
+                                : "ไม่พบสาขาที่ผูกไว้ เลือกจาก Master Stores"
+                              : entryUserId
+                                ? "เลือกสาขาที่ผูกกับพนักงาน"
+                                : "เลือกพนักงานก่อน"}
+                        </option>
+                        {entryStores.map((store) => (
+                          <option
+                            key={store.store_code}
+                            value={store.store_code}
+                          >
+                            {store.store_name} ({store.store_code})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {entryHasAssignedStores && (
+                      <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
+                        <button
+                          type="button"
+                          disabled={loadingEntryStores}
+                          onClick={() =>
+                            void handleEntryUserChange(entryUserId, "assigned")
+                          }
+                          className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-bold transition ${
+                            entryStoreSource === "assigned"
+                              ? "bg-white text-blue-700 shadow-sm"
+                              : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          สาขาที่ผูกกับพนักงาน
+                        </button>
+                        <button
+                          type="button"
+                          disabled={loadingEntryStores}
+                          onClick={() =>
+                            void handleEntryUserChange(entryUserId, "master")
+                          }
+                          className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-bold transition ${
+                            entryStoreSource === "master"
+                              ? "bg-white text-blue-700 shadow-sm"
+                              : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          ร้านอื่นจาก Master
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <label className="text-xs font-bold text-slate-600">
+                    เวลา Check-in
+                    <input
+                      required
+                      type="datetime-local"
+                      value={entryCheckInAt}
+                      onChange={(event) =>
+                        setEntryCheckInAt(event.target.value)
+                      }
+                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-800"
+                    />
+                  </label>
+                  <label className="text-xs font-bold text-slate-600">
+                    เวลา Check-out (ไม่บังคับ)
+                    <input
+                      type="datetime-local"
+                      value={entryCheckOutAt}
+                      onChange={(event) =>
+                        setEntryCheckOutAt(event.target.value)
+                      }
+                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-800"
+                    />
+                  </label>
+                  <label className="text-xs font-bold text-slate-600">
+                    รูป Timestamp Check-in (ไม่บังคับ)
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        setEntryCheckInFile(event.target.files?.[0] || null)
+                      }
+                      className="mt-1.5 block w-full rounded-lg border border-slate-300 p-2 text-xs"
+                    />
+                  </label>
+                  <label className="text-xs font-bold text-slate-600">
+                    รูป Timestamp Check-out (ไม่บังคับ)
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        setEntryCheckOutFile(event.target.files?.[0] || null)
+                      }
+                      className="mt-1.5 block w-full rounded-lg border border-slate-300 p-2 text-xs"
+                    />
+                  </label>
+                  <label className="sm:col-span-2 text-xs font-bold text-slate-600">
+                    หมายเหตุยืนยันกับบัญชี{" "}
+                    <span className="text-rose-600">*</span>
+                    <textarea
+                      required
+                      minLength={3}
+                      maxLength={1000}
+                      rows={3}
+                      value={entryNote}
+                      onChange={(event) => setEntryNote(event.target.value)}
+                      placeholder="เช่น ยืนยันเวลาและรูป Timestamp กับฝ่ายบัญชีแล้ว"
+                      className="mt-1.5 w-full resize-y rounded-lg border border-slate-300 bg-white p-2.5 text-sm font-normal text-slate-800"
+                    />
+                    <span className="mt-1 block text-[10px] font-normal text-slate-400">
+                      บันทึกหมายเหตุพร้อมผู้ทำรายการและรายละเอียดเวลาในประวัติ
+                      Audit
+                    </span>
+                  </label>
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowEntryForm(false)}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={
+                      savingEntry ||
+                      loadingEntryStores ||
+                      !entryOptions.users.length ||
+                      !entryStores.length
+                    }
+                    className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white hover:bg-blue-800 disabled:opacity-50"
+                  >
+                    {savingEntry ? "กำลังบันทึก..." : "บันทึกย้อนหลัง"}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
         {/* KPI SUMMARY CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">

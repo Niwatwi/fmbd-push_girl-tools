@@ -38,12 +38,24 @@ const timestamp = (value: string) =>
     minute: "2-digit",
   }).format(new Date(value));
 
+const participantLabel = (companyTag: string) => {
+  const tag = companyTag.trim().toUpperCase();
+  if (tag === "CUSTOMER") return "ลูกค้า";
+  if (["KOE", "KEY_ACCOUNT_OPERATION_EXECUTIVE"].includes(tag))
+    return "ทีม KOE";
+  if (tag === "BA_CHEER") return "น้องเชียร์";
+  if (["BA", "SURVEYOR"].includes(tag)) return "ทีม BA";
+  return "ผู้ดูแลระบบ";
+};
+
 export default function KoeChat({
   currentUserId,
   currentRole,
+  currentCompanyTag,
 }: {
   currentUserId: number;
   currentRole: "admin" | "staff" | "koe";
+  currentCompanyTag: string;
 }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [peerId, setPeerId] = useState("");
@@ -133,6 +145,15 @@ export default function KoeChat({
   }
 
   const selected = contacts.find((contact) => String(contact.id) === peerId);
+  const actorTag = currentCompanyTag.trim().toUpperCase();
+  const heading =
+    currentRole === "admin"
+      ? "ศูนย์ประสานงาน"
+      : actorTag === "CUSTOMER"
+        ? "แชตกับผู้ดูแลระบบ"
+        : currentRole === "koe"
+          ? "แชตทีม KOE"
+          : "แชตประสานงานทีม";
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col bg-slate-50 text-slate-900">
       <header className="flex items-center gap-3 bg-blue-900 p-4 text-white">
@@ -144,11 +165,13 @@ export default function KoeChat({
           <ArrowLeft size={20} />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-sm font-bold">ประสานงานทีม</h1>
+          <h1 className="text-sm font-bold">{heading}</h1>
           <p className="truncate text-xs text-blue-200">
             {selected
-              ? `${selected.display_name} · ${selected.area}`
-              : "แชตงาน"}
+              ? `${participantLabel(selected.company_tag)} · ${selected.display_name} · ${selected.area || "ไม่ระบุ Area"}`
+              : currentRole === "admin"
+                ? "ลูกค้า · ทีม KOE · น้องเชียร์"
+                : "ข้อความประสานงาน"}
           </p>
         </div>
         <button
@@ -172,7 +195,7 @@ export default function KoeChat({
         </p>
       )}
       <label className="border-b border-slate-200 bg-white p-3 text-xs font-bold">
-        ผู้ร่วมสนทนา
+        {currentRole === "admin" ? "เลือกลูกค้าหรือทีมงาน" : "ผู้ร่วมสนทนา"}
         <select
           value={peerId}
           onChange={(event) => setPeerId(event.target.value)}
@@ -181,7 +204,9 @@ export default function KoeChat({
           <option value="">เลือกผู้ร่วมสนทนา</option>
           {contacts.map((contact) => (
             <option key={contact.id} value={contact.id}>
-              {contact.display_name || contact.username} · {contact.area}
+              {participantLabel(contact.company_tag)} ·{" "}
+              {contact.display_name || contact.username}
+              {contact.area ? ` · ${contact.area}` : ""}
             </option>
           ))}
         </select>
@@ -197,7 +222,11 @@ export default function KoeChat({
         )}
         {!loading && !contacts.length && (
           <p className="py-8 text-center text-xs text-slate-500">
-            ไม่พบผู้ร่วมสนทนาใน Area ที่ได้รับอนุญาต
+            {actorTag === "CUSTOMER"
+              ? "ไม่พบผู้ดูแลระบบที่พร้อมสนทนา"
+              : currentRole === "admin"
+                ? "ยังไม่มีบัญชีลูกค้าหรือทีมงานที่เปิดใช้งาน"
+                : "ไม่พบผู้ร่วมสนทนาใน Area ที่ได้รับอนุญาต"}
           </p>
         )}
         {messages.map((message) => {
@@ -238,7 +267,11 @@ export default function KoeChat({
           onChange={(event) => setBody(event.target.value)}
           maxLength={2000}
           rows={2}
-          placeholder="พิมพ์ข้อความประสานงาน..."
+          placeholder={
+            actorTag === "CUSTOMER"
+              ? "พิมพ์ข้อความถึงผู้ดูแลระบบ..."
+              : "พิมพ์ข้อความประสานงาน..."
+          }
           disabled={!peerId}
           className="min-h-11 flex-1 resize-none rounded border border-slate-300 bg-white p-2 text-sm"
         />

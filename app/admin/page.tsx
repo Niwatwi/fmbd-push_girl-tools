@@ -17,6 +17,7 @@ import {
   PackagePlus,
   BadgeDollarSign,
   Users,
+  MessageCircle,
 } from "lucide-react";
 
 export default function AdminHubPage() {
@@ -191,6 +192,13 @@ export default function AdminHubPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/koe/chat"
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-2xl text-xs font-bold transition cursor-pointer shadow-xs"
+            >
+              <MessageCircle size={16} />
+              <span>ข้อความ</span>
+            </Link>
             {/* ปุ่มเข้าสู่ Customer Portal */}
             <Link
               href="/customer-portal"
