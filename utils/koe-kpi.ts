@@ -21,7 +21,7 @@ export const cheerKpiCriteria = [
     label: "การจัดเรียงและความสะอาดสินค้า",
     amounts: { A: 200, B: 100, C: 0 },
   },
-  { key: "attendance", label: "Attendance", amounts: { A: 300, B: 200, C: 0 } },
+  { key: "attendance", label: "Attendance", amounts: { A: 500, B: 200, C: 0 } },
 ] as const;
 
 export function calculateCheerKpi(grades: Record<string, CheerGrade>) {
@@ -32,7 +32,7 @@ export function calculateCheerKpi(grades: Record<string, CheerGrade>) {
     return { key: criterion.key, grade, amount: criterion.amounts[grade] };
   });
   const total = amounts.reduce((sum, item) => sum + item.amount, 0);
-  return { amounts, total, maximum: 1300, percentage: (total / 1300) * 100 };
+  return { amounts, total, maximum: 1500, percentage: (total / 1500) * 100 };
 }
 
 export function calculateSupervisorKpi(achievements: number[]) {

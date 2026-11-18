@@ -14,9 +14,12 @@ loaded.paths = module.paths;
 loaded._compile(compiled, filename);
 const { calculateCheerKpi, calculateSupervisorKpi, calculateOosAchievement, calculateAttendanceAchievement } = loaded.exports;
 
-test("BA Cheer grades total 1300 and require all criteria", () => {
+test("BA Cheer grades total 1500 and require all criteria", () => {
     const grades = { knowledge: "A", promotion: "A", dailyReport: "A", display: "A", attendance: "A" };
-    assert.equal(calculateCheerKpi(grades).total, 1300);
+    assert.equal(calculateCheerKpi(grades).amounts.find((item) => item.key === "attendance").amount, 500);
+    assert.equal(calculateCheerKpi(grades).total, 1500);
+    assert.equal(calculateCheerKpi(grades).maximum, 1500);
+    assert.equal(calculateCheerKpi(grades).percentage, 100);
     assert.equal(calculateCheerKpi({ ...grades, dailyReport: "B", attendance: "B" }).total, 1100);
     assert.throws(() => calculateCheerKpi({}));
 });
