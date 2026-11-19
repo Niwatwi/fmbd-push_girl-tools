@@ -101,7 +101,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="staff-theme flex min-h-screen flex-col justify-center bg-slate-50 px-6 py-12 lg:px-8">
+    <div className="login-page staff-theme flex min-h-screen flex-col justify-center px-6 py-12 lg:px-8">
       <ThemeToggle className="fixed right-4 top-4 border border-slate-200 bg-white text-slate-700 shadow-sm" />
       <div className="sm:mx-auto sm:w-full sm:max-w-sm text-center">
         {/* เปลี่ยนมาใช้โลโก้บริษัทจาก public/rvp.png */}
@@ -117,7 +117,7 @@ export default function LoginPage() {
         <p className="mt-1 text-sm text-gray-500">RVI PUSH GIRLS</p>
       </div>
 
-      <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
+      <div className="login-card mt-10 rounded-2xl px-6 py-7 sm:mx-auto sm:w-full sm:max-w-sm">
         <form className="space-y-6" onSubmit={onSubmit}>
           <div>
             <label

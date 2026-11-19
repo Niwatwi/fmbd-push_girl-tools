@@ -309,3 +309,81 @@ html.dark .portal-shell .portal-button-soft {
 html.dark .portal-shell .portal-button-soft:hover {
   background: #263d5a;
 }
+
+/* Login page palette — navy, blue, and clean white */
+html:not(.dark) .login-page {
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      rgb(59 130 246 / 0.22),
+      transparent 24rem
+    ),
+    radial-gradient(
+      circle at 85% 90%,
+      rgb(14 165 233 / 0.12),
+      transparent 26rem
+    ),
+    linear-gradient(135deg, #eef5fb 0%, #f8fafc 55%, #edf4fa 100%) !important;
+  color: #17324d;
+}
+
+html:not(.dark) .login-page .login-card {
+  background: rgb(255 255 255 / 0.96);
+  border: 1px solid #dfe7ef;
+  box-shadow: 0 18px 45px rgb(23 50 77 / 0.12);
+}
+
+html:not(.dark) .login-page input {
+  background: #fff;
+  border: 1px solid #d7e2ec;
+  color: #17324d;
+}
+
+html:not(.dark) .login-page input:focus {
+  border-color: #315b80;
+  --tw-ring-color: #315b80;
+}
+
+html:not(.dark) .login-page button[type="submit"] {
+  background: linear-gradient(135deg, #17324d 0%, #315b80 100%) !important;
+  box-shadow: 0 8px 18px rgb(23 50 77 / 0.18);
+}
+
+html:not(.dark) .login-page button[type="submit"]:hover {
+  background: linear-gradient(135deg, #102a43 0%, #234f72 100%) !important;
+}
+
+/* Consistent light dashboard surfaces */
+html:not(.dark) [class~="min-h-screen"] {
+  --tw-gradient-from: var(--executive-canvas);
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="bg-white"] {
+  background-color: rgb(255 255 255 / 0.98) !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="bg-slate-50"],
+html:not(.dark) [class~="min-h-screen"] [class~="bg-slate-100"] {
+  background-color: #eef3f7 !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="bg-blue-50"] {
+  background-color: #eef5fb !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="text-slate-900"],
+html:not(.dark) [class~="min-h-screen"] [class~="text-slate-950"] {
+  color: #18324d !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="text-slate-700"] {
+  color: #36556f !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="text-slate-600"] {
+  color: #5f7285 !important;
+}
+
+html:not(.dark) [class~="min-h-screen"] [class~="border-slate-300"] {
+  border-color: #d7e2ec !important;
+}
