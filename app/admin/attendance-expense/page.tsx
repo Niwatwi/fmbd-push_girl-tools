@@ -29,6 +29,7 @@ import {
   getAdminAttendanceExpenseReportAction,
   updateAdminAttendanceLogAction,
 } from "@/app/dashboard/actions";
+import { getSalaryPeriodForMonth } from "@/utils/salary-period";
 
 type EntryOptions = {
   users: Array<{
@@ -75,13 +76,21 @@ function parseThaiDateTime(value: string) {
 }
 
 export default function AdminAttendanceExpensePage() {
+  const currentMonth = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+  })
+    .format(new Date())
+    .slice(0, 7);
+  const defaultPeriod = getSalaryPeriodForMonth(currentMonth);
   const [logs, setLogs] = useState<any[]>([]);
   const [filteredLogs, setFilteredLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filter States
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(
+    defaultPeriod.payrollStartDate,
+  );
+  const [endDate, setEndDate] = useState<string>(defaultPeriod.payrollEndDate);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedEmployeeKey, setSelectedEmployeeKey] = useState<string>("");
   const [entryOptions, setEntryOptions] = useState<EntryOptions>({ users: [] });
@@ -107,15 +116,18 @@ export default function AdminAttendanceExpensePage() {
   const employeeOptions = useMemo(() => {
     const employees = new Map<
       string,
-      { key: string; displayName: string; empId: string }
+      { key: string; displayName: string; empId: string; username: string }
     >();
 
     logs.forEach((log) => {
-      const empId = String(log.empId ?? "").trim();
+      const empId = String(
+        log.employeeCode ?? log.empId ?? log.employeeId ?? log.username ?? "",
+      ).trim();
+      const username = String(log.username ?? "").trim();
       const displayName = String(log.displayName ?? "").trim();
       const key = empId || displayName;
       if (key && !employees.has(key)) {
-        employees.set(key, { key, displayName, empId });
+        employees.set(key, { key, displayName, empId, username });
       }
     });
 
@@ -284,26 +296,27 @@ export default function AdminAttendanceExpensePage() {
     let result = [...logs];
     if (searchQuery.trim() !== "") {
       const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (item) =>
-          String(item.displayName ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(item.empId ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(item.storeName ?? "")
-            .toLowerCase()
-            .includes(q) ||
-          String(item.storeCode ?? "")
+      result = result.filter((item) =>
+        [
+          item.displayName,
+          item.empId,
+          item.employeeId,
+          item.employeeCode,
+          item.username,
+          item.userId,
+          item.storeName,
+          item.storeCode,
+        ].some((value) =>
+          String(value ?? "")
             .toLowerCase()
             .includes(q),
+        ),
       );
     }
     if (selectedEmployeeKey) {
       result = result.filter((item) => {
         const key =
-          String(item.empId ?? "").trim() ||
+          String(item.empId ?? item.employeeId ?? "").trim() ||
           String(item.displayName ?? "").trim();
         return key === selectedEmployeeKey;
       });
@@ -497,6 +510,9 @@ export default function AdminAttendanceExpensePage() {
           th,
           td {
             padding: 3px 4px !important;
+          }
+          .print-only {
+            display: block !important;
           }
           img {
             display: inline-block !important;
@@ -813,7 +829,7 @@ export default function AdminAttendanceExpensePage() {
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
-                ยอดค่าแรง/เบี้ยเลี้ยงรวม (700฿/วัน)
+                ยอดค่าแรงรวม (รายวัน + เงินเดือน)
               </span>
               <span className="text-xl font-black text-emerald-600 block">
                 {totalWage.toLocaleString()}{" "}
@@ -874,6 +890,9 @@ export default function AdminAttendanceExpensePage() {
                 <option key={employee.key} value={employee.key}>
                   {employee.displayName || employee.empId}
                   {employee.empId ? ` (${employee.empId})` : ""}
+                  {employee.username && employee.username !== employee.empId
+                    ? ` / ${employee.username}`
+                    : ""}
                 </option>
               ))}
             </select>
@@ -889,6 +908,12 @@ export default function AdminAttendanceExpensePage() {
                 ตารางบันทึกเวลาทำงาน & คำนวณเบี้ยเลี้ยง PG รายวัน
               </h2>
             </div>
+            <p className="print-only hidden text-[10px]">
+              ช่วงวันที่ {startDate} ถึง {endDate}
+              {selectedEmployeeKey
+                ? ` · พนักงาน ${employeeOptions.find((item) => item.key === selectedEmployeeKey)?.displayName || selectedEmployeeKey}`
+                : " · พนักงานทุกคน"}
+            </p>
             <span className="text-[10px] font-bold text-slate-400">
               แสดงข้อมูลทั้งหมด {filteredLogs.length} รายการ
             </span>
@@ -904,7 +929,7 @@ export default function AdminAttendanceExpensePage() {
                   <th className="p-3">เวลา CHECK-IN</th>
                   <th className="p-3">เวลา CHECK-OUT</th>
                   <th className="p-3 text-center">ชั่วโมงทำงาน</th>
-                  <th className="p-3 text-center">ค่าแรงรายวัน</th>
+                  <th className="p-3 text-center">ค่าแรง / เงินเดือน</th>
                   <th className="p-3 text-center no-print">พิกัด GPS</th>
                   <th className="p-3 text-center min-w-[100px]">
                     รูปถ่ายเข้า-ออก
@@ -927,8 +952,21 @@ export default function AdminAttendanceExpensePage() {
                           {log.displayName}
                         </div>
                         <div className="text-[10px] font-mono text-slate-400">
-                          {log.empId}
+                          {log.employeeCode ||
+                            log.empId ||
+                            log.employeeId ||
+                            log.username ||
+                            "-"}
                         </div>
+                        {log.username &&
+                          log.username !==
+                            (log.employeeCode ||
+                              log.empId ||
+                              log.employeeId) && (
+                            <div className="text-[9px] font-mono text-slate-400">
+                              {log.username}
+                            </div>
+                          )}
                       </td>
                       <td className="p-3">
                         <div className="font-bold text-slate-800">
@@ -952,7 +990,11 @@ export default function AdminAttendanceExpensePage() {
                           : log.workedHours}
                       </td>
                       <td className="p-3 text-center font-mono font-bold text-emerald-600">
-                        {log.dailyWage} ฿
+                        {log.isMonthly
+                          ? log.dailyWage > 0
+                            ? `${log.dailyWage.toLocaleString()} ฿ (เงินเดือน)`
+                            : "-"
+                          : `${log.dailyWage.toLocaleString()} ฿`}
                       </td>
                       <td className="p-3 text-center no-print">
                         <button

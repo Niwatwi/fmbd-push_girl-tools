@@ -8,6 +8,7 @@ import {
   requireUserOrAdminSession,
 } from "@/utils/auth";
 import { requireKoeAccess } from "@/utils/koe-access";
+import { getMonthlyWageByLogId } from "@/utils/attendance-wages";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 function getServerDatabase() {
@@ -1111,8 +1112,12 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
   startDate?: string;
   endDate?: string;
   storeCode?: string;
+  storeCodes?: string[];
 }) {
   try {
+    if (params?.storeCodes && params.storeCodes.length === 0) {
+      return { success: true, data: [] };
+    }
     const supabase = await getAdminClientInstance();
     const { data: userProfiles, error: userError } = await supabase
       .from("user_profiles")
@@ -1138,12 +1143,17 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
     if (params?.storeCode && params.storeCode !== "ALL") {
       query = query.eq("store_code", params.storeCode);
     }
+    if (params?.storeCodes) {
+      query = query.in("store_code", params.storeCodes);
+    }
 
     const { data: logs, error } = await query;
     if (error) throw error;
 
     const mappedLogs = (logs || []).map((log) => {
-      const userObj = (userProfiles || []).find((p) => p.id === log.user_id);
+      const userObj = (userProfiles || []).find(
+        (profile) => String(profile.id) === String(log.user_id),
+      );
 
       const empDisplayName =
         userObj?.display_name || userObj?.username || `PG-${log.user_id}`;
@@ -1166,23 +1176,26 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
       const parsedSalary = Number(salaryValue);
       const configuredSalary =
         salaryValue && Number.isFinite(parsedSalary) ? parsedSalary : 700;
-      // พนักงานรายเดือน: เฉลี่ยเป็นค่าแรงต่อวันด้วย 26 วัน
+      // พนักงานรายเดือนใช้ฐานเงินเดือนเต็มโดยไม่เฉลี่ยเป็นรายวัน
       const employmentType = String(userObj?.employment_type || "")
         .trim()
         .toLowerCase();
       const isMonthly =
         employmentType === "รายเดือน" || employmentType === "monthly";
-      const baseSalaryRate = isMonthly
-        ? Number((configuredSalary / 26).toFixed(2))
-        : configuredSalary;
+      const baseSalaryRate = configuredSalary;
 
       const dayValue = workedHours >= 9 ? 1 : workedHours >= 1 ? 0.5 : 0;
-      const dailyWage = calculateDailyWage(workedHours, baseSalaryRate);
+      const dailyWage = isMonthly
+        ? 0
+        : calculateDailyWage(workedHours, baseSalaryRate);
 
       return {
         id: log.id,
         userId: log.user_id,
+        empId: empCode,
         employeeId: empCode,
+        employeeCode: userObj?.employee_id || "",
+        username: userObj?.username || "",
         displayName: empDisplayName,
         storeCode: log.store_code,
         storeName: log.store_name,
@@ -1192,6 +1205,7 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
         checkInLon: log.check_in_longitude,
         workedHours,
         dayValue,
+        isMonthly,
         baseSalaryRate,
         dailyWage,
         checkInPhoto: log.check_in_image_url || log.check_in_photo || "",
@@ -1241,9 +1255,19 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
                   ? 0.5
                   : 0
               : 0,
-          dailyWage: index === 0 ? calculateDailyWage(dayWorkedHours, rate) : 0,
+          dailyWage: sorted[index].isMonthly
+            ? 0
+            : index === 0
+              ? calculateDailyWage(dayWorkedHours, rate)
+              : 0,
         });
       });
+    }
+
+    const monthlyWages = getMonthlyWageByLogId(mappedLogs);
+    for (const [logId, dailyWage] of monthlyWages) {
+      const wage = wageByLogId.get(logId);
+      if (wage) wageByLogId.set(logId, { ...wage, dailyWage });
     }
 
     const formattedLogs = mappedLogs.map((log) => ({
@@ -1266,8 +1290,13 @@ export async function getAdminSalarySummaryReportAction(params?: {
   commissionStartDate?: string;
   commissionEndDate?: string;
   kpiPeriodMonth?: string;
+  storeCodes?: string[];
+  promotionId?: string;
 }) {
   try {
+    if (params?.storeCodes && params.storeCodes.length === 0) {
+      return { success: true, data: [] };
+    }
     const supabase = await getAdminClientInstance();
     const expenseRes = await getAdminAttendanceExpenseReportAction(params);
     if (!expenseRes.success) throw new Error(expenseRes.message);
@@ -1278,6 +1307,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
         ? await getAdminAttendanceExpenseReportAction({
             startDate: params.commissionStartDate,
             endDate: params.commissionEndDate,
+            storeCodes: params.storeCodes,
           })
         : expenseRes;
     if (!commissionAttendanceRes.success) {
@@ -1298,6 +1328,12 @@ export async function getAdminSalarySummaryReportAction(params?: {
     }
     if (commissionEndDate) {
       reportsQuery = reportsQuery.lte("report_date", commissionEndDate);
+    }
+    if (params?.storeCodes) {
+      reportsQuery = reportsQuery.in("store_code", params.storeCodes);
+    }
+    if (params?.promotionId) {
+      reportsQuery = reportsQuery.eq("promotion_id", params.promotionId);
     }
 
     const { data: dailyReports } = await reportsQuery;
@@ -1355,6 +1391,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
         userSummaryMap.set(uId, {
           userId: uId,
           empId: log.employeeId,
+          employeeCode: log.employeeCode,
+          username: log.username,
           displayName: log.displayName,
           storeCode: log.storeCode,
           storeName: log.storeName,
@@ -1362,6 +1400,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
             storeAccountLookup.get(String(log.storeCode || "").trim()) || "",
           workDaysCount: 0,
           baseSalaryRate: log.baseSalaryRate,
+          isMonthly: log.isMonthly,
           totalDailyWage: 0,
           dailyWageByDate: new Map<string, number>(),
           allSkuSalesQty: 0,
@@ -1388,10 +1427,12 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
       if (log.checkInAt) {
         const dateKey = getIctDateStr(log.checkInAt);
-        userGroup.dailyWageByDate.set(
-          dateKey,
-          (userGroup.dailyWageByDate.get(dateKey) || 0) + log.dailyWage,
-        );
+        if (!log.isMonthly) {
+          userGroup.dailyWageByDate.set(
+            dateKey,
+            (userGroup.dailyWageByDate.get(dateKey) || 0) + log.dailyWage,
+          );
+        }
         const monthKey = new Intl.DateTimeFormat("en-CA", {
           timeZone: "Asia/Bangkok",
           year: "numeric",
@@ -1697,6 +1738,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
         return {
           userId: item.userId,
           empId: item.empId,
+          employeeCode: item.employeeCode,
+          username: item.username,
           displayName: item.displayName,
           storeCode: item.storeCode,
           storeName: item.storeName,
@@ -1706,6 +1749,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
             "",
           workDaysCount: item.workDaysCount,
           baseSalaryRate: item.baseSalaryRate,
+          isMonthly: item.isMonthly,
           totalDailyWage: item.totalDailyWage,
           totalSets: item.allSkuSalesQty,
           totalPacks: item.allSkuSalesQty,
@@ -1732,16 +1776,27 @@ export async function getAdminSalarySummaryReportAction(params?: {
         .eq("status", "approved");
       if (kpiError) throw kpiError;
 
-      const summaryByEmployeeId = new Map(
-        summaryList.map((item) => [
-          String(item.empId).trim().toLowerCase(),
-          item,
-        ]),
-      );
+      const normalizeEmployeeId = (value: unknown) =>
+        String(value ?? "")
+          .trim()
+          .toLowerCase();
+      const summaryByEmployeeId = new Map<string, any>();
+      const indexSummaryItem = (item: any) => {
+        for (const value of [
+          item.empId,
+          item.employeeId,
+          item.employeeCode,
+          item.username,
+        ]) {
+          const key = normalizeEmployeeId(value);
+          if (key) summaryByEmployeeId.set(key, item);
+        }
+      };
+      summaryList.forEach(indexSummaryItem);
       for (const entry of kpiEntries || []) {
         const employeeId = String(entry.employee_id || "").trim();
         if (!employeeId) continue;
-        const key = employeeId.toLowerCase();
+        const key = normalizeEmployeeId(employeeId);
         const amount = Number(entry.amount || 0);
         const matched = summaryByEmployeeId.get(key);
         if (matched) {
@@ -1753,12 +1808,15 @@ export async function getAdminSalarySummaryReportAction(params?: {
         const kpiOnlyItem = {
           userId: `ba-kpi:${key}`,
           empId: employeeId,
+          employeeCode: employeeId,
+          username: "",
           displayName: entry.employee_name,
           storeCode: "",
           storeName: entry.store_name || "-",
           account: "",
           workDaysCount: 0,
           baseSalaryRate: 0,
+          isMonthly: false,
           totalDailyWage: 0,
           totalSets: 0,
           totalPacks: 0,
@@ -1769,7 +1827,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
           totalNetSalary: amount,
         };
         summaryList.push(kpiOnlyItem);
-        summaryByEmployeeId.set(key, kpiOnlyItem);
+        indexSummaryItem(kpiOnlyItem);
       }
 
       const { data: approvedEvaluations, error: evaluationError } =
@@ -1802,25 +1860,31 @@ export async function getAdminSalarySummaryReportAction(params?: {
             String(evaluation.target_user_id),
           );
           if (!profile) continue;
-          const key = String(profile.employee_id || profile.username || "")
-            .trim()
-            .toLowerCase();
-          if (!key) continue;
+          const employeeKeys = [profile.employee_id, profile.username]
+            .map(normalizeEmployeeId)
+            .filter(Boolean);
+          if (!employeeKeys.length) continue;
+          const primaryEmployeeKey = employeeKeys[0];
           const amount = Number(evaluation.amount || 0);
-          const matched = summaryByEmployeeId.get(key);
+          const matched = employeeKeys
+            .map((key) => summaryByEmployeeId.get(key))
+            .find(Boolean);
           if (matched) {
             matched.totalKpiAmount = (matched.totalKpiAmount || 0) + amount;
             matched.totalNetSalary += amount;
           } else {
             const item = {
-              userId: `koe-kpi:${key}`,
+              userId: `koe-kpi:${primaryEmployeeKey}`,
               empId: profile.employee_id || profile.username,
+              employeeCode: profile.employee_id || "",
+              username: profile.username || "",
               displayName: profile.display_name || profile.username,
               storeCode: "",
               storeName: "-",
               account: "",
               workDaysCount: 0,
               baseSalaryRate: 0,
+              isMonthly: false,
               totalDailyWage: 0,
               totalSets: 0,
               totalPacks: 0,
@@ -1831,7 +1895,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
               totalNetSalary: amount,
             };
             summaryList.push(item);
-            summaryByEmployeeId.set(key, item);
+            indexSummaryItem(item);
           }
         }
       }

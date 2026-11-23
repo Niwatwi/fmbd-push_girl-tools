@@ -1248,10 +1248,44 @@ export default function CustomerReportPortal() {
       return;
     }
 
+    const matchingReports = reportData.filter((item) => {
+      const reportDate = String(item.reportDate || "").slice(0, 10);
+      return (
+        (selectedAccount === "ALL" ||
+          getAccountName(item.storeName, item.storeCode, item.account) ===
+            selectedAccount) &&
+        (selectedStore === "ALL" ||
+          String(item.storeCode).trim() === String(selectedStore).trim()) &&
+        (selectedPromotion === "ALL" ||
+          String(item.promotion_id ?? item.promotionId ?? "") ===
+            String(selectedPromotion)) &&
+        (!effectiveStartDate || reportDate >= effectiveStartDate) &&
+        (!effectiveEndDate || reportDate <= effectiveEndDate)
+      );
+    });
+    const storeCodes =
+      selectedStore !== "ALL"
+        ? [String(selectedStore).trim()]
+        : selectedAccount !== "ALL"
+          ? Array.from(
+              new Set(
+                matchingReports
+                  .map((item) => String(item.storeCode || "").trim())
+                  .filter(Boolean),
+              ),
+            )
+          : undefined;
+    if (selectedAccount !== "ALL" && !storeCodes?.length) {
+      setSalarySummaryData([]);
+      return;
+    }
+
     let active = true;
     getAdminSalarySummaryReportAction({
       startDate: effectiveStartDate,
       endDate: effectiveEndDate,
+      storeCodes,
+      promotionId: selectedPromotion === "ALL" ? undefined : selectedPromotion,
     }).then((result) => {
       if (!active) return;
       setSalarySummaryData(result.success ? result.data || [] : []);
@@ -1260,7 +1294,16 @@ export default function CustomerReportPortal() {
     return () => {
       active = false;
     };
-  }, [isAdmin, startDate, endDate, selectedPromotion, promotions]);
+  }, [
+    isAdmin,
+    startDate,
+    endDate,
+    selectedAccount,
+    selectedStore,
+    selectedPromotion,
+    promotions,
+    reportData,
+  ]);
 
   // 🔍 กรองข้อมูลตาม Account, สาขา, พนักงาน, รอบโปรโมชั่น และวันที่
   useEffect(() => {
@@ -1987,7 +2030,7 @@ export default function CustomerReportPortal() {
   }, [salarySummaryData, selectedAccount, selectedUser, selectedStore]);
 
   const totalBaseWage = useMemo(() => {
-    if (filteredSalarySummary.length > 0) {
+    if (isAdmin || filteredSalarySummary.length > 0) {
       return filteredSalarySummary.reduce(
         (sum, item) => sum + Number(item.totalDailyWage || item.baseWage || 0),
         0,
@@ -2004,10 +2047,10 @@ export default function CustomerReportPortal() {
       }
     });
     return fallbackWage;
-  }, [filteredSalarySummary, filteredData]);
+  }, [isAdmin, filteredSalarySummary, filteredData]);
 
   const totalCommission = useMemo(() => {
-    if (filteredSalarySummary.length > 0) {
+    if (isAdmin || filteredSalarySummary.length > 0) {
       return filteredSalarySummary.reduce(
         (sum, item) =>
           sum + Number(item.totalCommission || item.commission || 0),
@@ -2022,7 +2065,7 @@ export default function CustomerReportPortal() {
     });
 
     return totalComm;
-  }, [filteredSalarySummary, filteredData]);
+  }, [isAdmin, filteredSalarySummary, filteredData]);
 
   const totalStaffExpense = totalBaseWage + totalCommission;
   const netProfit = totalRevenue - totalStaffExpense;

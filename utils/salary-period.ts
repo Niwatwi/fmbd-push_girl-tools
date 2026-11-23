@@ -23,6 +23,6 @@ export function getSalaryPeriodForMonth(month: string) {
     payrollEndDate,
     commissionStartDate,
     commissionEndDate,
-    kpiPeriodMonth: `${commissionStartDate.slice(0, 7)}-01`,
+    kpiPeriodMonth: `${match[1]}-${match[2]}-01`,
   };
 }

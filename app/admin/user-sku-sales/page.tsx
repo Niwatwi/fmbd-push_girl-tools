@@ -23,6 +23,7 @@ import {
   getAdminSalarySummaryReportAction,
   getAdminUserSkuSalesReportAction,
 } from "@/app/dashboard/actions";
+import { getSalaryPeriodForMonth } from "@/utils/salary-period";
 
 function getLocalDateInputValue(date: Date) {
   const year = date.getFullYear();
@@ -32,7 +33,7 @@ function getLocalDateInputValue(date: Date) {
 }
 
 const today = getLocalDateInputValue(new Date());
-const monthStart = `${today.slice(0, 8)}01`;
+const defaultExpensePeriod = getSalaryPeriodForMonth(today.slice(0, 7));
 const getProductKey = (product: any) =>
   product.key || product.skuCode || product.barcode;
 
@@ -55,9 +56,12 @@ export default function AdminUserSkuSalesPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expenseWarning, setExpenseWarning] = useState("");
-  const [startDate, setStartDate] = useState(monthStart);
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState(
+    defaultExpensePeriod.payrollStartDate,
+  );
+  const [endDate, setEndDate] = useState(defaultExpensePeriod.payrollEndDate);
   const [search, setSearch] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState("ALL");
 
   const loadData = async () => {
     setLoading(true);
@@ -95,16 +99,20 @@ export default function AdminUserSkuSalesPage() {
 
   const filteredData = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase();
-    if (!keyword) return data;
-    return data.filter((item) =>
-      [item.displayName, item.empId, item.storeName, item.userId].some(
-        (value) =>
-          String(value || "")
-            .toLocaleLowerCase()
-            .includes(keyword),
-      ),
-    );
-  }, [data, search]);
+    return data.filter((item) => {
+      const matchesUser =
+        selectedUserId === "ALL" || String(item.userId) === selectedUserId;
+      const matchesSearch =
+        !keyword ||
+        [item.displayName, item.empId, item.storeName, item.userId].some(
+          (value) =>
+            String(value || "")
+              .toLocaleLowerCase()
+              .includes(keyword),
+        );
+      return matchesUser && matchesSearch;
+    });
+  }, [data, search, selectedUserId]);
 
   const totalSalesQty = filteredData.reduce(
     (sum, item) => sum + Number(item.totalSalesQty || 0),
@@ -695,6 +703,25 @@ export default function AdminUserSkuSalesPage() {
               onChange={(event) => setEndDate(event.target.value)}
               className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2"
             />
+          </label>
+          <label className="text-xs font-bold text-slate-600">
+            <span className="mb-1 block">พนักงาน</span>
+            <select
+              value={selectedUserId}
+              onChange={(event) => setSelectedUserId(event.target.value)}
+              className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2"
+            >
+              <option value="ALL">พนักงานทุกคน</option>
+              {Array.from(
+                new Map(
+                  data.map((item) => [String(item.userId), item]),
+                ).values(),
+              ).map((item) => (
+                <option key={String(item.userId)} value={String(item.userId)}>
+                  {item.displayName} ({item.empId || item.userId})
+                </option>
+              ))}
+            </select>
           </label>
           <label className="relative min-w-[240px] flex-1 text-xs font-bold text-slate-600">
             <span className="mb-1 block">ค้นหาพนักงานหรือสาขา</span>
