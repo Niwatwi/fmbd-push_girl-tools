@@ -1158,9 +1158,14 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
         workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(1));
       }
 
-      const configuredSalary = userObj?.base_salary
-        ? Number(userObj.base_salary)
-        : 700;
+      const salaryValue = String(userObj?.base_salary ?? "")
+        .replace(/[,฿]/g, "")
+        .replace(/บาท/g, "")
+        .replace(/\/วัน/g, "")
+        .trim();
+      const parsedSalary = Number(salaryValue);
+      const configuredSalary =
+        salaryValue && Number.isFinite(parsedSalary) ? parsedSalary : 700;
       // พนักงานรายเดือน: เฉลี่ยเป็นค่าแรงต่อวันด้วย 26 วัน
       const employmentType = String(userObj?.employment_type || "")
         .trim()
@@ -1258,6 +1263,9 @@ export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
   includeKpi?: boolean;
+  commissionStartDate?: string;
+  commissionEndDate?: string;
+  kpiPeriodMonth?: string;
 }) {
   try {
     const supabase = await getAdminClientInstance();
@@ -1265,17 +1273,31 @@ export async function getAdminSalarySummaryReportAction(params?: {
     if (!expenseRes.success) throw new Error(expenseRes.message);
 
     const attendanceLogs = expenseRes.data || [];
+    const commissionAttendanceRes =
+      params?.commissionStartDate && params?.commissionEndDate
+        ? await getAdminAttendanceExpenseReportAction({
+            startDate: params.commissionStartDate,
+            endDate: params.commissionEndDate,
+          })
+        : expenseRes;
+    if (!commissionAttendanceRes.success) {
+      throw new Error(commissionAttendanceRes.message);
+    }
+    const commissionAttendanceLogs = commissionAttendanceRes.data || [];
 
     // ดึงรายงานยอดขายประจำวันเพื่อนำมาคำนวณค่าคอมมิชชั่น
     let reportsQuery = supabase
       .from("pg_daily_activity_reports")
       .select("*, pg_daily_report_products (* )");
 
-    if (params?.startDate) {
-      reportsQuery = reportsQuery.gte("report_date", params.startDate);
+    const commissionStartDate =
+      params?.commissionStartDate || params?.startDate;
+    const commissionEndDate = params?.commissionEndDate || params?.endDate;
+    if (commissionStartDate) {
+      reportsQuery = reportsQuery.gte("report_date", commissionStartDate);
     }
-    if (params?.endDate) {
-      reportsQuery = reportsQuery.lte("report_date", params.endDate);
+    if (commissionEndDate) {
+      reportsQuery = reportsQuery.lte("report_date", commissionEndDate);
     }
 
     const { data: dailyReports } = await reportsQuery;
@@ -1319,7 +1341,15 @@ export async function getAdminSalarySummaryReportAction(params?: {
     // สะสมข้อมูลแยกตาม User ID
     const userSummaryMap = new Map<number, any>();
 
-    attendanceLogs.forEach((log: any) => {
+    const summaryAttendanceByUser = new Map<number, any>();
+    for (const log of [...attendanceLogs, ...commissionAttendanceLogs]) {
+      const userId = Number(log.userId);
+      if (!summaryAttendanceByUser.has(userId)) {
+        summaryAttendanceByUser.set(userId, log);
+      }
+    }
+
+    summaryAttendanceByUser.forEach((log: any) => {
       const uId = Number(log.userId);
       if (!userSummaryMap.has(uId)) {
         userSummaryMap.set(uId, {
@@ -1348,7 +1378,10 @@ export async function getAdminSalarySummaryReportAction(params?: {
           monthlyPromotionPerformance: new Map<string, any>(),
         });
       }
+    });
 
+    attendanceLogs.forEach((log: any) => {
+      const uId = Number(log.userId);
       const userGroup = userSummaryMap.get(uId)!;
       userGroup.workDaysCount += log.dayValue; // บวกสะสม 0.5 หรือ 1 วันตามชั่วโมงจริง
       userGroup.totalDailyWage += log.dailyWage;
@@ -1364,30 +1397,41 @@ export async function getAdminSalarySummaryReportAction(params?: {
           year: "numeric",
           month: "2-digit",
         }).format(new Date(log.checkInAt));
-        const storeCode = String(log.storeCode || "").trim();
-        const accountKey = String(storeAccountLookup.get(storeCode) || "")
-          .trim()
-          .toLowerCase();
-        const dayValue = Number(log.dayValue || 0);
-        userGroup.workDaysByMonth.set(
-          monthKey,
-          (userGroup.workDaysByMonth.get(monthKey) || 0) + dayValue,
+      }
+    });
+
+    commissionAttendanceLogs.forEach((log: any) => {
+      const userGroup = userSummaryMap.get(Number(log.userId));
+      if (!userGroup || !log.checkInAt) return;
+
+      const monthKey = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Bangkok",
+        year: "numeric",
+        month: "2-digit",
+      }).format(new Date(log.checkInAt));
+      const storeCode = String(log.storeCode || "").trim();
+      const accountKey = String(storeAccountLookup.get(storeCode) || "")
+        .trim()
+        .toLowerCase();
+      const dayValue = Number(log.dayValue || 0);
+      userGroup.workDaysByMonth.set(
+        monthKey,
+        (userGroup.workDaysByMonth.get(monthKey) || 0) + dayValue,
+      );
+      if (storeCode) {
+        const storeMonthKey = `${storeCode}:${monthKey}`;
+        userGroup.workDaysByStoreMonth.set(
+          storeMonthKey,
+          (userGroup.workDaysByStoreMonth.get(storeMonthKey) || 0) + dayValue,
         );
-        if (storeCode) {
-          const storeMonthKey = `${storeCode}:${monthKey}`;
-          userGroup.workDaysByStoreMonth.set(
-            storeMonthKey,
-            (userGroup.workDaysByStoreMonth.get(storeMonthKey) || 0) + dayValue,
-          );
-        }
-        if (accountKey) {
-          const accountMonthKey = `${accountKey}:${monthKey}`;
-          userGroup.workDaysByAccountMonth.set(
-            accountMonthKey,
-            (userGroup.workDaysByAccountMonth.get(accountMonthKey) || 0) +
-              dayValue,
-          );
-        }
+      }
+      if (accountKey) {
+        const accountMonthKey = `${accountKey}:${monthKey}`;
+        userGroup.workDaysByAccountMonth.set(
+          accountMonthKey,
+          (userGroup.workDaysByAccountMonth.get(accountMonthKey) || 0) +
+            dayValue,
+        );
       }
     });
 
@@ -1679,24 +1723,8 @@ export async function getAdminSalarySummaryReportAction(params?: {
       }),
     );
 
-    const requestedMonth = params?.startDate?.slice(0, 7);
-    const monthEndDate = requestedMonth
-      ? new Date(
-          Date.UTC(
-            Number(requestedMonth.slice(0, 4)),
-            Number(requestedMonth.slice(5, 7)),
-            0,
-          ),
-        )
-          .toISOString()
-          .slice(0, 10)
-      : "";
-    if (
-      params?.includeKpi &&
-      params.startDate === `${requestedMonth}-01` &&
-      params.endDate === monthEndDate
-    ) {
-      const periodMonth = `${requestedMonth}-01`;
+    if (params?.includeKpi && params.kpiPeriodMonth) {
+      const periodMonth = params.kpiPeriodMonth;
       const { data: kpiEntries, error: kpiError } = await supabase
         .from("ba_kpi_entries")
         .select("employee_id, employee_name, store_name, amount")

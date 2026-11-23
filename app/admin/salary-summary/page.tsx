@@ -20,82 +20,64 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { getAdminSalarySummaryReportAction } from "@/app/dashboard/actions";
+import { getSalaryPeriodForMonth } from "@/utils/salary-period";
 
-function getDefaultPayoutPeriod() {
-  const dateParts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const partValue = (type: string) =>
-    Number(dateParts.find((part) => part.type === type)?.value || 0);
-  const currentDate = new Date(
-    Date.UTC(partValue("year"), partValue("month") - 1, partValue("day")),
-  );
-  const dayOfWeek = currentDate.getUTCDay();
-  const daysSinceFriday = dayOfWeek >= 5 ? dayOfWeek - 5 : dayOfWeek + 2;
-  const startDate = new Date(currentDate);
-  startDate.setUTCDate(startDate.getUTCDate() - daysSinceFriday);
-  const endDate = new Date(startDate);
-  endDate.setUTCDate(endDate.getUTCDate() + 2);
-
-  return {
-    startDate: startDate.toISOString().slice(0, 10),
-    endDate: endDate.toISOString().slice(0, 10),
-  };
-}
-
-function getMonthEndDate(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  return new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+function getCurrentMonth() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" })
+    .format(new Date())
+    .slice(0, 7);
 }
 
 export default function AdminSalarySummaryPage() {
   const [dataList, setDataList] = useState<any[]>([]);
   const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth);
+  const [payrollPeriodMode, setPayrollPeriodMode] = useState<
+    "DAILY" | "MONTHLY"
+  >("MONTHLY");
 
   // Filter States
   const [startDate, setStartDate] = useState<string>(
-    () => getDefaultPayoutPeriod().startDate,
+    () => getSalaryPeriodForMonth(getCurrentMonth()).payrollStartDate,
   );
   const [endDate, setEndDate] = useState<string>(
-    () => getDefaultPayoutPeriod().endDate,
+    () => getSalaryPeriodForMonth(getCurrentMonth()).payrollEndDate,
   );
   const [searchKeyword, setSearchKeyword] = useState<string>("");
-  const [payrollPeriodMode, setPayrollPeriodMode] = useState<
-    "DAILY" | "MONTHLY"
-  >("DAILY");
-  const [selectedMonth, setSelectedMonth] = useState(() =>
-    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" })
-      .format(new Date())
-      .slice(0, 7),
-  );
 
   const handlePayrollPeriodModeChange = (mode: "DAILY" | "MONTHLY") => {
     setPayrollPeriodMode(mode);
-    if (mode === "MONTHLY") {
-      setStartDate(`${selectedMonth}-01`);
-      setEndDate(getMonthEndDate(selectedMonth));
+    if (mode === "MONTHLY" && selectedMonth) {
+      const period = getSalaryPeriodForMonth(selectedMonth);
+      setStartDate(period.payrollStartDate);
+      setEndDate(period.payrollEndDate);
     }
   };
 
   const handleSelectedMonthChange = (month: string) => {
     setSelectedMonth(month);
     if (month) {
-      setStartDate(`${month}-01`);
-      setEndDate(getMonthEndDate(month));
+      const period = getSalaryPeriodForMonth(month);
+      setStartDate(period.payrollStartDate);
+      setEndDate(period.payrollEndDate);
     }
   };
 
   const loadData = async () => {
     setLoading(true);
     try {
+      const payrollPeriod =
+        payrollPeriodMode === "MONTHLY" && selectedMonth
+          ? getSalaryPeriodForMonth(selectedMonth)
+          : null;
       const res = await getAdminSalarySummaryReportAction({
         startDate,
         endDate,
-        includeKpi: payrollPeriodMode === "MONTHLY",
+        includeKpi: Boolean(payrollPeriod),
+        commissionStartDate: payrollPeriod?.commissionStartDate,
+        commissionEndDate: payrollPeriod?.commissionEndDate,
+        kpiPeriodMonth: payrollPeriod?.kpiPeriodMonth,
       });
       if (!res.success) {
         throw new Error(res.message || "ไม่สามารถโหลดข้อมูลสรุปเงินเดือนได้");
@@ -249,7 +231,7 @@ export default function AdminSalarySummaryPage() {
               </h1>
               <p className="text-xs text-slate-400 font-medium">
                 {payrollPeriodMode === "MONTHLY"
-                  ? "รวมค่าแรงและยอดขายวันที่ 1–30; คอมมิชชั่นแคมเปญรายเดือนคำนวณจากยอด Target รวม"
+                  ? "ค่าแรงวันที่ 16 เดือนก่อน–15 เดือนที่เลือก; คอมมิชชั่นและ KPI ที่อนุมัติจากเดือนก่อน"
                   : "คอมมิชชั่นรายวันคำนวณตาม Target; ค่าแรงรวมตามช่วงวันที่เลือก"}
               </p>
             </div>
@@ -388,14 +370,14 @@ export default function AdminSalarySummaryPage() {
                 aria-pressed={payrollPeriodMode === "MONTHLY"}
                 className={`rounded-md px-3 py-1.5 font-bold ${payrollPeriodMode === "MONTHLY" ? "bg-blue-800 text-white" : "text-slate-600 hover:bg-slate-100"}`}
               >
-                รายเดือน (ทั้งเดือน)
+                รอบค่าใช้จ่าย (16–15)
               </button>
             </div>
 
             {payrollPeriodMode === "MONTHLY" ? (
               <label className="flex items-center gap-1.5 font-bold text-slate-600">
                 <Calendar size={14} className="text-slate-400" />
-                เดือนที่จ่าย
+                เดือนสิ้นสุดงวด
                 <input
                   type="month"
                   value={selectedMonth}
@@ -405,7 +387,7 @@ export default function AdminSalarySummaryPage() {
                   className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 text-xs font-bold"
                 />
                 <span className="text-[10px] text-slate-500">
-                  ครบทุกวันของเดือน
+                  คอมมิชชั่นและ KPI ใช้เดือนก่อนหน้า
                 </span>
               </label>
             ) : (
