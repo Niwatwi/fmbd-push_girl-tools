@@ -69,6 +69,7 @@ export default function PromotionsAdminPage() {
   const [calculationPeriod, setCalculationPeriod] = useState<
     "DAILY" | "MONTHLY"
   >("DAILY");
+  const [staffGroup, setStaffGroup] = useState<"ALL" | "PG" | "BA">("ALL");
   const [commissionRules, setCommissionRules] =
     useState<PromotionCommissionRules>(DEFAULT_COMMISSION_RULES);
   const [isActive, setIsActive] = useState(true);
@@ -419,16 +420,44 @@ export default function PromotionsAdminPage() {
       return;
     }
 
+    if (
+      staffGroup === "PG" &&
+      (targetType !== "STORE_CODE" || calculationPeriod !== "DAILY")
+    ) {
+      setTargetType("STORE_CODE");
+      setCalculationPeriod("DAILY");
+    }
+    if (
+      staffGroup === "BA" &&
+      (targetType !== "COMPANY_TAG" || calculationPeriod !== "MONTHLY")
+    ) {
+      setTargetType("COMPANY_TAG");
+      setCalculationPeriod("MONTHLY");
+    }
+
+    const enforcedTargetType =
+      staffGroup === "PG"
+        ? "STORE_CODE"
+        : staffGroup === "BA"
+          ? "COMPANY_TAG"
+          : targetType;
+    const enforcedCalculationPeriod =
+      staffGroup === "PG"
+        ? "DAILY"
+        : staffGroup === "BA"
+          ? "MONTHLY"
+          : calculationPeriod;
+
     const payload = {
       id: editingId ? Number(editingId) : undefined,
-      target_type: targetType,
+      target_type: enforcedTargetType,
       target_value: targetValue,
       campaign_title: campaignTitle,
       start_date: startDate || null,
       end_date: endDate || null,
       special_tier_text: specialTierText,
       is_active: isActive,
-      staff_group: "ALL",
+      staff_group: staffGroup,
       track_gift_inventory: trackGiftInventory,
       gift_items: giftItems.filter((gift) => gift.name.trim()),
       calculation_period: calculationPeriod,
@@ -518,6 +547,31 @@ export default function PromotionsAdminPage() {
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+          <div>
+            <label className="text-xs font-bold text-slate-600 block mb-1">
+              กลุ่มผู้ใช้งาน
+            </label>
+            <select
+              value={staffGroup}
+              onChange={(event) => {
+                const next = event.target.value as "ALL" | "PG" | "BA";
+                setStaffGroup(next);
+                if (next === "PG") {
+                  setTargetType("STORE_CODE");
+                  setCalculationPeriod("DAILY");
+                } else if (next === "BA") {
+                  setTargetType("COMPANY_TAG");
+                  setCalculationPeriod("MONTHLY");
+                }
+              }}
+              className="w-full border rounded-lg p-2 text-xs font-bold bg-slate-50"
+            >
+              <option value="ALL">BA และ PG</option>
+              <option value="PG">PG (รายวัน / รายสาขา)</option>
+              <option value="BA">BA (รายเดือน / Account)</option>
+            </select>
+          </div>
+
           <div>
             <label className="text-xs font-bold text-slate-600 block mb-1">
               เงื่อนไขเป้าหมาย

@@ -1341,7 +1341,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
     const { data: promotionRows } = await supabase
       .from("promotions")
       .select(
-        "id, calculation_period, commission_rules, items:promotion_items(*, products(barcode))",
+        "id, staff_group, target_type, target_value, calculation_period, track_gift_inventory, gift_items",
       );
     const promotionsById = new Map(
       (promotionRows || []).map((promotion: any) => [
@@ -1523,10 +1523,13 @@ export async function getAdminSalarySummaryReportAction(params?: {
         storeTarget?.calculation_period ||
         promotion?.calculation_period ||
         "DAILY";
+      const staffGroup = String(promotion?.staff_group || "ALL").toUpperCase();
       const monthlyTargetBaseQty =
-        Number(storeTarget?.target_packs || 0) ||
-        promotionTargetQty ||
-        snapshotTargetQty;
+        staffGroup === "BA"
+          ? promotionTargetQty || snapshotTargetQty
+          : Number(storeTarget?.target_packs || 0) ||
+            promotionTargetQty ||
+            snapshotTargetQty;
       const targetQty =
         calculationPeriod === "MONTHLY"
           ? monthlyTargetBaseQty
@@ -1571,11 +1574,11 @@ export async function getAdminSalarySummaryReportAction(params?: {
         if (calculationPeriod === "MONTHLY" && promotion?.id) {
           const monthKey = dateKey.slice(0, 7);
           const targetScopeType =
-            Number(storeTarget?.target_packs || 0) > 0
-              ? "STORE"
-              : promotion.target_type === "COMPANY_TAG"
-                ? "ACCOUNT"
-                : promotion.target_type === "STORE_CODE"
+            staffGroup === "BA" || promotion.target_type === "COMPANY_TAG"
+              ? "ACCOUNT"
+              : staffGroup === "PG" || promotion.target_type === "STORE_CODE"
+                ? "STORE"
+                : Number(storeTarget?.target_packs || 0) > 0
                   ? "STORE"
                   : "ALL";
           const targetScopeValue =
@@ -2928,7 +2931,7 @@ export async function getCustomerFullActivityReport() {
       supabase
         .from("promotions")
         .select(
-          "id, campaign_title, target_type, target_value, start_date, end_date, is_active, items:promotion_items(item_scope, target_qty, price)",
+          "id, staff_group, target_type, target_value, calculation_period, track_gift_inventory, gift_items",
         ),
     ];
 

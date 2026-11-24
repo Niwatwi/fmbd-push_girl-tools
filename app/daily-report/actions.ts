@@ -498,6 +498,25 @@ export async function submitFullDailyActivityReportAction(
         .maybeSingle();
 
       const storeCompanyTag = String(storeResult?.account || "");
+      const { data: userProfile } = await supabase
+        .from("user_profiles")
+        .select("company_tag")
+        .eq("id", payload.userId)
+        .maybeSingle();
+      const userStaffGroup = String(
+        userProfile?.company_tag || "",
+      ).toUpperCase();
+      const campaignStaffGroup = String(
+        campaign.staff_group || "ALL",
+      ).toUpperCase();
+      const staffMatches =
+        campaignStaffGroup === "ALL" ||
+        (campaignStaffGroup === "PG" && userStaffGroup.startsWith("PG")) ||
+        (campaignStaffGroup === "BA" && userStaffGroup.startsWith("BA"));
+      if (!staffMatches) {
+        throw new Error("แคมเปญนี้ไม่ได้กำหนดให้กับกลุ่มพนักงานของคุณ");
+      }
+
       const targetMatches =
         campaign.target_type === "ALL" ||
         (campaign.target_type === "STORE_CODE" &&

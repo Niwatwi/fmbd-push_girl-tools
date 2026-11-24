@@ -195,6 +195,7 @@ export async function getPromotionByStoreAction(
   let authorizedCompanyTags = Array.isArray(companyTag)
     ? companyTag
     : [companyTag];
+  let authorizedStaffGroup = "";
   if (!isAdmin) {
     const today = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Bangkok",
@@ -224,6 +225,19 @@ export async function getPromotionByStoreAction(
       .maybeSingle();
     if (storeError) throw storeError;
     authorizedCompanyTags = store?.account ? [store.account] : [];
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("company_tag")
+      .eq("id", session.id)
+      .maybeSingle();
+    authorizedStaffGroup = String(profile?.company_tag || "").toUpperCase();
+  } else if (userId) {
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("company_tag")
+      .eq("id", Number(userId))
+      .maybeSingle();
+    authorizedStaffGroup = String(profile?.company_tag || "").toUpperCase();
   }
 
   const { data, error } = await supabase
@@ -281,6 +295,7 @@ export async function getPromotionByStoreAction(
       companyTags.has(String(promo.target_value).trim().toLowerCase())
     )
       return true;
+
     return false;
   });
 
