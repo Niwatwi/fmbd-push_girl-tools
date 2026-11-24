@@ -26,7 +26,7 @@ export async function listManagedUsersAction() {
     const { data, error } = await database()
       .from("user_profiles")
       .select(
-        "id, username, employee_id, display_name, company_tag, area, email, phone, employment_type, image_url, is_active",
+        "id, username, employee_id, display_name, company_tag, area, kpi_region, email, phone, employment_type, image_url, is_active",
       )
       .order("display_name");
     if (error) throw error;
@@ -164,6 +164,91 @@ export async function createManagedUserAction(input: {
     return {
       success: false as const,
       message: error.message || "สร้างบัญชีไม่สำเร็จ",
+    };
+  }
+}
+
+export async function updateManagedUserAction(
+  userId: number,
+  input: {
+    employeeId: string;
+    name: string;
+    companyTag: string;
+    area: string;
+    kpiRegion: "BKK" | "UPC";
+    email: string;
+    phone: string;
+    employmentType: string;
+    avatarBase64?: string;
+  },
+) {
+  try {
+    await requireAdminSession();
+    if (!Number.isInteger(userId) || userId <= 0)
+      throw new Error("ข้อมูลผู้ใช้ไม่ถูกต้อง");
+    const name = String(input.name || "").trim();
+    const companyTag = String(input.companyTag || "").trim();
+    const kpiRegion = input.kpiRegion;
+    if (!name || !companyTag)
+      throw new Error("กรุณากรอกชื่อพนักงานและ Company Tag");
+    if (kpiRegion !== "BKK" && kpiRegion !== "UPC")
+      throw new Error("กรุณาเลือกเรท KPI เป็น BKK หรือ UPC");
+
+    const supabase = database();
+    const updateData: Record<string, string | null> = {
+      employee_id: String(input.employeeId || "").trim() || null,
+      display_name: name,
+      company_tag: companyTag,
+      area: String(input.area || "").trim(),
+      kpi_region: kpiRegion,
+      email: String(input.email || "").trim(),
+      phone: String(input.phone || "").trim() || null,
+      employment_type: String(input.employmentType || "").trim() || null,
+    };
+
+    const avatar = String(input.avatarBase64 || "");
+    let uploadedPath: string | null = null;
+    if (avatar) {
+      const match = avatar.match(
+        /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/,
+      );
+      if (!match) throw new Error("รูปโปรไฟล์ต้องเป็น JPEG, PNG หรือ WebP");
+      const extension = match[1] === "jpeg" ? "jpg" : match[1];
+      const imageBuffer = Buffer.from(match[2], "base64");
+      if (!imageBuffer.length || imageBuffer.length > 3 * 1024 * 1024)
+        throw new Error("รูปโปรไฟล์ต้องมีขนาดไม่เกิน 3 MB");
+      uploadedPath = `profiles/user_${userId}_${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from("pg-attendance-photos")
+        .upload(uploadedPath, imageBuffer, {
+          contentType: `image/${match[1]}`,
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+      updateData.image_url = supabase.storage
+        .from("pg-attendance-photos")
+        .getPublicUrl(uploadedPath).data.publicUrl;
+    }
+
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .update(updateData)
+      .eq("id", userId)
+      .select("id")
+      .maybeSingle();
+    if (error || !data) {
+      if (uploadedPath)
+        await supabase.storage
+          .from("pg-attendance-photos")
+          .remove([uploadedPath]);
+      if (error) throw error;
+      throw new Error("ไม่พบผู้ใช้");
+    }
+    return { success: true as const };
+  } catch (error: any) {
+    return {
+      success: false as const,
+      message: error.message || "แก้ไขข้อมูลผู้ใช้ไม่สำเร็จ",
     };
   }
 }

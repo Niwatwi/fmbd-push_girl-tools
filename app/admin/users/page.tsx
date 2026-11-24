@@ -10,13 +10,21 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
-import { ArrowLeft, Camera, ImagePlus, KeyRound, UserPlus } from "lucide-react";
+import {
+  ArrowLeft,
+  Camera,
+  ImagePlus,
+  KeyRound,
+  Pencil,
+  UserPlus,
+} from "lucide-react";
 import {
   createManagedUserAction,
   getManagedUserStoreGroupsAction,
   listManagedUsersAction,
   resetManagedUserPasswordAction,
   setManagedUserActiveAction,
+  updateManagedUserAction,
 } from "./actions";
 
 type ManagedUser = {
@@ -29,6 +37,7 @@ type ManagedUser = {
   kpi_region?: "BKK" | "UPC" | null;
   email: string;
   phone: string | null;
+  employment_type?: string | null;
   image_url: string | null;
   is_active: boolean;
 };
@@ -59,6 +68,7 @@ export default function ManagedUsersPage() {
   const [storeGroupIndex, setStoreGroupIndex] = useState("");
   const [form, setForm] = useState(empty);
   const [otherCompanyTag, setOtherCompanyTag] = useState("");
+  const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [resetId, setResetId] = useState<number | null>(null);
@@ -80,7 +90,46 @@ export default function ManagedUsersPage() {
   useEffect(() => {
     void load();
   }, []);
-  async function create(event: FormEvent) {
+  function resetForm() {
+    setForm(empty);
+    setOtherCompanyTag("");
+    setStoreGroupIndex("");
+    setEditingUser(null);
+  }
+  function editUser(user: ManagedUser) {
+    const knownTags = [
+      "BA",
+      "BA_CHEER",
+      "PC",
+      "PG",
+      "KOE",
+      "BA_SUPERVISOR",
+      "SUPERVISOR",
+      "SURVEYOR",
+      "AUDITOR",
+      "CUSTOMER",
+      "ADMIN",
+    ];
+    const isKnownTag = knownTags.includes(user.company_tag);
+    setEditingUser(user);
+    setStoreGroupIndex("");
+    setOtherCompanyTag(isKnownTag ? "" : user.company_tag);
+    setForm({
+      ...empty,
+      username: user.username,
+      employeeId: user.employee_id || "",
+      name: user.display_name || "",
+      companyTag: isKnownTag ? user.company_tag : "OTHER",
+      area: user.area || "",
+      kpiRegion: user.kpi_region || "UPC",
+      email: user.email || "",
+      phone: user.phone || "",
+      employmentType: user.employment_type || "",
+    });
+    setMessage("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  async function saveUser(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setMessage("");
@@ -89,17 +138,32 @@ export default function ManagedUsersPage() {
       setMessage("กรุณาเลือกเรท KPI เป็น BKK หรือ UPC");
       return;
     }
-    const result = await createManagedUserAction({
-      ...form,
-      kpiRegion: form.kpiRegion,
-      companyTag:
-        form.companyTag === "OTHER" ? otherCompanyTag.trim() : form.companyTag,
-    });
+    const companyTag =
+      form.companyTag === "OTHER" ? otherCompanyTag.trim() : form.companyTag;
+    const result = editingUser
+      ? await updateManagedUserAction(editingUser.id, {
+          employeeId: form.employeeId,
+          name: form.name,
+          companyTag,
+          area: form.area,
+          kpiRegion: form.kpiRegion,
+          email: form.email,
+          phone: form.phone,
+          employmentType: form.employmentType,
+          avatarBase64: form.avatarBase64,
+        })
+      : await createManagedUserAction({
+          ...form,
+          kpiRegion: form.kpiRegion,
+          companyTag,
+        });
     if (result.success) {
-      setForm(empty);
-      setOtherCompanyTag("");
-      setStoreGroupIndex("");
-      setMessage("สร้างบัญชีเรียบร้อยแล้ว");
+      resetForm();
+      setMessage(
+        editingUser
+          ? "บันทึกข้อมูลผู้ใช้เรียบร้อยแล้ว"
+          : "สร้างบัญชีเรียบร้อยแล้ว",
+      );
       await load();
     } else setMessage(result.message);
     setBusy(false);
@@ -227,9 +291,11 @@ export default function ManagedUsersPage() {
       >
         <summary className="cursor-pointer list-none border-b border-blue-100 px-4 py-3 text-sm font-bold text-blue-950 [&::-webkit-details-marker]:hidden">
           <UserPlus size={16} className="mr-2 inline text-blue-700" />
-          เพิ่มผู้ใช้
+          {editingUser
+            ? `แก้ไขผู้ใช้: ${editingUser.display_name}`
+            : "เพิ่มผู้ใช้"}
         </summary>
-        <form onSubmit={create} className="space-y-4 p-4">
+        <form onSubmit={saveUser} className="space-y-4 p-4">
           <input
             ref={avatarInputRef}
             type="file"
@@ -253,9 +319,9 @@ export default function ManagedUsersPage() {
               </p>
             </div>
             <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-blue-200 bg-slate-50 p-5 sm:flex-row">
-              {form.avatarBase64 ? (
+              {form.avatarBase64 || editingUser?.image_url ? (
                 <Image
-                  src={form.avatarBase64}
+                  src={form.avatarBase64 || editingUser?.image_url || ""}
                   alt="ตัวอย่างรูปพนักงาน"
                   width={96}
                   height={96}
@@ -348,8 +414,19 @@ export default function ManagedUsersPage() {
                   </option>
                 </select>
               </label>
-              {field("username", "Username (Area Code)", "text", true)}
-              {field("password", "รหัสผ่าน", "password", true)}
+              {editingUser ? (
+                <label className="space-y-1 text-xs font-bold">
+                  <span>Username (แก้ไขไม่ได้)</span>
+                  <input
+                    value={form.username}
+                    readOnly
+                    className={inputClass}
+                  />
+                </label>
+              ) : (
+                field("username", "Username (Area Code)", "text", true)
+              )}
+              {!editingUser && field("password", "รหัสผ่าน", "password", true)}
               {field("email", "อีเมล (สำหรับล็อกอิน)", "email", true)}
             </div>
           </section>
@@ -413,8 +490,21 @@ export default function ManagedUsersPage() {
             disabled={busy}
             className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-800 disabled:opacity-50"
           >
-            {busy ? "กำลังสร้างบัญชี..." : "สร้างบัญชี"}
+            {busy
+              ? "กำลังบันทึก..."
+              : editingUser
+                ? "บันทึกการแก้ไข"
+                : "สร้างบัญชี"}
           </button>
+          {editingUser && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="ml-2 rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-bold text-slate-700"
+            >
+              ยกเลิก
+            </button>
+          )}
         </form>
       </details>
       <section>
@@ -453,6 +543,15 @@ export default function ManagedUsersPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    type="button"
+                    title="แก้ไขข้อมูลผู้ใช้"
+                    aria-label={`แก้ไขข้อมูล ${user.display_name}`}
+                    onClick={() => editUser(user)}
+                    className="rounded border border-slate-300 p-2"
+                  >
+                    <Pencil size={16} />
+                  </button>
                   <button
                     type="button"
                     title="เปลี่ยนรหัสผ่าน"
