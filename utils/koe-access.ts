@@ -11,7 +11,12 @@ export function getKoeServerDatabase() {
 
 export async function requireKoeAccess() {
   const session = await getUserSession();
-  if (!session || session.role !== "koe")
+  const isBaSupervisor = ["BA_SUPERVISOR", "SUPERVISOR"].includes(
+    String(session?.company_tag || "")
+      .trim()
+      .toUpperCase(),
+  );
+  if (!session || session.role !== "koe" || isBaSupervisor)
     throw new Error("กรุณาเข้าสู่ระบบด้วยบัญชี KOE");
   const database = getKoeServerDatabase();
   const [account, profile, assignments] = await Promise.all([

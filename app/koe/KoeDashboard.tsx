@@ -339,7 +339,13 @@ function ReportEditor({
   );
 }
 
-export default function KoeDashboard({ name }: { name: string }) {
+export default function KoeDashboard({
+  name,
+  readOnly = false,
+}: {
+  name: string;
+  readOnly?: boolean;
+}) {
   const [startDate, setStartDate] = useState(() => `${today().slice(0, 7)}-01`);
   const [endDate, setEndDate] = useState(today);
   const [currentTime, setCurrentTime] = useState("");
@@ -539,6 +545,12 @@ export default function KoeDashboard({ name }: { name: string }) {
           <Clock size={16} className="shrink-0 text-blue-700" />
           <span>{currentTime || "กำลังโหลดวันและเวลา..."} น.</span>
         </div>
+        {readOnly && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
+            มุมมอง BA Supervisor: ดูรายงานและเวลาเข้าร้านของ BA Cheer ได้ทุก
+            Area โดยไม่มีสิทธิ์แก้ไขหรือประเมิน KPI
+          </p>
+        )}
 
         <div className="koe-filter-panel rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
@@ -548,12 +560,14 @@ export default function KoeDashboard({ name }: { name: string }) {
               </p>
               <h2 className="text-base font-black">ตัวกรองทีม BA Cheer</h2>
             </div>
-            <Link
-              href="/koe/chat"
-              className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-900 transition hover:bg-blue-100"
-            >
-              <MessageCircle size={12} /> ทีม
-            </Link>
+            {!readOnly && (
+              <Link
+                href="/koe/chat"
+                className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-900 transition hover:bg-blue-100"
+              >
+                <MessageCircle size={12} /> ทีม
+              </Link>
+            )}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs font-bold">
@@ -668,70 +682,72 @@ export default function KoeDashboard({ name }: { name: string }) {
                 ))}
               </div>
 
-              <div className="space-y-3">
-                <Link
-                  href="/koe/stores"
-                  className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
-                >
-                  <span className="flex items-center gap-2">
-                    <Store size={18} /> จัดการสาขา BA Cheer นอกเขต
-                  </span>
-                  <span className="text-lg">›</span>
-                </Link>
-                <Link
-                  href="/koe/kpi"
-                  className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50 p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-500 hover:bg-blue-100"
-                >
-                  <span className="flex items-center gap-2">
-                    <ClipboardCheck size={18} />
-                    ประเมินคะแนน KPI / ส่งให้ Admin
-                  </span>
-                  <span className="text-lg">›</span>
-                </Link>
-                <Link
-                  href={buildActionHref("/daily-report")}
-                  className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
-                >
-                  <span className="flex items-center gap-2">
-                    <ClipboardCheck size={18} /> ส่งงาน Daily Report
-                  </span>
-                  <span className="text-lg">›</span>
-                </Link>
-                <Link
-                  href={buildActionHref("/sales-videos/upload")}
-                  className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
-                >
-                  <span className="flex items-center gap-2">
-                    <Users size={18} /> อัปโหลดคลิปวิดีโอการเชียร์ขาย
-                  </span>
-                  <span className="text-lg">›</span>
-                </Link>
-                <Link
-                  href={buildActionHref("/promotions")}
-                  className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
-                >
-                  <span className="flex items-center gap-2">
-                    <MessageCircle size={18} /> ข้อมูลข่าวสาร & Promotion
-                  </span>
-                  <span className="text-lg">›</span>
-                </Link>
-                <Link
-                  href={baUserId ? buildSelectedBaDashboardHref() : "#"}
-                  aria-disabled={!baUserId}
-                  onClick={(event) => {
-                    if (!baUserId) event.preventDefault();
-                  }}
-                  className={`koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition ${baUserId ? "hover:border-blue-400 hover:bg-blue-50" : "cursor-not-allowed opacity-60"}`}
-                >
-                  <span className="flex items-center gap-2">
-                    <ClipboardCheck size={18} />
-                    {baUserId
-                      ? "Dashboard วิเคราะห์ผลงาน"
-                      : "เลือก BA Cheer เพื่อเปิด Dashboard"}
-                  </span>
-                  <span className="text-lg">›</span>
-                </Link>
-              </div>
+              {!readOnly && (
+                <div className="space-y-3">
+                  <Link
+                    href="/koe/stores"
+                    className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Store size={18} /> จัดการสาขา BA Cheer นอกเขต
+                    </span>
+                    <span className="text-lg">›</span>
+                  </Link>
+                  <Link
+                    href="/koe/kpi"
+                    className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50 p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-500 hover:bg-blue-100"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ClipboardCheck size={18} />
+                      ประเมินคะแนน KPI / ส่งให้ Admin
+                    </span>
+                    <span className="text-lg">›</span>
+                  </Link>
+                  <Link
+                    href={buildActionHref("/daily-report")}
+                    className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ClipboardCheck size={18} /> ส่งงาน Daily Report
+                    </span>
+                    <span className="text-lg">›</span>
+                  </Link>
+                  <Link
+                    href={buildActionHref("/sales-videos/upload")}
+                    className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Users size={18} /> อัปโหลดคลิปวิดีโอการเชียร์ขาย
+                    </span>
+                    <span className="text-lg">›</span>
+                  </Link>
+                  <Link
+                    href={buildActionHref("/promotions")}
+                    className="koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition hover:border-blue-400 hover:bg-blue-50"
+                  >
+                    <span className="flex items-center gap-2">
+                      <MessageCircle size={18} /> ข้อมูลข่าวสาร & Promotion
+                    </span>
+                    <span className="text-lg">›</span>
+                  </Link>
+                  <Link
+                    href={baUserId ? buildSelectedBaDashboardHref() : "#"}
+                    aria-disabled={!baUserId}
+                    onClick={(event) => {
+                      if (!baUserId) event.preventDefault();
+                    }}
+                    className={`koe-action-link flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white p-4 text-left text-sm font-bold text-blue-900 shadow-sm transition ${baUserId ? "hover:border-blue-400 hover:bg-blue-50" : "cursor-not-allowed opacity-60"}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ClipboardCheck size={18} />
+                      {baUserId
+                        ? "Dashboard วิเคราะห์ผลงาน"
+                        : "เลือก BA Cheer เพื่อเปิด Dashboard"}
+                    </span>
+                    <span className="text-lg">›</span>
+                  </Link>
+                </div>
+              )}
 
               <section>
                 <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
@@ -773,33 +789,118 @@ export default function KoeDashboard({ name }: { name: string }) {
                         </p>
                         {(reportItems.length > 0 || logs.length > 0) && (
                           <div className="mt-3 space-y-3 border-t border-slate-200 pt-2">
-                            {logs.length > 0 && (
-                              <div>
-                                <p className="mb-1 text-[11px] font-bold text-slate-600">
-                                  แก้ไขเวลาเข้า-ออกงาน
-                                </p>
-                                {logs.map((log) => (
-                                  <AttendanceEditor
-                                    key={log.id}
-                                    log={log}
-                                    onSaved={() => void load()}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                            {reportItems.length > 0 && (
-                              <div>
-                                <p className="mb-1 text-[11px] font-bold text-slate-600">
-                                  แก้ไขรายงานงาน
-                                </p>
-                                {reportItems.map((report) => (
-                                  <ReportEditor
-                                    key={report.id}
-                                    report={report}
-                                    onSaved={() => void load()}
-                                  />
-                                ))}
-                              </div>
+                            {readOnly ? (
+                              <>
+                                {logs.length > 0 && (
+                                  <section>
+                                    <h4 className="mb-2 text-xs font-bold text-slate-700">
+                                      ประวัติเข้าร้าน
+                                    </h4>
+                                    <div className="space-y-2">
+                                      {logs.map((log) => (
+                                        <div
+                                          key={log.id}
+                                          className="rounded border border-slate-200 p-2 text-xs"
+                                        >
+                                          <p className="font-semibold">
+                                            {log.store_name || log.store_code}
+                                          </p>
+                                          <p className="mt-1 text-slate-600">
+                                            เข้า {dateTime(log.check_in_at)} ·
+                                            ออก {dateTime(log.check_out_at)}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </section>
+                                )}
+                                {reportItems.length > 0 && (
+                                  <section>
+                                    <h4 className="mb-2 text-xs font-bold text-slate-700">
+                                      รายละเอียด Daily Report
+                                    </h4>
+                                    <div className="space-y-2">
+                                      {reportItems.map((report) => (
+                                        <article
+                                          key={report.id}
+                                          className="rounded border border-slate-200 p-2 text-xs"
+                                        >
+                                          <p className="font-bold">
+                                            {report.report_date} ·{" "}
+                                            {report.store_code}
+                                          </p>
+                                          {report.feedback_store && (
+                                            <p className="mt-1 whitespace-pre-wrap">
+                                              Feedback: {report.feedback_store}
+                                            </p>
+                                          )}
+                                          {report.remark && (
+                                            <p className="mt-1 whitespace-pre-wrap">
+                                              หมายเหตุ: {report.remark}
+                                            </p>
+                                          )}
+                                          <div className="mt-2 space-y-1">
+                                            {(
+                                              report.pg_daily_report_products ||
+                                              []
+                                            )
+                                              .filter(
+                                                (product) =>
+                                                  String(
+                                                    product.item_scope || "OUR",
+                                                  ).toUpperCase() !==
+                                                  "COMPETITOR",
+                                              )
+                                              .map((product) => (
+                                                <p
+                                                  key={product.id}
+                                                  className="text-slate-600"
+                                                >
+                                                  {product.descriptions ||
+                                                    product.barcode}{" "}
+                                                  · ขาย {product.sales_qty} ·
+                                                  คงเหลือ{" "}
+                                                  {product.stock_after ?? "-"}
+                                                </p>
+                                              ))}
+                                          </div>
+                                        </article>
+                                      ))}
+                                    </div>
+                                  </section>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {logs.length > 0 && (
+                                  <div>
+                                    <p className="mb-1 text-[11px] font-bold text-slate-600">
+                                      แก้ไขเวลาเข้า-ออกงาน
+                                    </p>
+                                    {logs.map((log) => (
+                                      <AttendanceEditor
+                                        key={log.id}
+                                        log={log}
+                                        onSaved={() => void load()}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                                {reportItems.length > 0 && (
+                                  <div>
+                                    <p className="mb-1 text-[11px] font-bold text-slate-600">
+                                      แก้ไขรายงานงาน
+                                    </p>
+                                    {reportItems.map((report) => (
+                                      <ReportEditor
+                                        key={report.id}
+                                        report={report}
+                                        onSaved={() => void load()}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         )}

@@ -34,7 +34,7 @@ type ManagedUser = {
   display_name: string;
   company_tag: string;
   area: string;
-  kpi_region?: "BKK" | "UPC" | null;
+  kpi_region?: "BKK" | "UPC" | "SUPERVISOR" | null;
   email: string;
   phone: string | null;
   employment_type?: string | null;
@@ -52,7 +52,7 @@ const empty = {
   name: "",
   companyTag: "BA",
   area: "",
-  kpiRegion: "" as "" | "BKK" | "UPC",
+  kpiRegion: "" as "" | "BKK" | "UPC" | "SUPERVISOR",
   email: "",
   phone: "",
   employmentType: "",
@@ -121,7 +121,11 @@ export default function ManagedUsersPage() {
       name: user.display_name || "",
       companyTag: isKnownTag ? user.company_tag : "OTHER",
       area: user.area || "",
-      kpiRegion: user.kpi_region || "UPC",
+      kpiRegion:
+        user.company_tag === "BA_SUPERVISOR" ||
+        user.company_tag === "SUPERVISOR"
+          ? "SUPERVISOR"
+          : user.kpi_region || "UPC",
       email: user.email || "",
       phone: user.phone || "",
       employmentType: user.employment_type || "",
@@ -133,9 +137,13 @@ export default function ManagedUsersPage() {
     event.preventDefault();
     setBusy(true);
     setMessage("");
-    if (form.kpiRegion !== "BKK" && form.kpiRegion !== "UPC") {
+    if (
+      form.kpiRegion !== "BKK" &&
+      form.kpiRegion !== "UPC" &&
+      form.kpiRegion !== "SUPERVISOR"
+    ) {
       setBusy(false);
-      setMessage("กรุณาเลือกเรท KPI เป็น BKK หรือ UPC");
+      setMessage("กรุณาเลือกเรท KPI BKK, UPC หรือ BA Supervisor");
       return;
     }
     const companyTag =
@@ -401,7 +409,11 @@ export default function ManagedUsersPage() {
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
-                      kpiRegion: event.target.value as "" | "BKK" | "UPC",
+                      kpiRegion: event.target.value as
+                        | ""
+                        | "BKK"
+                        | "UPC"
+                        | "SUPERVISOR",
                     }))
                   }
                 >
@@ -411,6 +423,9 @@ export default function ManagedUsersPage() {
                   </option>
                   <option value="UPC">
                     UPC - ต่างจังหวัด (เต็ม 1,500 บาท)
+                  </option>
+                  <option value="SUPERVISOR">
+                    BA_SUPERVISOR - ใช้แบบประเมิน Supervisor
                   </option>
                 </select>
               </label>
@@ -449,6 +464,13 @@ export default function ManagedUsersPage() {
                     setForm((current) => ({
                       ...current,
                       companyTag: event.target.value,
+                      kpiRegion:
+                        event.target.value === "BA_SUPERVISOR" ||
+                        event.target.value === "SUPERVISOR"
+                          ? "SUPERVISOR"
+                          : current.kpiRegion === "SUPERVISOR"
+                            ? "UPC"
+                            : current.kpiRegion,
                     }))
                   }
                 >

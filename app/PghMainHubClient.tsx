@@ -673,6 +673,21 @@ export default function PghMainHubClient({ user }: { user: UserSession }) {
 
         {user.role !== "koe" && (
           <div className="space-y-3">
+            {["BA_SUPERVISOR", "SUPERVISOR"].includes(
+              String(user.company_tag || "")
+                .trim()
+                .toUpperCase(),
+            ) && (
+              <button
+                onClick={() => router.push("/koe")}
+                className="w-full bg-white p-4 rounded-xl border border-blue-200 flex items-center justify-between hover:border-blue-400 transition"
+              >
+                <span className="font-black text-slate-800 flex items-center gap-3">
+                  <Users className="text-blue-600" /> ดูผลงาน BA Cheer ทุกคน
+                </span>
+                <ChevronRight size={16} />
+              </button>
+            )}
             {user.role === "staff" && (
               <button
                 onClick={() => router.push("/koe/chat")}

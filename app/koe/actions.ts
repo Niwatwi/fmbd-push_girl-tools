@@ -17,7 +17,16 @@ export async function getKoeDashboardAction(
   endDate: string,
 ) {
   try {
-    const { database, areas } = await requireKoeAccess();
+    const session = await getUserSession();
+    if (!session) throw new Error("กรุณาเข้าสู่ระบบ");
+    const isReadOnlySupervisor = ["BA_SUPERVISOR", "SUPERVISOR"].includes(
+      String(session.company_tag || "")
+        .trim()
+        .toUpperCase(),
+    );
+    const { database, areas } = isReadOnlySupervisor
+      ? { database: getKoeServerDatabase(), areas: [] as string[] }
+      : await requireKoeAccess();
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(endDate) ||
@@ -28,7 +37,7 @@ export async function getKoeDashboardAction(
     if (Number.isNaN(nextDay.getTime()))
       throw new Error("ช่วงวันที่ไม่ถูกต้อง");
     nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-    if (!areas.length)
+    if (!isReadOnlySupervisor && !areas.length)
       return {
         success: true as const,
         areas: [],
@@ -36,19 +45,17 @@ export async function getKoeDashboardAction(
         reports: [],
         attendance: [],
       };
-    const profiles = await database
+    let profilesQuery = database
       .from("user_profiles")
       .select("id, employee_id, username, display_name, area, company_tag")
       .eq("is_active", true)
-      .in("area", areas)
       .in("company_tag", [
-        "BA",
-        "BA_CHEER",
-        "SURVEYOR",
-        "BA_SUPERVISOR",
-        "SUPERVISOR",
-      ])
-      .order("display_name");
+        ...(isReadOnlySupervisor
+          ? ["BA", "BA_CHEER", "SURVEYOR"]
+          : ["BA", "BA_CHEER", "SURVEYOR", "BA_SUPERVISOR", "SUPERVISOR"]),
+      ]);
+    if (!isReadOnlySupervisor) profilesQuery = profilesQuery.in("area", areas);
+    const profiles = await profilesQuery.order("display_name");
     if (profiles.error) throw profiles.error;
     const team = profiles.data || [];
     const ids = team.map((profile) => profile.id);
@@ -95,7 +102,17 @@ export async function getKoeDashboardAction(
       attendance.push(...(result.data || []));
       if (!result.data || result.data.length < 1000) break;
     }
-    return { success: true as const, areas, team, reports, attendance };
+    return {
+      success: true as const,
+      areas: isReadOnlySupervisor
+        ? Array.from(
+            new Set(team.map((member) => String(member.area || ""))),
+          ).filter(Boolean)
+        : areas,
+      team,
+      reports,
+      attendance,
+    };
   } catch (error: any) {
     return {
       success: false as const,
@@ -181,11 +198,13 @@ async function getKpiContext(targetUserId: number, month: string) {
   const targetTag = String(target.company_tag || "")
     .trim()
     .toUpperCase();
-  const assessmentType = supervisorTags.has(targetTag)
-    ? "BA_SUPERVISOR"
-    : cheerTags.has(targetTag)
-      ? "BA_CHEER"
-      : null;
+  const assessmentType =
+    supervisorTags.has(targetTag) ||
+    String(target.kpi_region || "").toUpperCase() === "SUPERVISOR"
+      ? "BA_SUPERVISOR"
+      : cheerTags.has(targetTag)
+        ? "BA_CHEER"
+        : null;
   if (!assessmentType)
     throw new Error("ไม่พบประเภท BA Cheer หรือ BA Supervisor ของผู้ใช้");
   return {

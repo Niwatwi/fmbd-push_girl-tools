@@ -87,7 +87,7 @@ export async function createManagedUserAction(input: {
   name: string;
   companyTag: string;
   area: string;
-  kpiRegion: "BKK" | "UPC";
+  kpiRegion: "BKK" | "UPC" | "SUPERVISOR";
   email: string;
   phone: string;
   employmentType: string;
@@ -102,8 +102,8 @@ export async function createManagedUserAction(input: {
     const companyTag = String(input.companyTag || "").trim();
     const password = String(input.password || "").trim();
     const kpiRegion = input.kpiRegion;
-    if (kpiRegion !== "BKK" && kpiRegion !== "UPC")
-      throw new Error("กรุณาเลือกเรท KPI เป็น BKK หรือ UPC");
+    if (!["BKK", "UPC", "SUPERVISOR"].includes(kpiRegion))
+      throw new Error("กรุณาเลือกเรท KPI BKK, UPC หรือ BA Supervisor");
     if (
       !username ||
       !name ||
@@ -175,7 +175,7 @@ export async function updateManagedUserAction(
     name: string;
     companyTag: string;
     area: string;
-    kpiRegion: "BKK" | "UPC";
+    kpiRegion: "BKK" | "UPC" | "SUPERVISOR";
     email: string;
     phone: string;
     employmentType: string;
@@ -191,8 +191,8 @@ export async function updateManagedUserAction(
     const kpiRegion = input.kpiRegion;
     if (!name || !companyTag)
       throw new Error("กรุณากรอกชื่อพนักงานและ Company Tag");
-    if (kpiRegion !== "BKK" && kpiRegion !== "UPC")
-      throw new Error("กรุณาเลือกเรท KPI เป็น BKK หรือ UPC");
+    if (!["BKK", "UPC", "SUPERVISOR"].includes(kpiRegion))
+      throw new Error("กรุณาเลือกเรท KPI BKK, UPC หรือ BA Supervisor");
 
     const supabase = database();
     const updateData: Record<string, string | null> = {
