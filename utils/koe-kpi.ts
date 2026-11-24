@@ -7,6 +7,23 @@ export type CheerKpiCriterion = {
   amounts: Record<CheerGrade, number>;
 };
 
+export const supervisorKpiCriteria = [
+  { key: "training", label: "Training & Coaching", weight: 30, maximum: 900 },
+  {
+    key: "baTeamSales",
+    label: "BA Team Sales Achievement",
+    weight: 30,
+    maximum: 700,
+  },
+  { key: "oos", label: "OOS", weight: 20, maximum: 700 },
+  {
+    key: "reportPlanning",
+    label: "Report & Planning",
+    weight: 20,
+    maximum: 700,
+  },
+] as const;
+
 export const cheerKpiCriteria: readonly CheerKpiCriterion[] = [
   {
     key: "knowledge",

@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ClipboardCheck } from "lucide-react";
 import {
   calculateSupervisorKpi,
-  cheerKpiCriteria,
   cheerKpiRegionCriteria,
+  supervisorKpiCriteria,
   type CheerGrade,
 } from "@/utils/koe-kpi";
 import {
@@ -34,14 +34,17 @@ type Evaluation = {
   assessment_type: string;
   employee?: TeamMember;
 };
+
 const currentMonth = () =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
     month: "2-digit",
   }).format(new Date());
+
 const money = (value: number) =>
   Number(value || 0).toLocaleString("th-TH", { maximumFractionDigits: 2 });
+
 const statusLabel: Record<string, string> = {
   draft: "แบบร่าง",
   pending: "รออนุมัติ",
@@ -55,8 +58,7 @@ export default function KoeKpiPage() {
   const [targetId, setTargetId] = useState("");
   const [form, setForm] = useState<any>(null);
   const [grades, setGrades] = useState<Record<string, CheerGrade>>({});
-  const [training, setTraining] = useState("");
-  const [planning, setPlanning] = useState("");
+  const [achievements, setAchievements] = useState<string[]>(["", "", "", ""]);
   const [note, setNote] = useState("");
   const [summary, setSummary] = useState<Evaluation[]>([]);
   const [error, setError] = useState("");
@@ -92,6 +94,7 @@ export default function KoeKpiPage() {
   useEffect(() => {
     void loadSummary();
   }, [month]);
+
   useEffect(() => {
     if (!targetId) {
       setForm(null);
@@ -108,9 +111,21 @@ export default function KoeKpiPage() {
       setError("");
       setForm(result);
       setGrades(result.evaluation?.criteria?.grades || {});
-      const achievement = result.evaluation?.criteria?.achievements;
-      setTraining(achievement?.[0] == null ? "" : String(achievement[0]));
-      setPlanning(achievement?.[3] == null ? "" : String(achievement[3]));
+      const saved = result.evaluation?.criteria?.achievements;
+      setAchievements([
+        saved?.[0] == null ? "" : String(saved[0]),
+        saved?.[1] == null
+          ? result.derived?.attendancePercent == null
+            ? ""
+            : result.derived.attendancePercent.toFixed(2)
+          : String(saved[1]),
+        saved?.[2] == null
+          ? result.derived?.oosPercent == null
+            ? ""
+            : result.derived.oosPercent.toFixed(2)
+          : String(saved[2]),
+        saved?.[3] == null ? "" : String(saved[3]),
+      ]);
       setNote(result.evaluation?.note || "");
     });
     return () => {
@@ -123,6 +138,7 @@ export default function KoeKpiPage() {
   const cheerRegion = form?.cheerRegion === "UPC" ? "UPC" : "BKK";
   const cheerCriteria = cheerKpiRegionCriteria[cheerRegion];
   const cheerMaximum = cheerRegion === "UPC" ? 1500 : 2600;
+
   const gradeAmount = useMemo(
     () =>
       cheerCriteria.reduce(
@@ -135,39 +151,28 @@ export default function KoeKpiPage() {
       ),
     [grades, cheerCriteria],
   );
+
   const supervisorPreview = useMemo(() => {
-    if (
-      form?.derived.attendancePercent == null ||
-      form?.derived.oosPercent == null
-    )
-      return null;
+    const nums = achievements.map((v) => (v.trim() === "" ? 0 : Number(v)));
     try {
-      return calculateSupervisorKpi([
-        Number(training),
-        form.derived.attendancePercent,
-        form.derived.oosPercent,
-        Number(planning),
-      ]);
+      return calculateSupervisorKpi(nums);
     } catch {
-      return null;
+      return { amounts: [0, 0, 0, 0], total: 0, percentage: 0 };
     }
-  }, [form, training, planning]);
+  }, [achievements]);
 
   async function save(submit: boolean) {
     if (!selected) return;
-    if (!isCheer && (!training.trim() || !planning.trim())) {
-      setError("กรุณากรอก Training & Coaching และ Report & Planning");
-      return;
-    }
-    if (
-      !isCheer &&
-      (Number(training) < 0 ||
-        Number(training) > 500 ||
-        Number(planning) < 0 ||
-        Number(planning) > 500)
-    ) {
-      setError("คะแนน Achievement ต้องอยู่ระหว่าง 0–500%");
-      return;
+    if (!isCheer) {
+      if (achievements.some((v) => v.trim() === "")) {
+        setError("กรุณากรอก % Achievement ให้ครบทั้ง 4 หัวข้อ");
+        return;
+      }
+      const nums = achievements.map(Number);
+      if (nums.some((n) => !Number.isFinite(n) || n < 0 || n > 500)) {
+        setError("คะแนน Achievement ต้องอยู่ระหว่าง 0–500%");
+        return;
+      }
     }
     setBusy(true);
     setError("");
@@ -175,8 +180,7 @@ export default function KoeKpiPage() {
       targetUserId: selected.id,
       month,
       grades,
-      trainingPercent: Number(training),
-      reportPlanningPercent: Number(planning),
+      achievements: achievements.map(Number),
       note,
       submit,
     });
@@ -292,46 +296,54 @@ export default function KoeKpiPage() {
               ))
             ) : (
               <div className="space-y-3">
-                <p className="rounded bg-slate-50 p-3 text-xs">
-                  BA Team Sales Achievement · เข้าตรงเวลา{" "}
-                  {form.derived.shifts
-                    ? (
-                        100 -
-                        (form.derived.late / form.derived.shifts) * 100
-                      ).toFixed(2)
-                    : "-"}
-                  % · สาย {form.derived.late}/{form.derived.shifts} ครั้ง
-                </p>
-                <p className="rounded bg-slate-50 p-3 text-xs">
-                  OOS · สินค้าต่ำกว่า 3 ชิ้น {form.derived.oos}/
-                  {form.derived.universe} รายการ SKU × วัน · Achievement{" "}
-                  {form.derived.oosPercent == null
-                    ? "-"
-                    : `${form.derived.oosPercent.toFixed(2)}%`}
-                </p>
-                {[
-                  {
-                    label: "Training & Coaching Achievement (%)",
-                    value: training,
-                    set: setTraining,
-                  },
-                  {
-                    label: "Report & Planning Achievement (%)",
-                    value: planning,
-                    set: setPlanning,
-                  },
-                ].map((item) => (
-                  <label key={item.label} className="block text-xs font-bold">
-                    {item.label}
+                <div className="space-y-1 rounded bg-slate-50 p-3 text-xs text-slate-600">
+                  <p>
+                    เกณฑ์คำนวณ: น้อยกว่า 80% = 0 บาท · 80%–100%
+                    คิดตามสัดส่วนจริง · มากกว่า 100% ปัดเต็มเพดาน Credit
+                  </p>
+                  <p>
+                    สถิติทีมในระบบ · เข้าตรงเวลา{" "}
+                    {form.derived?.shifts
+                      ? (
+                          100 -
+                          (form.derived.late / form.derived.shifts) * 100
+                        ).toFixed(2)
+                      : "-"}
+                    % · OOS{" "}
+                    {form.derived?.oosPercent == null
+                      ? "-"
+                      : `${form.derived.oosPercent.toFixed(2)}%`}
+                  </p>
+                </div>
+
+                {supervisorKpiCriteria.map((criterion, idx) => (
+                  <label
+                    key={criterion.key}
+                    className="block rounded border border-slate-200 p-3 text-xs font-bold"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>
+                        {criterion.label} · Weight {criterion.weight}% · Credit{" "}
+                        {criterion.maximum} บาท
+                      </span>
+                      <span className="text-blue-700">
+                        ได้รับ {money(supervisorPreview.amounts[idx] || 0)} บาท
+                      </span>
+                    </div>
                     <input
                       type="number"
                       min="0"
                       max="500"
                       step="0.01"
-                      value={item.value}
-                      onChange={(event) => item.set(event.target.value)}
+                      placeholder="กรอก % Achievement (เช่น 80, 97, 100)"
+                      value={achievements[idx]}
+                      onChange={(event) => {
+                        const next = [...achievements];
+                        next[idx] = event.target.value;
+                        setAchievements(next);
+                      }}
                       disabled={form.evaluation?.status === "approved"}
-                      className="mt-1 w-full rounded border border-slate-300 bg-white p-2"
+                      className="mt-1.5 w-full rounded border border-slate-300 bg-white p-2 text-sm font-normal"
                     />
                   </label>
                 ))}
@@ -350,14 +362,16 @@ export default function KoeKpiPage() {
             <div className="flex items-center justify-between border-t border-slate-200 pt-3">
               <strong className="text-sm">
                 ยอดประเมิน:{" "}
-                {money(isCheer ? gradeAmount : supervisorPreview?.total || 0)}{" "}
-                บาท
+                {money(isCheer ? gradeAmount : supervisorPreview.total)} บาท
+                <span className="ml-1 text-xs font-normal text-slate-500">
+                  (เต็ม {money(isCheer ? cheerMaximum : 3000)} บาท)
+                </span>
               </strong>
               <span className="text-xs text-slate-500">
-                คะแนน{" "}
+                Total Incentive{" "}
                 {isCheer
                   ? `${((gradeAmount / cheerMaximum) * 100).toFixed(2)}%`
-                  : `${supervisorPreview?.percentage.toFixed(2) || "-"}%`}
+                  : `${supervisorPreview.percentage.toFixed(2)}%`}
               </span>
             </div>
             {form.evaluation?.review_note && (

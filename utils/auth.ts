@@ -5,7 +5,6 @@ import {
   verifyUserSessionToken,
   userSessionMaxAge,
 } from "@/utils/session-token";
-
 const SESSION_COOKIE = "user_session";
 
 export async function getUserSession() {

@@ -359,6 +359,7 @@ export async function saveKoeKpiEvaluationAction(input: {
   targetUserId: number;
   month: string;
   grades?: Record<string, CheerGrade>;
+  achievements?: number[];
   trainingPercent?: number;
   reportPlanningPercent?: number;
   note: string;
@@ -372,57 +373,40 @@ export async function saveKoeKpiEvaluationAction(input: {
     let criteria: Record<string, unknown>;
     let scorePercent: number;
     let totalAmount: number;
+
     if (context.assessmentType === "BA_CHEER") {
       const result = calculateCheerKpi(input.grades || {}, context.cheerRegion);
       criteria = { grades: input.grades, amounts: result.amounts };
       scorePercent = result.percentage;
       totalAmount = result.total;
     } else {
-      const training = Number(input.trainingPercent);
-      const planning = Number(input.reportPlanningPercent);
+      const achievements = Array.isArray(input.achievements)
+        ? input.achievements.map(Number)
+        : [
+            Number(input.trainingPercent),
+            0,
+            0,
+            Number(input.reportPlanningPercent),
+          ];
       if (
-        !Number.isFinite(training) ||
-        training < 0 ||
-        training > 500 ||
-        !Number.isFinite(planning) ||
-        planning < 0 ||
-        planning > 500
-      )
+        achievements.length !== 4 ||
+        achievements.some(
+          (value) => !Number.isFinite(value) || value < 0 || value > 500,
+        )
+      ) {
         throw new Error(
-          "Training และ Report & Planning ต้องอยู่ระหว่าง 0–500%",
+          "กรุณากรอก % Achievement ทั้ง 4 หัวข้อให้อยู่ระหว่าง 0–500%",
         );
-      const derivedResult = await getKoeKpiFormAction(
-        context.target.id,
-        input.month,
-      );
-      if (!derivedResult.success) throw new Error(derivedResult.message);
-      if (
-        derivedResult.derived.attendancePercent == null ||
-        derivedResult.derived.oosPercent == null
-      )
-        throw new Error(
-          "ข้อมูลกะหรือรายงานสินค้าใน Area ยังไม่ครบ ไม่สามารถคำนวณ KPI Supervisor ได้",
-        );
-      const achievements = [
-        training,
-        derivedResult.derived.attendancePercent,
-        derivedResult.derived.oosPercent,
-        planning,
-      ];
+      }
       const result = calculateSupervisorKpi(achievements);
       criteria = {
         achievements,
         amounts: result.amounts,
-        attendance: derivedResult.derived,
-        oos: {
-          shortages: derivedResult.derived.oos,
-          universe: derivedResult.derived.universe,
-          percentage: 100 - derivedResult.derived.oosPercent,
-        },
       };
       scorePercent = result.percentage;
       totalAmount = result.total;
     }
+
     const { data, error } = await context.database.rpc("koe_save_evaluation", {
       p_actor_id: context.session.id,
       p_target_user_id: context.target.id,
