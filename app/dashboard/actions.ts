@@ -1283,6 +1283,78 @@ export async function getAdminAttendanceExpenseReportAction(params?: {
 }
 
 // 11. 💰 ดึงรายงานสรุปเงินเดือน (Admin Salary Summary Report)
+function getPreviousCalendarMonthRange(referenceDateStr?: string): {
+  startDate: string;
+  endDate: string;
+  daysInMonth: number;
+} {
+  const base =
+    referenceDateStr && /^\d{4}-\d{2}-\d{2}$/.test(referenceDateStr)
+      ? new Date(`${referenceDateStr}T00:00:00Z`)
+      : new Date();
+
+  const year = base.getUTCFullYear();
+  const month = base.getUTCMonth();
+
+  const prevStart = new Date(Date.UTC(year, month - 1, 1));
+  const prevEnd = new Date(Date.UTC(year, month, 0));
+
+  const formatDate = (d: Date) => d.toISOString().slice(0, 10);
+
+  return {
+    startDate: formatDate(prevStart),
+    endDate: formatDate(prevEnd),
+    daysInMonth: prevEnd.getUTCDate(),
+  };
+}
+
+function getDaysInMonthFromDateStr(dateStr?: string): number {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return 30;
+  }
+  const [yStr, mStr] = dateStr.split("-");
+  const year = Number(yStr);
+  const month = Number(mStr);
+  if (!year || !month) return 30;
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function isDateWithinPromotionRange(dateKey: string, promotion?: any): boolean {
+  if (!promotion || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return true;
+  const start = promotion.start_date
+    ? String(promotion.start_date).slice(0, 10)
+    : "";
+  const end = promotion.end_date ? String(promotion.end_date).slice(0, 10) : "";
+  if (start && dateKey < start) return false;
+  if (end && dateKey > end) return false;
+  return true;
+}
+
+function prepareMonthlyRules(
+  rules: any,
+  dayShare: number,
+  calculationPeriod: string,
+) {
+  if (!rules) return rules;
+  if (calculationPeriod !== "MONTHLY") {
+    return prorateCommissionRules(rules, dayShare);
+  }
+
+  // หากตั้ง payout ใน tiers เป็นยอดระดับเดือน (เช่น >= 1000) ให้ใช้ยอดเต็มตามกติกาแคมเปญโดยไม่ลดทอนซ้ำ
+  const maxTierPayout = Math.max(
+    0,
+    ...(Array.isArray(rules.tiers)
+      ? rules.tiers.map((t: any) => Number(t.payout || 0))
+      : [0]),
+  );
+  if (maxTierPayout >= 1000) {
+    return rules;
+  }
+
+  return prorateCommissionRules(rules, dayShare);
+}
+
+// 11. 💰 ดึงรายงานสรุปเงินเดือน (Admin Salary Summary Report)
 export async function getAdminSalarySummaryReportAction(params?: {
   startDate?: string;
   endDate?: string;
@@ -1298,51 +1370,81 @@ export async function getAdminSalarySummaryReportAction(params?: {
       return { success: true, data: [] };
     }
     const supabase = await getAdminClientInstance();
+
     const expenseRes = await getAdminAttendanceExpenseReportAction(params);
     if (!expenseRes.success) throw new Error(expenseRes.message);
-
     const attendanceLogs = expenseRes.data || [];
-    const commissionAttendanceRes =
-      params?.commissionStartDate && params?.commissionEndDate
-        ? await getAdminAttendanceExpenseReportAction({
-            startDate: params.commissionStartDate,
-            endDate: params.commissionEndDate,
-            storeCodes: params.storeCodes,
-          })
-        : expenseRes;
+
+    const defaultPrevMonth = getPreviousCalendarMonthRange(
+      params?.endDate || params?.startDate,
+    );
+    const commissionStartDate =
+      params?.commissionStartDate || defaultPrevMonth.startDate;
+    const commissionEndDate =
+      params?.commissionEndDate || defaultPrevMonth.endDate;
+
+    const commissionAttendanceRes = await getAdminAttendanceExpenseReportAction(
+      {
+        startDate: commissionStartDate,
+        endDate: commissionEndDate,
+        storeCodes: params?.storeCodes,
+      },
+    );
     if (!commissionAttendanceRes.success) {
       throw new Error(commissionAttendanceRes.message);
     }
     const commissionAttendanceLogs = commissionAttendanceRes.data || [];
 
-    // ดึงรายงานยอดขายประจำวันเพื่อนำมาคำนวณค่าคอมมิชชั่น
-    let reportsQuery = supabase
-      .from("pg_daily_activity_reports")
-      .select("*, pg_daily_report_products (* )");
+    const dailyReports: any[] = [];
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      let reportsQuery = supabase
+        .from("pg_daily_activity_reports")
+        .select("*, pg_daily_report_products (*)")
+        .order("id", { ascending: true })
+        .range(offset, offset + pageSize - 1);
 
-    const commissionStartDate =
-      params?.commissionStartDate || params?.startDate;
-    const commissionEndDate = params?.commissionEndDate || params?.endDate;
-    if (commissionStartDate) {
-      reportsQuery = reportsQuery.gte("report_date", commissionStartDate);
-    }
-    if (commissionEndDate) {
-      reportsQuery = reportsQuery.lte("report_date", commissionEndDate);
-    }
-    if (params?.storeCodes) {
-      reportsQuery = reportsQuery.in("store_code", params.storeCodes);
-    }
-    if (params?.promotionId) {
-      reportsQuery = reportsQuery.eq("promotion_id", params.promotionId);
+      if (commissionStartDate) {
+        reportsQuery = reportsQuery.gte("report_date", commissionStartDate);
+      }
+      if (commissionEndDate) {
+        reportsQuery = reportsQuery.lte("report_date", commissionEndDate);
+      }
+      if (params?.storeCodes) {
+        reportsQuery = reportsQuery.in("store_code", params.storeCodes);
+      }
+      if (params?.promotionId) {
+        reportsQuery = reportsQuery.eq("promotion_id", params.promotionId);
+      }
+
+      const { data: batch, error: reportsError } = await reportsQuery;
+      if (reportsError) throw reportsError;
+      dailyReports.push(...(batch || []));
+      if (!batch || batch.length < pageSize) break;
     }
 
-    const { data: dailyReports } = await reportsQuery;
-
-    const { data: promotionRows } = await supabase
-      .from("promotions")
-      .select(
-        "id, staff_group, target_type, target_value, calculation_period, track_gift_inventory, gift_items",
-      );
+    const { data: promotionRows } = await supabase.from("promotions").select(`
+      id,
+      staff_group,
+      target_type,
+      target_value,
+      calculation_period,
+      start_date,
+      end_date,
+      is_active,
+      commission_rules,
+      track_gift_inventory,
+      gift_items,
+      items:promotion_items(
+        id,
+        promotion_id,
+        product_id,
+        item_scope,
+        target_qty,
+        credit_factor,
+        products(barcode, descriptions, sku_code)
+      )
+    `);
     const promotionsById = new Map(
       (promotionRows || []).map((promotion: any) => [
         String(promotion.id),
@@ -1352,14 +1454,24 @@ export async function getAdminSalarySummaryReportAction(params?: {
 
     const { data: storeTargetRows } = await supabase
       .from("store_targets")
-      .select("store_code, promotion_id, calculation_period, target_packs");
+      .select("*");
     const storeTargetsByPromotion = new Map<string, any>();
+    const monthlyStoreTargetsByStore = new Map<string, any>();
     for (const target of storeTargetRows || []) {
-      if (target.promotion_id == null) continue;
-      storeTargetsByPromotion.set(
-        `${target.store_code}:${target.promotion_id}`,
-        target,
-      );
+      const storeCode = String(target.store_code || "").trim();
+      if (!storeCode) continue;
+      if (target.promotion_id != null) {
+        storeTargetsByPromotion.set(
+          `${storeCode}:${target.promotion_id}`,
+          target,
+        );
+      }
+      if (
+        String(target.calculation_period || "").toUpperCase() === "MONTHLY" &&
+        !monthlyStoreTargetsByStore.has(storeCode)
+      ) {
+        monthlyStoreTargetsByStore.set(storeCode, target);
+      }
     }
 
     const { data: storeAccounts } = await supabase
@@ -1374,7 +1486,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       );
     }
 
-    // สะสมข้อมูลแยกตาม User ID
     const userSummaryMap = new Map<number, any>();
 
     const summaryAttendanceByUser = new Map<number, any>();
@@ -1422,7 +1533,7 @@ export async function getAdminSalarySummaryReportAction(params?: {
     attendanceLogs.forEach((log: any) => {
       const uId = Number(log.userId);
       const userGroup = userSummaryMap.get(uId)!;
-      userGroup.workDaysCount += log.dayValue; // บวกสะสม 0.5 หรือ 1 วันตามชั่วโมงจริง
+      userGroup.workDaysCount += log.dayValue;
       userGroup.totalDailyWage += log.dailyWage;
 
       if (log.checkInAt) {
@@ -1433,11 +1544,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
             (userGroup.dailyWageByDate.get(dateKey) || 0) + log.dailyWage,
           );
         }
-        const monthKey = new Intl.DateTimeFormat("en-CA", {
-          timeZone: "Asia/Bangkok",
-          year: "numeric",
-          month: "2-digit",
-        }).format(new Date(log.checkInAt));
       }
     });
 
@@ -1476,7 +1582,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       }
     });
 
-    // รวมยอดขายสินค้าแต่ละประเภทโดยรองรับทั้งคอลัมน์ legacy และรายการสินค้าแบบ nested
     (dailyReports || []).forEach((rep: any) => {
       const uId = Number(rep.user_id);
       if (!userSummaryMap.has(uId)) return;
@@ -1493,14 +1598,27 @@ export async function getAdminSalarySummaryReportAction(params?: {
         currentDailySales + totalSalesQty,
       );
 
-      const promotion = rep.promotion_id
+      const storeKey = String(rep.store_code || "").trim();
+      const candidatePromo = rep.promotion_id
         ? promotionsById.get(String(rep.promotion_id))
         : null;
-      const storeTarget = rep.promotion_id
-        ? storeTargetsByPromotion.get(`${rep.store_code}:${rep.promotion_id}`)
-        : null;
+      const promotion =
+        candidatePromo && isDateWithinPromotionRange(dateKey, candidatePromo)
+          ? candidatePromo
+          : candidatePromo &&
+              !candidatePromo.start_date &&
+              !candidatePromo.end_date
+            ? candidatePromo
+            : null;
+
+      const storeTarget =
+        (promotion?.id
+          ? storeTargetsByPromotion.get(`${storeKey}:${promotion.id}`)
+          : null) ||
+        (storeKey ? monthlyStoreTargetsByStore.get(storeKey) : null) ||
+        null;
       const rules =
-        rep.promotion_commission_rules || promotion?.commission_rules;
+        promotion?.commission_rules || rep.promotion_commission_rules;
       const promotionItems = Array.isArray(promotion?.items)
         ? promotion.items.filter(
             (item: any) =>
@@ -1519,21 +1637,23 @@ export async function getAdminSalarySummaryReportAction(params?: {
           sum + Number(product.promotion_target_qty || 0),
         0,
       );
-      const calculationPeriod =
-        storeTarget?.calculation_period ||
+      const calculationPeriod = String(
         promotion?.calculation_period ||
-        "DAILY";
+          storeTarget?.calculation_period ||
+          "DAILY",
+      ).toUpperCase();
       const staffGroup = String(promotion?.staff_group || "ALL").toUpperCase();
+      const storeTargetPacks = storeTarget
+        ? getStoreTargetPacks(storeTarget)
+        : 0;
       const monthlyTargetBaseQty =
         staffGroup === "BA"
-          ? promotionTargetQty || snapshotTargetQty
-          : Number(storeTarget?.target_packs || 0) ||
-            promotionTargetQty ||
-            snapshotTargetQty;
+          ? promotionTargetQty || snapshotTargetQty || storeTargetPacks
+          : storeTargetPacks || promotionTargetQty || snapshotTargetQty;
       const targetQty =
         calculationPeriod === "MONTHLY"
           ? monthlyTargetBaseQty
-          : snapshotTargetQty || promotionTargetQty;
+          : snapshotTargetQty || promotionTargetQty || storeTargetPacks;
 
       if (rules && targetQty > 0 && reportProducts.length > 0) {
         const targetByBarcode = new Map<string, number>();
@@ -1571,25 +1691,31 @@ export async function getAdminSalarySummaryReportAction(params?: {
           currentTarget.creditedSales += creditedSales;
           userGroup.dailyTargetByDate.set(dateKey, currentTarget);
         }
-        if (calculationPeriod === "MONTHLY" && promotion?.id) {
+        if (calculationPeriod === "MONTHLY") {
           const monthKey = dateKey.slice(0, 7);
+          const daysInMonth = getDaysInMonthFromDateStr(
+            /^\d{4}-\d{2}$/.test(monthKey) ? `${monthKey}-01` : dateKey,
+          );
+          const effectivePromoId = promotion?.id
+            ? String(promotion.id)
+            : `store-monthly:${storeKey || "default"}`;
           const targetScopeType =
-            staffGroup === "BA" || promotion.target_type === "COMPANY_TAG"
+            staffGroup === "BA" || promotion?.target_type === "COMPANY_TAG"
               ? "ACCOUNT"
-              : staffGroup === "PG" || promotion.target_type === "STORE_CODE"
+              : staffGroup === "PG" ||
+                  promotion?.target_type === "STORE_CODE" ||
+                  storeTargetPacks > 0
                 ? "STORE"
-                : Number(storeTarget?.target_packs || 0) > 0
-                  ? "STORE"
-                  : "ALL";
+                : "ALL";
           const targetScopeValue =
             targetScopeType === "STORE"
               ? String(
-                  Number(storeTarget?.target_packs || 0) > 0
+                  storeTargetPacks > 0
                     ? rep.store_code
-                    : promotion.target_value,
+                    : promotion?.target_value || storeKey,
                 ).trim()
               : targetScopeType === "ACCOUNT"
-                ? String(promotion.target_value || "")
+                ? String(promotion?.target_value || "")
                     .trim()
                     .toLowerCase()
                 : "ALL";
@@ -1603,22 +1729,26 @@ export async function getAdminSalarySummaryReportAction(params?: {
                     `${targetScopeValue}:${monthKey}`,
                   ) || 0
                 : userGroup.workDaysByMonth.get(monthKey) || 0;
-          const dayShare = Math.min(workedDays / 30, 1);
+          const dayShare = Math.min(workedDays / daysInMonth, 1);
           const proratedTargetQty = monthlyTargetBaseQty * dayShare;
           if (proratedTargetQty <= 0) return;
           userGroup.monthlyCampaignDates.add(dateKey);
-          const proratedRules = prorateCommissionRules(rules, dayShare);
-          const performanceKey = `${promotion.id}:${monthKey}:${targetScopeType}:${targetScopeValue}`;
+          const effectiveRules = prepareMonthlyRules(
+            rules,
+            dayShare,
+            calculationPeriod,
+          );
+          const performanceKey = `${effectivePromoId}:${monthKey}:${targetScopeType}:${targetScopeValue}`;
           const currentPerformance = userGroup.monthlyPromotionPerformance.get(
             performanceKey,
           ) || {
-            promotionId: String(promotion.id),
+            promotionId: effectivePromoId,
             monthKey,
             targetScopeType,
             targetScopeValue,
             creditedSales: 0,
             targetQty: proratedTargetQty,
-            rules: proratedRules,
+            rules: effectiveRules,
             lastDateKey: dateKey,
           };
           currentPerformance.creditedSales += creditedSales;
@@ -1645,7 +1775,6 @@ export async function getAdminSalarySummaryReportAction(params?: {
       }
     });
 
-    // คำนวณคอมมิชชั่นและรวมค่าแรงสุทธิ
     const summaryList = await Promise.all(
       Array.from(userSummaryMap.values()).map(async (item) => {
         const dailyCommissionResults = await Promise.all(

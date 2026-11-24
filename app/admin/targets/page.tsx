@@ -48,13 +48,38 @@ const normalizeText = (value: unknown) =>
     .trim()
     .toLowerCase();
 
-// โปรโมชันที่ใช้กับร้านนี้: เปิดใช้งาน ยังไม่หมดอายุ และตรงเป้าหมาย (ALL / รายสาขา / Account)
-const isPromotionApplicable = (promo: any, store?: any) => {
+// โปรโมชันที่ใช้กับร้านนี้: เปิดใช้งาน ตรงเป้าหมาย (ALL / รายสาขา / Account) และอิงตามวันที่ที่เลือก (หรือทั้งหมดเมื่อเปิดโหมดย้อนหลัง)
+const isPromotionApplicable = (
+  promo: any,
+  store?: any,
+  options?: { includeExpired?: boolean; refDate?: string },
+) => {
   if (!promo?.is_active) return false;
-  const today = new Date().toISOString().slice(0, 10);
-  if (promo.end_date && String(promo.end_date).slice(0, 10) < today) {
-    return false;
+  const effectiveDate =
+    options?.refDate && /^\d{4}-\d{2}-\d{2}$/.test(options.refDate)
+      ? options.refDate
+      : new Date().toISOString().slice(0, 10);
+
+  if (!options?.includeExpired) {
+    if (promo.end_date && String(promo.end_date).slice(0, 10) < effectiveDate) {
+      return false;
+    }
   }
+  if (options?.refDate && /^\d{4}-\d{2}-\d{2}$/.test(options.refDate)) {
+    if (
+      promo.start_date &&
+      String(promo.start_date).slice(0, 10) > options.refDate
+    ) {
+      return false;
+    }
+    if (
+      promo.end_date &&
+      String(promo.end_date).slice(0, 10) < options.refDate
+    ) {
+      return false;
+    }
+  }
+
   if (promo.target_type === "ALL") return true;
   if (!store) return false;
   if (promo.target_type === "STORE_CODE") {
@@ -75,6 +100,12 @@ export default function AdminTargetManagement() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  // State สำหรับโหมดย้อนหลัง / วันที่อ้างอิงในการเลือกแคมเปญ (อยู่ข้างใน function component)
+  const [includeExpiredPromotions, setIncludeExpiredPromotions] =
+    useState(true);
+  const [referenceDate, setReferenceDate] = useState("");
 
   // States หลัก
   const [storeCode, setStoreCode] = useState("");
@@ -113,9 +144,6 @@ export default function AdminTargetManagement() {
       price: 142,
     },
   ]);
-
-  const [isEditing, setIsEditing] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
 
   const isBigC = checkIsBigC(storeCode, storeName);
 
@@ -550,10 +578,29 @@ export default function AdminTargetManagement() {
             </div>
 
             {/* เลือกรอบโปรโมชั่น */}
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
                 2. รอบโปรโมชั่น / ธีมการจัดรายการ (ถ้ามี)
               </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="date"
+                  value={referenceDate}
+                  onChange={(e) => setReferenceDate(e.target.value)}
+                  title="กรองแคมเปญตามวันที่ที่ต้องการ (เว้นว่างเพื่อไม่อิงวันที่เฉพาะเจาะจง)"
+                  className="w-full px-2.5 py-1.5 border rounded-xl text-[11px] font-bold text-slate-700 bg-slate-50"
+                />
+                <label className="flex items-center gap-1.5 px-2.5 py-1.5 border rounded-xl text-[11px] font-bold text-slate-700 bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeExpiredPromotions}
+                    onChange={(e) =>
+                      setIncludeExpiredPromotions(e.target.checked)
+                    }
+                  />
+                  รวมแคมเปญที่สิ้นสุดแล้ว (ย้อนหลัง)
+                </label>
+              </div>
               <div className="relative">
                 <Tag
                   className="absolute left-3 top-2.5 text-slate-400"
@@ -572,11 +619,18 @@ export default function AdminTargetManagement() {
                         isPromotionApplicable(
                           p,
                           masterStores.find((s) => s.store_code === storeCode),
+                          {
+                            includeExpired: includeExpiredPromotions,
+                            refDate: referenceDate,
+                          },
                         ),
                     )
                     .map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.campaign_title}
+                        {p.start_date || p.end_date
+                          ? ` (${p.start_date?.slice(0, 10) || "-"} ถึง ${p.end_date?.slice(0, 10) || "-"})`
+                          : ""}
                       </option>
                     ))}
                 </select>

@@ -266,6 +266,62 @@ export default function PromotionsAdminPage() {
     );
   };
 
+  const handleClonePromotion = (promo: PromotionConfig) => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setEditingId(null);
+    const type = promo.target_type || "COMPANY_TAG";
+    setTargetType(type);
+    const savedValue = promo.target_value || "";
+    const matchedAccount =
+      type === "COMPANY_TAG"
+        ? stores.find(
+            (s) =>
+              String(s.account || "")
+                .trim()
+                .toLowerCase() === savedValue.trim().toLowerCase(),
+          )?.account
+        : undefined;
+    setTargetValue(matchedAccount?.trim() || savedValue);
+
+    if (type === "STORE_CODE") {
+      const matched = stores.find((s) => s.store_code === promo.target_value);
+      setSelectedStoreName(matched ? matched.store_name : "");
+    } else {
+      setSelectedStoreName("");
+    }
+
+    setCampaignTitle(
+      promo.campaign_title ? `${promo.campaign_title} (รอบใหม่)` : "",
+    );
+    setStartDate("");
+    setEndDate("");
+    setSpecialTierText(promo.special_tier_text || "");
+    setTrackGiftInventory(Boolean(promo.track_gift_inventory));
+    setGiftItems(promo.gift_items || []);
+    setCalculationPeriod(promo.calculation_period || "DAILY");
+    setCommissionRules(promo.commission_rules || DEFAULT_COMMISSION_RULES);
+    setIsActive(true);
+
+    setItems(
+      promo.items?.map((item) => ({
+        product_code: String(item.product_code || ""),
+        product_name: item.products?.descriptions || item.product_name || "",
+        barcode: item.products?.barcode || item.barcode || "",
+        company_type: item.products?.company_type || "",
+        item_scope:
+          String(item.products?.company_type || "")
+            .trim()
+            .toLowerCase() === "competitor"
+            ? "COMPETITOR"
+            : item.item_scope || "OUR",
+        target_qty: item.target_qty ?? 0,
+        credit_factor: item.credit_factor ?? 1,
+        price: String(item.price || ""),
+        condition: item.condition || "",
+      })) || [],
+    );
+  };
+
   const handleResetForm = () => {
     setEditingId(null);
     setTargetType("COMPANY_TAG");
@@ -441,6 +497,7 @@ export default function PromotionsAdminPage() {
         : staffGroup === "BA"
           ? "COMPANY_TAG"
           : targetType;
+
     const enforcedCalculationPeriod =
       staffGroup === "PG"
         ? "DAILY"
@@ -1264,19 +1321,30 @@ export default function PromotionsAdminPage() {
                         {promo.is_active ? "เปิดใช้งาน" : "ปิดใช้งาน"}
                       </span>
                     </td>
-                    <td className="p-3 text-right space-x-2">
-                      <button
-                        onClick={() => handleEdit(promo)}
-                        className="text-blue-600 font-bold hover:underline"
-                      >
-                        แก้ไข
-                      </button>
-                      <button
-                        onClick={() => handleDelete(promo.id)}
-                        className="text-red-500 font-bold hover:underline"
-                      >
-                        ลบ
-                      </button>
+                    <td className="p-3 text-right">
+                      <div className="inline-flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(promo)}
+                          className="text-blue-600 font-bold hover:underline"
+                        >
+                          แก้ไข
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleClonePromotion(promo)}
+                          className="text-emerald-700 font-bold hover:underline"
+                        >
+                          ทำซ้ำรอบใหม่
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(promo.id)}
+                          className="text-red-500 font-bold hover:underline"
+                        >
+                          ลบ
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
