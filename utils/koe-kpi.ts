@@ -1,38 +1,84 @@
 export type CheerGrade = "A" | "B" | "C";
+export type CheerKpiRegion = "BKK" | "UPC";
 
-export const cheerKpiCriteria = [
+export type CheerKpiCriterion = {
+  key: string;
+  label: string;
+  amounts: Record<CheerGrade, number>;
+};
+
+export const cheerKpiCriteria: readonly CheerKpiCriterion[] = [
   {
     key: "knowledge",
     label: "Product Knowledge",
-    amounts: { A: 300, B: 150, C: 0 },
+    amounts: { A: 700, B: 300, C: 0 },
   },
   {
     key: "promotion",
     label: "Promotion Execution / Sale out Report",
-    amounts: { A: 300, B: 150, C: 0 },
+    amounts: { A: 700, B: 300, C: 0 },
   },
   {
     key: "dailyReport",
     label: "Daily Report / OOS Report",
-    amounts: { A: 200, B: 100, C: 0 },
+    amounts: { A: 400, B: 200, C: 0 },
   },
   {
     key: "display",
     label: "การจัดเรียงและความสะอาดสินค้า",
     amounts: { A: 200, B: 100, C: 0 },
   },
-  { key: "attendance", label: "Attendance", amounts: { A: 500, B: 200, C: 0 } },
+  { key: "attendance", label: "Attendance", amounts: { A: 600, B: 300, C: 0 } },
 ] as const;
 
-export function calculateCheerKpi(grades: Record<string, CheerGrade>) {
-  const amounts = cheerKpiCriteria.map((criterion) => {
+export const cheerKpiRegionCriteria: Record<
+  CheerKpiRegion,
+  readonly CheerKpiCriterion[]
+> = {
+  BKK: cheerKpiCriteria,
+  UPC: [
+    {
+      key: "knowledge",
+      label: "Product Knowledge",
+      amounts: { A: 300, B: 150, C: 0 },
+    },
+    {
+      key: "promotion",
+      label: "Promotion Execution / Sale out Report",
+      amounts: { A: 300, B: 150, C: 0 },
+    },
+    {
+      key: "dailyReport",
+      label: "Daily Report / OOS Report",
+      amounts: { A: 200, B: 100, C: 0 },
+    },
+    {
+      key: "display",
+      label: "การจัดเรียงและความสะอาดสินค้า",
+      amounts: { A: 200, B: 100, C: 0 },
+    },
+    {
+      key: "attendance",
+      label: "Attendance",
+      amounts: { A: 500, B: 250, C: 0 },
+    },
+  ],
+};
+
+export function calculateCheerKpi(
+  grades: Record<string, CheerGrade>,
+  region: CheerKpiRegion = "BKK",
+) {
+  const criteria = cheerKpiRegionCriteria[region];
+  const amounts = criteria.map((criterion) => {
     const grade = grades[criterion.key];
     if (grade !== "A" && grade !== "B" && grade !== "C")
       throw new Error("กรุณาประเมินทุกหัวข้อ");
     return { key: criterion.key, grade, amount: criterion.amounts[grade] };
   });
   const total = amounts.reduce((sum, item) => sum + item.amount, 0);
-  return { amounts, total, maximum: 1500, percentage: (total / 1500) * 100 };
+  const maximum = region === "UPC" ? 1500 : 2600;
+  return { amounts, total, maximum, percentage: (total / maximum) * 100 };
 }
 
 export function calculateSupervisorKpi(achievements: number[]) {
@@ -87,4 +133,14 @@ export function calculateAttendanceAchievement(
     late,
     percentage: 100 - (late / shifts.length) * 100,
   };
+}
+
+export function getCheerKpiRegion(area: unknown): CheerKpiRegion {
+  const normalized = String(area || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  return /^(bkk|กรุงเทพมหานคร|กรุงเทพ|กทม|bangkok)$/.test(normalized)
+    ? "BKK"
+    : "UPC";
 }

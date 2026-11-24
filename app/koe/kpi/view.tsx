@@ -6,6 +6,7 @@ import { ArrowLeft, ClipboardCheck } from "lucide-react";
 import {
   calculateSupervisorKpi,
   cheerKpiCriteria,
+  cheerKpiRegionCriteria,
   type CheerGrade,
 } from "@/utils/koe-kpi";
 import {
@@ -119,9 +120,12 @@ export default function KoeKpiPage() {
 
   const selected = team.find((item) => String(item.id) === targetId);
   const isCheer = form?.assessmentType === "BA_CHEER";
+  const cheerRegion = form?.cheerRegion === "UPC" ? "UPC" : "BKK";
+  const cheerCriteria = cheerKpiRegionCriteria[cheerRegion];
+  const cheerMaximum = cheerRegion === "UPC" ? 1500 : 2600;
   const gradeAmount = useMemo(
     () =>
-      cheerKpiCriteria.reduce(
+      cheerCriteria.reduce(
         (sum, criterion) =>
           sum +
           (grades[criterion.key]
@@ -129,7 +133,7 @@ export default function KoeKpiPage() {
             : 0),
         0,
       ),
-    [grades],
+    [grades, cheerCriteria],
   );
   const supervisorPreview = useMemo(() => {
     if (
@@ -251,7 +255,7 @@ export default function KoeKpiPage() {
               </p>
             )}
             {isCheer ? (
-              cheerKpiCriteria.map((criterion) => (
+              cheerCriteria.map((criterion) => (
                 <fieldset
                   key={criterion.key}
                   disabled={form.evaluation?.status === "approved"}
@@ -352,7 +356,7 @@ export default function KoeKpiPage() {
               <span className="text-xs text-slate-500">
                 คะแนน{" "}
                 {isCheer
-                  ? `${((gradeAmount / 1300) * 100).toFixed(2)}%`
+                  ? `${((gradeAmount / cheerMaximum) * 100).toFixed(2)}%`
                   : `${supervisorPreview?.percentage.toFixed(2) || "-"}%`}
               </span>
             </div>

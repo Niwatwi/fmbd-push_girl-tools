@@ -87,6 +87,7 @@ export async function createManagedUserAction(input: {
   name: string;
   companyTag: string;
   area: string;
+  kpiRegion: "BKK" | "UPC";
   email: string;
   phone: string;
   employmentType: string;
@@ -100,6 +101,9 @@ export async function createManagedUserAction(input: {
     const name = String(input.name || "").trim();
     const companyTag = String(input.companyTag || "").trim();
     const password = String(input.password || "").trim();
+    const kpiRegion = input.kpiRegion;
+    if (kpiRegion !== "BKK" && kpiRegion !== "UPC")
+      throw new Error("กรุณาเลือกเรท KPI เป็น BKK หรือ UPC");
     if (
       !username ||
       !name ||
@@ -140,6 +144,7 @@ export async function createManagedUserAction(input: {
       display_name: name,
       company_tag: companyTag,
       area: String(input.area || "").trim(),
+      kpi_region: kpiRegion,
       email: String(input.email || "").trim(),
       phone: String(input.phone || "").trim(),
       employment_type: String(input.employmentType || "").trim(),

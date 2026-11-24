@@ -3,6 +3,9 @@
 import { getKoeServerDatabase, requireKoeAccess } from "@/utils/koe-access";
 import {
   calculateCheerKpi,
+  cheerKpiRegionCriteria,
+  getCheerKpiRegion,
+  type CheerKpiRegion,
   calculateOosAchievement,
   calculateSupervisorKpi,
   type CheerGrade,
@@ -163,7 +166,9 @@ async function getKpiContext(targetUserId: number, month: string) {
     .slice(0, 10);
   const { data: target, error: targetError } = await database
     .from("user_profiles")
-    .select("id,username,employee_id,display_name,company_tag,area,is_active")
+    .select(
+      "id,username,employee_id,display_name,company_tag,area,kpi_region,is_active",
+    )
     .eq("id", targetUserId)
     .maybeSingle();
   if (
@@ -189,6 +194,12 @@ async function getKpiContext(targetUserId: number, month: string) {
     session,
     target,
     assessmentType,
+    cheerRegion:
+      String(target.kpi_region || "").toUpperCase() === "BKK"
+        ? "BKK"
+        : String(target.kpi_region || "").toUpperCase() === "UPC"
+          ? "UPC"
+          : getCheerKpiRegion(target.area),
     periodMonth,
     monthStart: `${month}-01`,
     monthEnd,
@@ -313,6 +324,7 @@ export async function getKoeKpiFormAction(targetUserId: number, month: string) {
       success: true as const,
       target: context.target,
       assessmentType: context.assessmentType,
+      cheerRegion: context.cheerRegion,
       evaluation: data,
       derived,
     };
@@ -342,7 +354,7 @@ export async function saveKoeKpiEvaluationAction(input: {
     let scorePercent: number;
     let totalAmount: number;
     if (context.assessmentType === "BA_CHEER") {
-      const result = calculateCheerKpi(input.grades || {});
+      const result = calculateCheerKpi(input.grades || {}, context.cheerRegion);
       criteria = { grades: input.grades, amounts: result.amounts };
       scorePercent = result.percentage;
       totalAmount = result.total;

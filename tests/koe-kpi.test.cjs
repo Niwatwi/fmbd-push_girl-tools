@@ -14,14 +14,16 @@ loaded.paths = module.paths;
 loaded._compile(compiled, filename);
 const { calculateCheerKpi, calculateSupervisorKpi, calculateOosAchievement, calculateAttendanceAchievement } = loaded.exports;
 
-test("BA Cheer grades total 1500 and require all criteria", () => {
+test("BA Cheer BKK and UPC use region-specific maximum and attendance", () => {
     const grades = { knowledge: "A", promotion: "A", dailyReport: "A", display: "A", attendance: "A" };
-    assert.equal(calculateCheerKpi(grades).amounts.find((item) => item.key === "attendance").amount, 500);
-    assert.equal(calculateCheerKpi(grades).total, 1500);
-    assert.equal(calculateCheerKpi(grades).maximum, 1500);
-    assert.equal(calculateCheerKpi(grades).percentage, 100);
-    assert.equal(calculateCheerKpi({ ...grades, dailyReport: "B", attendance: "B" }).total, 1100);
-    assert.throws(() => calculateCheerKpi({}));
+    const bkk = calculateCheerKpi(grades, "BKK");
+    assert.equal(bkk.total, 2600);
+    assert.equal(bkk.maximum, 2600);
+
+    const upc = calculateCheerKpi(grades, "UPC");
+    assert.equal(upc.total, 1500);
+    assert.equal(upc.maximum, 1500);
+    assert.equal(upc.percentage, 100);
 });
 
 test("supervisor amounts follow the 80 percent threshold and cap", () => {
@@ -47,4 +49,14 @@ test("attendance is late only beyond five minutes", () => {
     ]), { shifts: 2, late: 1, percentage: 50 });
     assert.equal(calculateAttendanceAchievement([]), null);
     assert.throws(() => calculateAttendanceAchievement([{ scheduledAt: "", checkedInAt: "" }]));
+});
+
+test("BA Cheer BKK grades total 2600 and require all criteria", () => {
+    const grades = { knowledge: "A", promotion: "A", dailyReport: "A", display: "A", attendance: "A" };
+    assert.equal(calculateCheerKpi(grades).amounts.find((item) => item.key === "attendance").amount, 600);
+    assert.equal(calculateCheerKpi(grades).total, 2600);
+    assert.equal(calculateCheerKpi(grades).maximum, 2600);
+    assert.equal(calculateCheerKpi(grades).percentage, 100);
+    assert.equal(calculateCheerKpi({ ...grades, dailyReport: "B", attendance: "B" }).total, 2100);
+    assert.throws(() => calculateCheerKpi({}));
 });

@@ -26,6 +26,7 @@ type ManagedUser = {
   display_name: string;
   company_tag: string;
   area: string;
+  kpi_region?: "BKK" | "UPC" | null;
   email: string;
   phone: string | null;
   image_url: string | null;
@@ -42,6 +43,7 @@ const empty = {
   name: "",
   companyTag: "BA",
   area: "",
+  kpiRegion: "" as "" | "BKK" | "UPC",
   email: "",
   phone: "",
   employmentType: "",
@@ -82,8 +84,14 @@ export default function ManagedUsersPage() {
     event.preventDefault();
     setBusy(true);
     setMessage("");
+    if (form.kpiRegion !== "BKK" && form.kpiRegion !== "UPC") {
+      setBusy(false);
+      setMessage("กรุณาเลือกเรท KPI เป็น BKK หรือ UPC");
+      return;
+    }
     const result = await createManagedUserAction({
       ...form,
+      kpiRegion: form.kpiRegion,
       companyTag:
         form.companyTag === "OTHER" ? otherCompanyTag.trim() : form.companyTag,
     });
@@ -318,6 +326,28 @@ export default function ManagedUsersPage() {
                 </select>
               </label>
               {field("area", "Area (เขตพื้นที่)")}
+              <label className="space-y-1 text-xs font-bold">
+                <span>เรท KPI BA</span>
+                <select
+                  required
+                  className={inputClass}
+                  value={form.kpiRegion}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      kpiRegion: event.target.value as "" | "BKK" | "UPC",
+                    }))
+                  }
+                >
+                  <option value="">-- เลือก BKK หรือ UPC --</option>
+                  <option value="BKK">
+                    BKK - กรุงเทพมหานคร (เต็ม 2,600 บาท)
+                  </option>
+                  <option value="UPC">
+                    UPC - ต่างจังหวัด (เต็ม 1,500 บาท)
+                  </option>
+                </select>
+              </label>
               {field("username", "Username (Area Code)", "text", true)}
               {field("password", "รหัสผ่าน", "password", true)}
               {field("email", "อีเมล (สำหรับล็อกอิน)", "email", true)}
